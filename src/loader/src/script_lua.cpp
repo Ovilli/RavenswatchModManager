@@ -33,6 +33,8 @@ extern "C" {
 #include "hook_input.h"
 #include "hook_keybinds.h"
 #include "hook_ui_state.h"
+#include "hook_book_pages.h"
+#include "hook_settings_menu.h"
 
 #include "json.hpp"   // single-header nlohmann::json (vendored)
 #include "toml.hpp"   // single-header toml++ (vendored)
@@ -110,7 +112,12 @@ struct ModScript {
     // How many rsmm.on_event handlers this state registered, so closing it
     // can take them back out of the process-wide count.
     int handlers = 0;
+    // The loader-owned state (script_run_builtin_init): no mod root, no
+    // config, no hot reload.
+    bool builtin = false;
 };
+
+constexpr const char* kBuiltinId = "_rsmm";
 
 std::recursive_mutex g_mu;
 std::unordered_map<std::string, ModScript> g_scripts;
@@ -665,14 +672,14 @@ bool push_config_table(lua_State* L, const std::filesystem::path& root) {
             // A multiselect field: an array of primitives becomes a Lua
             // sequence. Nested tables/arrays are skipped, never guessed at.
             lua_createtable(L, static_cast<int>(a->size()), 0);
-            lua_Integer i = 0;
+            lua_Integer seq = 0;
             for (auto&& el : *a) {
                 if (auto eb = el.as_boolean())             lua_pushboolean(L, **eb ? 1 : 0);
                 else if (auto ei = el.as_integer())        lua_pushinteger(L, (lua_Integer)**ei);
                 else if (auto ef = el.as_floating_point()) lua_pushnumber(L, **ef);
                 else if (auto es = el.as_string())         lua_pushstring(L, (**es).c_str());
                 else continue;
-                lua_rawseti(L, -2, ++i);
+                lua_rawseti(L, -2, ++seq);
             }
         }
         else continue;
@@ -1879,15 +1886,21 @@ int lua_ui_state_arm(lua_State* L) {
     return 2;
 }
 
-// rsmm._internal.ui_state_count(kind) -> open count, or nil when not armed
-//   kind: "menu" | "book" | "modal" | "loading" | "page"
+// rsmm._internal.ui_state_count(kind) -> open count, or nil + why ("not armed",
+//   or "unknown book mode" when the book's visibility cannot be read)
+//   kind: "menu" | "book" | "modal" | "loading" | "page" | "root"
 int lua_ui_state_count(lua_State* L) {
     UiKind kind;
     if (!ui_kind_from_name(luaL_checkstring(L, 1), &kind))
-        return luaL_argerror(L, 1, "kind is menu, book, modal, loading or page");
+        return luaL_argerror(L, 1, "kind is menu, book, modal, loading, page or root");
     const int n = ui_state_count(kind);
-    if (n < 0) lua_pushnil(L); else lua_pushinteger(L, n);
-    return 1;
+    if (n >= 0) {
+        lua_pushinteger(L, n);
+        return 1;
+    }
+    lua_pushnil(L);
+    lua_pushstring(L, n == kUiCountUnknown ? "unknown book mode" : "not armed");
+    return 2;
 }
 
 // rsmm._internal.ui_state_open() -> { {kind, class, ptr}, ... } oldest first
@@ -1905,6 +1918,173 @@ int lua_ui_state_open(lua_State* L) {
         lua_rawseti(L, -2, static_cast<int>(i) + 1);
     }
     return 1;
+}
+
+// rsmm._internal.ui_state_book() -> "main"|"settings"|"score"|"credits", or nil
+//   (book closed), or nil + why (not armed / unknown mode)
+int lua_ui_state_book(lua_State* L) {
+    const int mode = ui_state_book_mode();
+    if (mode < 0) {
+        lua_pushnil(L);
+        lua_pushstring(L, "not armed");
+        return 2;
+    }
+    if (mode == 5) {
+        lua_pushnil(L);
+        lua_pushstring(L, "unknown book mode");
+        return 2;
+    }
+    const char* name = ui_book_mode_name(mode);   // nullptr when closed (4)
+    if (name) lua_pushstring(L, name); else lua_pushnil(L);
+    return 1;
+}
+
+// rsmm._internal.ui_state_page() -> page label ("PlayPage", "CreditsPage", ...), or nil
+int lua_ui_state_page(lua_State* L) {
+    const char* label = ui_state_page();
+    if (label) lua_pushstring(L, label); else lua_pushnil(L);
+    return 1;
+}
+
+// --- R.ui.menus (hook_book_pages.h) ---------------------------------------------
+
+// rsmm._internal.ui_menus_available() -> true | false, why
+int lua_ui_menus_available(lua_State* L) {
+    std::string why;
+    const bool ok = book_pages_available(&why);
+    lua_pushboolean(L, ok);
+    if (ok) return 1;
+    lua_pushstring(L, why.c_str());
+    return 2;
+}
+
+int push_menus_result(lua_State* L, bool ok, const std::string& why) {
+    if (ok) { lua_pushboolean(L, 1); return 1; }
+    lua_pushnil(L);
+    lua_pushstring(L, why.c_str());
+    return 2;
+}
+
+// ui_menus_set_page(id, snapshot_table) -> true | nil, why
+int lua_ui_menus_set_page(lua_State* L) {
+    const std::string id = luaL_checkstring(L, 1);
+    luaL_checktype(L, 2, LUA_TTABLE);
+    nlohmann::json snap;
+    if (!lua_to_json(L, 2, snap)) return push_menus_result(L, false, "snapshot is not JSON-encodable");
+    std::string why;
+    const bool ok = book_pages_set_page(
+        id, snap.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace), &why);
+    return push_menus_result(L, ok, why);
+}
+
+// ui_menus_remove_page(id)
+int lua_ui_menus_remove_page(lua_State* L) {
+    book_pages_remove_page(luaL_checkstring(L, 1));
+    return 0;
+}
+
+// ui_menus_set_entry(id, title, page_id, after) -> true | nil, why
+int lua_ui_menus_set_entry(lua_State* L) {
+    const std::string id = luaL_checkstring(L, 1);
+    const std::string title = luaL_checkstring(L, 2);
+    const std::string page = luaL_checkstring(L, 3);
+    const std::string after = luaL_checkstring(L, 4);
+    std::string why;
+    const bool ok = book_pages_set_entry(id, title, page, after, &why);
+    return push_menus_result(L, ok, why);
+}
+
+// ui_menus_remove_entry(id)
+int lua_ui_menus_remove_entry(lua_State* L) {
+    book_pages_remove_entry(luaL_checkstring(L, 1));
+    return 0;
+}
+
+// ui_menus_open(page_id, ctx_or_nil) -> true | nil, why   (queued)
+int lua_ui_menus_open(lua_State* L) {
+    const std::string page = luaL_checkstring(L, 1);
+    std::string ctx;
+    const bool has_ctx = !lua_isnoneornil(L, 2);
+    if (has_ctx) {
+        nlohmann::json c;
+        if (!lua_to_json(L, 2, c)) return push_menus_result(L, false, "ctx is not JSON-encodable");
+        ctx = c.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+    }
+    std::string why;
+    const bool ok = book_pages_open(page, has_ctx ? &ctx : nullptr, &why);
+    return push_menus_result(L, ok, why);
+}
+
+// ui_menus_back() -> true | nil, why   (queued)
+int lua_ui_menus_back(lua_State* L) {
+    std::string why;
+    const bool ok = book_pages_back(&why);
+    return push_menus_result(L, ok, why);
+}
+
+// ui_menus_current() -> {page=, ctx=, depth=} or nil
+int lua_ui_menus_current(lua_State* L) {
+    std::string page, ctx;
+    int depth = 0;
+    if (!book_pages_current(&page, &ctx, &depth)) { lua_pushnil(L); return 1; }
+    lua_createtable(L, 0, 3);
+    lua_pushstring(L, page.c_str());
+    lua_setfield(L, -2, "page");
+    const nlohmann::json cj = ctx.empty() ? nlohmann::json() : nlohmann::json::parse(ctx, nullptr, false);
+    if (cj.is_discarded()) lua_pushnil(L); else json_to_lua(L, cj);
+    lua_setfield(L, -2, "ctx");
+    lua_pushinteger(L, depth);
+    lua_setfield(L, -2, "depth");
+    return 1;
+}
+
+// ui_menus_veto_back(): called from a ui:menus_back handler to keep the page open
+int lua_ui_menus_veto_back(lua_State*) {
+    book_pages_veto_back();
+    return 0;
+}
+
+// --- the Mods page's model (hook_settings_menu.h; rsmm/mods_menu.lua) ------------
+
+// mods_menu_owner() -> true only in the loader-owned state
+int lua_mods_menu_owner(lua_State* L) {
+    const ModScript* m = current_from_state(L);
+    lua_pushboolean(L, m && m->builtin);
+    return 1;
+}
+
+// mods_model() -> table | nil, why
+int lua_mods_model(lua_State* L) {
+    std::string json, why;
+    if (!mods_menu_model_json(&json, &why)) {
+        lua_pushnil(L);
+        lua_pushstring(L, why.c_str());
+        return 2;
+    }
+    const nlohmann::json j = nlohmann::json::parse(json, nullptr, false);
+    if (j.is_discarded()) {
+        lua_pushnil(L);
+        lua_pushstring(L, "model is not valid JSON");
+        return 2;
+    }
+    json_to_lua(L, j);
+    return 1;
+}
+
+// mods_menu_set(mod_id, row_id, index) -> true | nil, why
+int lua_mods_menu_set(lua_State* L) {
+    const std::string mod = luaL_checkstring(L, 1);
+    const std::string row = luaL_checkstring(L, 2);
+    const int index = static_cast<int>(luaL_checkinteger(L, 3));
+    std::string why;
+    const bool ok = mods_menu_set(mod, row, index, &why);
+    return push_menus_result(L, ok, why);
+}
+
+// mods_menu_refresh()
+int lua_mods_menu_refresh(lua_State*) {
+    mods_menu_refresh();
+    return 0;
 }
 
 int lua_hook_report(lua_State* L) {
@@ -2244,6 +2424,21 @@ void register_api(lua_State* L) {
         { "ui_state_arm",            lua_ui_state_arm },
         { "ui_state_count",          lua_ui_state_count },
         { "ui_state_open",           lua_ui_state_open },
+        { "ui_state_book",           lua_ui_state_book },
+        { "ui_state_page",           lua_ui_state_page },
+        { "ui_menus_available",      lua_ui_menus_available },
+        { "ui_menus_set_page",       lua_ui_menus_set_page },
+        { "ui_menus_remove_page",    lua_ui_menus_remove_page },
+        { "ui_menus_set_entry",      lua_ui_menus_set_entry },
+        { "ui_menus_remove_entry",   lua_ui_menus_remove_entry },
+        { "ui_menus_open",           lua_ui_menus_open },
+        { "ui_menus_back",           lua_ui_menus_back },
+        { "ui_menus_current",        lua_ui_menus_current },
+        { "ui_menus_veto_back",      lua_ui_menus_veto_back },
+        { "mods_menu_owner",         lua_mods_menu_owner },
+        { "mods_model",              lua_mods_model },
+        { "mods_menu_set",           lua_mods_menu_set },
+        { "mods_menu_refresh",       lua_mods_menu_refresh },
         { "peek",                    lua_peek },
         { "poke",                    lua_poke },
         { "scratch",                 lua_scratch },
@@ -2319,6 +2514,26 @@ std::string first_line(const std::string& msg) {
     if (out.size() > kMax) out = out.substr(0, kMax) + "...";
     return out;
 }
+// Prepend `<game>/rsmm/lib/?.lua` to package.path so `require "rsmm"` (and
+// friends) resolve to the SDK module that ships next to the loader. Without
+// this Lua's default search path would only find mods/<id>/init.lua. The
+// native `rsmm` global stays available as a fallback for low-level scripts
+// that don't want the wrapper.
+void prepend_sdk_path(lua_State* L) {
+    const auto sdk_lib_dir = Loader::get().game_dir() / "rsmm" / "lib";
+    const std::string entry =
+        sdk_lib_dir.string() + "/?.lua;" +
+        sdk_lib_dir.string() + "/?/init.lua;";
+    lua_getglobal(L, "package");
+    if (lua_istable(L, -1)) {
+        lua_getfield(L, -1, "path");
+        const std::string cur = lua_isstring(L, -1) ? lua_tostring(L, -1) : "";
+        lua_pop(L, 1);
+        lua_pushstring(L, (entry + cur).c_str());
+        lua_setfield(L, -2, "path");
+    }
+    lua_pop(L, 1);
+}
 }  // namespace
 
 bool script_run_mod_init(const std::string& mod_id,
@@ -2347,27 +2562,7 @@ bool script_run_mod_init(const std::string& mod_id,
     load_mod_config(L, mod_root);
     register_api(L);
 
-    // Prepend `<game>/rsmm/lib/?.lua` to package.path so `require "rsmm"`
-    // (and friends) resolve to the SDK module that ships next to the
-    // loader. Without this Lua's default search path would only find
-    // mods/<id>/init.lua. The native `rsmm` global stays available as a
-    // fallback for low-level scripts that don't want the wrapper.
-    {
-        const auto sdk_lib_dir =
-            Loader::get().game_dir() / "rsmm" / "lib";
-        const std::string entry =
-            sdk_lib_dir.string() + "/?.lua;" +
-            sdk_lib_dir.string() + "/?/init.lua;";
-        lua_getglobal(L, "package");
-        if (lua_istable(L, -1)) {
-            lua_getfield(L, -1, "path");
-            const std::string cur = lua_isstring(L, -1) ? lua_tostring(L, -1) : "";
-            lua_pop(L, 1);
-            lua_pushstring(L, (entry + cur).c_str());
-            lua_setfield(L, -2, "path");
-        }
-        lua_pop(L, 1);
-    }
+    prepend_sdk_path(L);
 
     ModScript& s = g_scripts[mod_id];
     s.L    = L;
@@ -2416,6 +2611,45 @@ bool script_run_mod_init(const std::string& mod_id,
     }
     Loader::get().log("[lua] " + mod_id + " init OK");
     health::checkpoint("post_init:" + mod_id);
+    return true;
+}
+
+bool script_run_builtin_init() {
+    std::lock_guard<std::recursive_mutex> g(g_mu);
+    const std::string id = kBuiltinId;
+    lua_State* L = luaL_newstate();
+    if (!L) return false;
+    luaL_openlibs(L);
+    apply_sandbox(L);
+    lua_pushstring(L, id.c_str());
+    lua_setfield(L, LUA_REGISTRYINDEX, "__rsmm_mod_id");
+    register_api(L);
+    prepend_sdk_path(L);
+
+    ModScript& s = g_scripts[id];
+    s.L       = L;
+    s.id      = id;
+    s.builtin = true;
+
+    // `require "rsmm"` mounts the core features (rsmm/mods_menu.lua among them).
+    lua_getglobal(L, "require");
+    lua_pushstring(L, "rsmm");
+    if (lua_pcall_traced(L, 1, 0) != LUA_OK) {
+        Loader::get().log_err("[lua] built-in state failed: " + lua_err_str(L));
+        // Same teardown as a failed mod init, minus the health record.
+        hook_lua_unregister_mod(id);
+        for (auto it = g_apis.begin(); it != g_apis.end(); ) {
+            it = (it->second.mod_id == id) ? g_apis.erase(it) : std::next(it);
+        }
+        if (const auto it = g_scripts.find(id); it != g_scripts.end()) {
+            g_handler_count.fetch_sub(it->second.handlers, std::memory_order_relaxed);
+        }
+        clear_mod_handler_errors(id);
+        lua_close(L);
+        g_scripts.erase(id);
+        return false;
+    }
+    Loader::get().log("[lua] built-in state up");
     return true;
 }
 
@@ -2536,6 +2770,7 @@ void script_reload_changed() {
     {
         std::lock_guard<std::recursive_mutex> g(g_mu);
         for (auto& [id, s] : g_scripts) {
+            if (s.builtin) continue;   // no mod root, nothing on disk to watch
             const auto mt = newest_lua_mtime(s.root);
             if (mt == std::filesystem::file_time_type{}) continue;
             if (mt != s.init_mtime) {

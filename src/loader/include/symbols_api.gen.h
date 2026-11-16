@@ -68,6 +68,41 @@ inline BookMenuUiController_OnShow_fn BookMenuUiController_OnShow() {
     return reinterpret_cast<BookMenuUiController_OnShow_fn>(rsmm::fn_resolve(Sym::BookMenuUiController_OnShow_Pattern));
 }
 
+// BookMenu_GetMode  (BookMenu_GetMode)
+//   int(BookMenu* bm)
+using BookMenu_GetMode_fn = int(*)(void*);
+inline BookMenu_GetMode_fn BookMenu_GetMode() {
+    return reinterpret_cast<BookMenu_GetMode_fn>(rsmm::fn_resolve(Sym::BookMenu_GetMode_Pattern));
+}
+
+// BookMenu_OnBackPressed  (BookMenu_OnBackPressed)
+//   void(void* bookMenu)
+using BookMenu_OnBackPressed_fn = void(*)(void*);
+inline BookMenu_OnBackPressed_fn BookMenu_OnBackPressed() {
+    return reinterpret_cast<BookMenu_OnBackPressed_fn>(rsmm::fn_resolve(Sym::BookMenu_OnBackPressed_Pattern));
+}
+
+// BookMenu_SetModeState  (BookMenu_SetModeState)
+//   void(StateMachine* sm, State* new_state, void*, void*)
+using BookMenu_SetModeState_fn = void(*)(void*, void*, void*, void*);
+inline BookMenu_SetModeState_fn BookMenu_SetModeState() {
+    return reinterpret_cast<BookMenu_SetModeState_fn>(rsmm::fn_resolve(Sym::BookMenu_SetModeState_Pattern));
+}
+
+// BookPage_CloseChild  (BookPage_CloseChild)
+//   bool(void* page)
+using BookPage_CloseChild_fn = bool(*)(void*);
+inline BookPage_CloseChild_fn BookPage_CloseChild() {
+    return reinterpret_cast<BookPage_CloseChild_fn>(rsmm::fn_resolve(Sym::BookPage_CloseChild_Pattern));
+}
+
+// BookPage_OpenChild  (BookPage_OpenChild)
+//   void(void* parentPage, void* desc)
+using BookPage_OpenChild_fn = void(*)(void*, void*);
+inline BookPage_OpenChild_fn BookPage_OpenChild() {
+    return reinterpret_cast<BookPage_OpenChild_fn>(rsmm::fn_resolve(Sym::BookPage_OpenChild_Pattern));
+}
+
 // CameraModifier_AddChild  (CameraModifier_AddChild)
 //   void(void* modifier, void* parent, bool instant)
 using CameraModifier_AddChild_fn = void(*)(void*, void*, bool);
@@ -385,6 +420,13 @@ inline GameOptionsManager_Register_fn GameOptionsManager_Register() {
 using GameOptionsManager_RequestLoad_fn = void(*)(void*, void*);
 inline GameOptionsManager_RequestLoad_fn GameOptionsManager_RequestLoad() {
     return reinterpret_cast<GameOptionsManager_RequestLoad_fn>(rsmm::fn_resolve(Sym::GameOptionsManager_RequestLoad_Pattern));
+}
+
+// GameUi_SetVisible  (GameUi_SetVisible)
+//   void(void* window, u8 show, u8 instant)
+using GameUi_SetVisible_fn = void(*)(void*, bool, bool);
+inline GameUi_SetVisible_fn GameUi_SetVisible() {
+    return reinterpret_cast<GameUi_SetVisible_fn>(rsmm::fn_resolve(Sym::GameUi_SetVisible_Pattern));
 }
 
 // GroupLevelComponent_Ctor  (GroupLevelComponent_Ctor)
@@ -756,11 +798,25 @@ inline OptionsMenu_AppendRow_fn OptionsMenu_AppendRow() {
     return reinterpret_cast<OptionsMenu_AppendRow_fn>(rsmm::fn_resolve(Sym::OptionsMenu_AppendRow_Pattern));
 }
 
+// OptionsMenu_BuildAudio  (OptionsMenu_BuildAudio)
+//   void(void* optionsCtrl, void* page, void* parent)
+using OptionsMenu_BuildAudio_fn = void(*)(void*, void*, void*);
+inline OptionsMenu_BuildAudio_fn OptionsMenu_BuildAudio() {
+    return reinterpret_cast<OptionsMenu_BuildAudio_fn>(rsmm::fn_resolve(Sym::OptionsMenu_BuildAudio_Pattern));
+}
+
 // OptionsMenu_BuildGamepadControls  (OptionsMenu_BuildGamepadControls)
 //   void(void* optionsCtrl, void* page, void* parent)
 using OptionsMenu_BuildGamepadControls_fn = void(*)(void*, void*, void*);
 inline OptionsMenu_BuildGamepadControls_fn OptionsMenu_BuildGamepadControls() {
     return reinterpret_cast<OptionsMenu_BuildGamepadControls_fn>(rsmm::fn_resolve(Sym::OptionsMenu_BuildGamepadControls_Pattern));
+}
+
+// OptionsMenu_BuildGraphics  (OptionsMenu_BuildGraphics)
+//   void(void* optionsCtrl, void* page, void* parent)
+using OptionsMenu_BuildGraphics_fn = void(*)(void*, void*, void*);
+inline OptionsMenu_BuildGraphics_fn OptionsMenu_BuildGraphics() {
+    return reinterpret_cast<OptionsMenu_BuildGraphics_fn>(rsmm::fn_resolve(Sym::OptionsMenu_BuildGraphics_Pattern));
 }
 
 // OptionsMenu_BuildKeyboardControls  (OptionsMenu_BuildKeyboardControls)
@@ -784,6 +840,20 @@ inline OptionsMenu_ClearDuplicateKey_fn OptionsMenu_ClearDuplicateKey() {
     return reinterpret_cast<OptionsMenu_ClearDuplicateKey_fn>(rsmm::fn_resolve(Sym::OptionsMenu_ClearDuplicateKey_Pattern));
 }
 
+// OptionsMenu_ResetPressed  (OptionsMenu_ResetPressed)
+//   void(void* optionsCtrl)
+using OptionsMenu_ResetPressed_fn = void(*)(void*);
+inline OptionsMenu_ResetPressed_fn OptionsMenu_ResetPressed() {
+    return reinterpret_cast<OptionsMenu_ResetPressed_fn>(rsmm::fn_resolve(Sym::OptionsMenu_ResetPressed_Pattern));
+}
+
+// OptionsMenu_RestackZone  (OptionsMenu_RestackZone)
+//   void(void* ctrl, void* zone)
+using OptionsMenu_RestackZone_fn = void(*)(void*, void*);
+inline OptionsMenu_RestackZone_fn OptionsMenu_RestackZone() {
+    return reinterpret_cast<OptionsMenu_RestackZone_fn>(rsmm::fn_resolve(Sym::OptionsMenu_RestackZone_Pattern));
+}
+
 // OptionsMenu_SelectCategory  (OptionsMenu_SelectCategory)
 //   void(void* optionsCtrl, void* tabButtonGameUi)
 using OptionsMenu_SelectCategory_fn = void(*)(void*, void*);
@@ -803,6 +873,20 @@ inline OptionsMenu_SpawnExploKeyRow_fn OptionsMenu_SpawnExploKeyRow() {
 using OptionsMenu_SpawnMultiChoice_fn = void*(*)(void*, void*, void*);
 inline OptionsMenu_SpawnMultiChoice_fn OptionsMenu_SpawnMultiChoice() {
     return reinterpret_cast<OptionsMenu_SpawnMultiChoice_fn>(rsmm::fn_resolve(Sym::OptionsMenu_SpawnMultiChoice_Pattern));
+}
+
+// OptionsMenu_Teardown  (OptionsMenu_Teardown)
+//   void(void* ctrl)
+using OptionsMenu_Teardown_fn = void(*)(void*);
+inline OptionsMenu_Teardown_fn OptionsMenu_Teardown() {
+    return reinterpret_cast<OptionsMenu_Teardown_fn>(rsmm::fn_resolve(Sym::OptionsMenu_Teardown_Pattern));
+}
+
+// OptionsMenu_Update  (OptionsMenu_Update)
+//   void(void* optionsCtrl)
+using OptionsMenu_Update_fn = void(*)(void*);
+inline OptionsMenu_Update_fn OptionsMenu_Update() {
+    return reinterpret_cast<OptionsMenu_Update_fn>(rsmm::fn_resolve(Sym::OptionsMenu_Update_Pattern));
 }
 
 // PauseMenu_GetActionCallback  (PauseMenu_GetActionCallback)
@@ -969,6 +1053,104 @@ inline UiButton_InputPoll_fn UiButton_InputPoll() {
 using UiButton_PressCommit_fn = void(*)(void*);
 inline UiButton_PressCommit_fn UiButton_PressCommit() {
     return reinterpret_cast<UiButton_PressCommit_fn>(rsmm::fn_resolve(Sym::UiButton_PressCommit_Pattern));
+}
+
+// UiLabel_MeasureWrapped  (UiLabel_MeasureWrapped)
+//   float* (void* label, float out[2])
+using UiLabel_MeasureWrapped_fn = void*(*)(void*, void*);
+inline UiLabel_MeasureWrapped_fn UiLabel_MeasureWrapped() {
+    return reinterpret_cast<UiLabel_MeasureWrapped_fn>(rsmm::fn_resolve(Sym::UiLabel_MeasureWrapped_Pattern));
+}
+
+// UiLabel_New  (UiLabel_New)
+//   oCUILabel* ()
+using UiLabel_New_fn = void*(*)(void);
+inline UiLabel_New_fn UiLabel_New() {
+    return reinterpret_cast<UiLabel_New_fn>(rsmm::fn_resolve(Sym::UiLabel_New_Pattern));
+}
+
+// UiScrollPanel_EnsureVisible  (UiScrollPanel_EnsureVisible)
+//   void(void* panel, int top, int bottom)
+using UiScrollPanel_EnsureVisible_fn = void(*)(void*, int, int);
+inline UiScrollPanel_EnsureVisible_fn UiScrollPanel_EnsureVisible() {
+    return reinterpret_cast<UiScrollPanel_EnsureVisible_fn>(rsmm::fn_resolve(Sym::UiScrollPanel_EnsureVisible_Pattern));
+}
+
+// UiScrollPanel_Init  (UiScrollPanel_Init)
+//   void(void* panel, uint32_t vertical, uint32_t a, uint8_t b, uint8_t c)
+using UiScrollPanel_Init_fn = void(*)(void*, uint32_t, uint32_t, bool, bool);
+inline UiScrollPanel_Init_fn UiScrollPanel_Init() {
+    return reinterpret_cast<UiScrollPanel_Init_fn>(rsmm::fn_resolve(Sym::UiScrollPanel_Init_Pattern));
+}
+
+// UiScrollPanel_Layout  (UiScrollPanel_Layout)
+//   void(void* panel)
+using UiScrollPanel_Layout_fn = void(*)(void*);
+inline UiScrollPanel_Layout_fn UiScrollPanel_Layout() {
+    return reinterpret_cast<UiScrollPanel_Layout_fn>(rsmm::fn_resolve(Sym::UiScrollPanel_Layout_Pattern));
+}
+
+// UiScrollPanel_New  (UiScrollPanel_New)
+//   oCUIScrollPanel* ()
+using UiScrollPanel_New_fn = void*(*)(void);
+inline UiScrollPanel_New_fn UiScrollPanel_New() {
+    return reinterpret_cast<UiScrollPanel_New_fn>(rsmm::fn_resolve(Sym::UiScrollPanel_New_Pattern));
+}
+
+// UiScrollPanel_UpdateBar  (UiScrollPanel_UpdateBar)
+//   void(void* panel)
+using UiScrollPanel_UpdateBar_fn = void(*)(void*);
+inline UiScrollPanel_UpdateBar_fn UiScrollPanel_UpdateBar() {
+    return reinterpret_cast<UiScrollPanel_UpdateBar_fn>(rsmm::fn_resolve(Sym::UiScrollPanel_UpdateBar_Pattern));
+}
+
+// UiWindow_AddChild  (UiWindow_AddChild)
+//   void(void* parent, void* child)
+using UiWindow_AddChild_fn = void(*)(void*, void*);
+inline UiWindow_AddChild_fn UiWindow_AddChild() {
+    return reinterpret_cast<UiWindow_AddChild_fn>(rsmm::fn_resolve(Sym::UiWindow_AddChild_Pattern));
+}
+
+// UiWindow_Destroy  (UiWindow_Destroy)
+//   void(void* w)
+using UiWindow_Destroy_fn = void(*)(void*);
+inline UiWindow_Destroy_fn UiWindow_Destroy() {
+    return reinterpret_cast<UiWindow_Destroy_fn>(rsmm::fn_resolve(Sym::UiWindow_Destroy_Pattern));
+}
+
+// UiWindow_FitParentWidth  (UiWindow_FitParentWidth)
+//   void(void* w)
+using UiWindow_FitParentWidth_fn = void(*)(void*);
+inline UiWindow_FitParentWidth_fn UiWindow_FitParentWidth() {
+    return reinterpret_cast<UiWindow_FitParentWidth_fn>(rsmm::fn_resolve(Sym::UiWindow_FitParentWidth_Pattern));
+}
+
+// UiWindow_MeasureChildren  (UiWindow_MeasureChildren)
+//   int* (void* w, int out[2])
+using UiWindow_MeasureChildren_fn = void*(*)(void*, void*);
+inline UiWindow_MeasureChildren_fn UiWindow_MeasureChildren() {
+    return reinterpret_cast<UiWindow_MeasureChildren_fn>(rsmm::fn_resolve(Sym::UiWindow_MeasureChildren_Pattern));
+}
+
+// UiWindow_RemoveChild  (UiWindow_RemoveChild)
+//   void(void* parent, void* child)
+using UiWindow_RemoveChild_fn = void(*)(void*, void*);
+inline UiWindow_RemoveChild_fn UiWindow_RemoveChild() {
+    return reinterpret_cast<UiWindow_RemoveChild_fn>(rsmm::fn_resolve(Sym::UiWindow_RemoveChild_Pattern));
+}
+
+// UiWindow_SetFont  (UiWindow_SetFont)
+//   void(void* w, const void* font_ref)
+using UiWindow_SetFont_fn = void(*)(void*, const void*);
+inline UiWindow_SetFont_fn UiWindow_SetFont() {
+    return reinterpret_cast<UiWindow_SetFont_fn>(rsmm::fn_resolve(Sym::UiWindow_SetFont_Pattern));
+}
+
+// UiWindow_SetSize  (UiWindow_SetSize)
+//   void(void* w, int width, int height)
+using UiWindow_SetSize_fn = void(*)(void*, int, int);
+inline UiWindow_SetSize_fn UiWindow_SetSize() {
+    return reinterpret_cast<UiWindow_SetSize_fn>(rsmm::fn_resolve(Sym::UiWindow_SetSize_Pattern));
 }
 
 // Vector_Grow  (Vector_Grow)

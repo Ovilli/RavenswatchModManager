@@ -9,7 +9,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **383** symbols across 29 categories.
+Total: **409** symbols across 29 categories.
 
 ## analytics
 
@@ -486,8 +486,14 @@ Total: **383** symbols across 29 categories.
 | `BookController_ResolveTabs` | `0x140303790` | ✅ ok | ✔ | void(oCDtEntityCpnt3DBookController* self) |
 | `BookMenuUiController_OnHide` | `0x1403da3d0` | ✅ ok | ✔ | void(void* uiController) |
 | `BookMenuUiController_OnShow` | `0x1403d9da0` | ✅ ok | ✔ | void(void* uiController) |
+| `BookMenu_GetMode` | `0x1403da8d0` | ✅ ok | ✔ | int(BookMenu* bm) |
+| `BookMenu_OnBackPressed` | `0x1403dbcd0` | ✅ ok | ✔ | void(void* bookMenu) |
+| `BookMenu_SetModeState` | `0x1403f9580` | ✅ ok | ✔ | void(StateMachine* sm, State* new_state, void*, void*) |
+| `BookPage_CloseChild` | `0x1403dc580` | ✅ ok | ✔ | bool(void* page) |
+| `BookPage_OpenChild` | `0x1403dc650` | ✅ ok | ✔ | void(void* parentPage, void* desc) |
 | `EntityComponent_RunActivate` | `0x140711630` | ✅ ok | ✔ | void(oIEntityCpnt* cpnt) |
 | `EntityComponent_RunDeactivate` | `0x140711790` | ✅ ok | ✔ | void(oIEntityCpnt* cpnt) |
+| `GameUi_SetVisible` | `0x140550d40` | ✅ ok | ✔ | void(void* window, u8 show, u8 instant) |
 | `HeroSelect_ConfirmBlockReason` | `0x140268570` | ✅ ok | ✔ | int(void* screen) |
 | `HeroSelect_ConfirmPressed` | `0x1403e17f0` | ✅ ok | ✔ | void(void* screen) |
 | `HeroSelect_PortraitPicked` | `0x1403e61d0` | ✅ ok | ✔ | THE 'hero already selected' lock (Ghidra, b9c3642884a8, 2026-10-15). Called when a hero… |
@@ -502,13 +508,19 @@ Total: **383** symbols across 29 categories.
 | `OptionsMenuElement_SetTitle` | `0x14044ddf0` | ✅ ok | ✔ | void(void* element, const oCString* text) |
 | `OptionsMenu_AddCategory` | `0x1403f2060` | ✅ ok | ✔ | void*(void* optionsCtrl, void* page, void* parent, const oCString* title, u8 type) |
 | `OptionsMenu_AppendRow` | `0x1403f4d00` | ✅ ok | ✔ | void(void** ctx, void* category, void* row) |
+| `OptionsMenu_BuildAudio` | `0x1403f38a0` | ✅ ok | ✔ | void(void* optionsCtrl, void* page, void* parent) |
 | `OptionsMenu_BuildGamepadControls` | `0x1403f4870` | ✅ ok | ✔ | void(void* optionsCtrl, void* page, void* parent) |
+| `OptionsMenu_BuildGraphics` | `0x1403f2440` | ✅ ok | ✔ | void(void* optionsCtrl, void* page, void* parent) |
 | `OptionsMenu_BuildKeyboardControls` | `0x1403f42a0` | ✅ ok | ✔ | void(void* optionsCtrl, void* page, void* parent) |
 | `OptionsMenu_BuildLastCategory` | `0x1403f4e30` | ✅ ok | ✔ | void(void* optionsCtrl, void* page, void* parent) |
 | `OptionsMenu_ClearDuplicateKey` | `0x1403f6b90` | ✅ ok | ✔ | void(void* optionsCtrl, void* unused, u32 key) |
+| `OptionsMenu_ResetPressed` | `0x1403f6910` | ✅ ok | ✔ | void(void* optionsCtrl) |
+| `OptionsMenu_RestackZone` | `0x1403f64c0` | ✅ ok | ✔ | void(void* ctrl, void* zone) |
 | `OptionsMenu_SelectCategory` | `0x1403f6010` | ✅ ok | ✔ | void(void* optionsCtrl, void* tabButtonGameUi) |
 | `OptionsMenu_SpawnExploKeyRow` | `0x1403f5b70` | ✅ ok | ✔ | void(void* optionsCtrl, i32 exploIndex, void* tabEntry) |
 | `OptionsMenu_SpawnMultiChoice` | `0x1403fc7e0` | ✅ ok | ✔ | void*(void* elementFactory, void* templateRef, void* rowParent) |
+| `OptionsMenu_Teardown` | `0x1403f0ff0` | ✅ ok | ✔ | void(void* ctrl) |
+| `OptionsMenu_Update` | `0x1403f1830` | ✅ ok | ✔ | void(void* optionsCtrl) |
 | `PauseMenu_GetActionCallback` | `0x14034d380` | ✅ ok | ✔ | void*(void* pauseMenuCtrl, void* outCallback, uint32_t actionKey, void* unused) |
 | `StringFormat_ArgPointer` | `0x1402bd340` | ❓ unverified |  | void(void** arg, oCString* out, FormatSpec* spec) |
 | `StringFormat_ArgString` | `0x14052a050` | ❓ unverified |  | void(oCString* arg, oCString* out, FormatSpec* spec) |
@@ -520,6 +532,20 @@ Total: **383** symbols across 29 categories.
 | `UiController_OnHide` | `0x14034d320` | ✅ ok |  | void(void* uiController) |
 | `UiController_OnShow` | `0x14034d280` | ✅ ok |  | void(void* uiController) |
 | `UiController_UnbindComponent` | `0x1403469e0` | ❓ unverified |  | void(void* uiController) |
+| `UiLabel_MeasureWrapped` | `0x1405640d0` | ✅ ok | ✔ | float* (void* label, float out[2]) |
+| `UiLabel_New` | `0x14056dbd0` | ✅ ok | ✔ | oCUILabel* () |
+| `UiScrollPanel_EnsureVisible` | `0x140553b60` | ✅ ok | ✔ | void(void* panel, int top, int bottom) |
+| `UiScrollPanel_Init` | `0x1405536b0` | ✅ ok | ✔ | void(void* panel, uint32_t vertical, uint32_t a, uint8_t b, uint8_t c) |
+| `UiScrollPanel_Layout` | `0x140553860` | ✅ ok | ✔ | void(void* panel) |
+| `UiScrollPanel_New` | `0x140401eb0` | ✅ ok | ✔ | oCUIScrollPanel* () |
+| `UiScrollPanel_UpdateBar` | `0x140553960` | ✅ ok | ✔ | void(void* panel) |
+| `UiWindow_AddChild` | `0x140551950` | ✅ ok | ✔ | void(void* parent, void* child) |
+| `UiWindow_Destroy` | `0x14054f870` | ✅ ok | ✔ | void(void* w) |
+| `UiWindow_FitParentWidth` | `0x140552720` | ✅ ok | ✔ | void(void* w) |
+| `UiWindow_MeasureChildren` | `0x14054feb0` | ✅ ok | ✔ | int* (void* w, int out[2]) |
+| `UiWindow_RemoveChild` | `0x140551cf0` | ✅ ok | ✔ | void(void* parent, void* child) |
+| `UiWindow_SetFont` | `0x140550050` | ✅ ok | ✔ | void(void* w, const void* font_ref) |
+| `UiWindow_SetSize` | `0x140551580` | ✅ ok | ✔ | void(void* w, int width, int height) |
 
 ## world
 

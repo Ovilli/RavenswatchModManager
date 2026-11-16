@@ -30,8 +30,10 @@
 
 #include "json.hpp"   // single-header nlohmann::json (vendored)
 
+#include "hook_book_pages.h"
 #include "hook_keybinds.h"
 #include "hook_input.h"
+#include "hook_menu_common.h"
 #include "hook_util.h"
 #include "loader.h"
 #include "mem_safe.h"
@@ -40,17 +42,12 @@
 #include "symbols_api.gen.h"   // GENERATED — engine:: typed accessors
 
 namespace rsmm {
+using namespace menu;   // hook_menu_common.h: OcStr, lit, offsets
+
 namespace {
 
 constexpr const char* kEvent = "input:keybind";
-
-struct OcStr {           // oCString: {char*, u32 len | 0x80000000 literal, u32 cap}
-    const char* p;
-    std::uint32_t len;
-    std::uint32_t cap;
-};
-constexpr std::uint32_t kLiteral = 0x80000000u;
-OcStr lit(const std::string& s) { return {s.c_str(), std::uint32_t(s.size()) | kLiteral, 0}; }
+constexpr const char* kTag = "keybinds";
 
 // InputKeyGameOption
 constexpr std::size_t    kOptSize      = 0x30;
@@ -68,16 +65,12 @@ constexpr std::uintptr_t kCatStride    = 0x10;
 constexpr std::uintptr_t kVecSize      = 0x08;
 constexpr std::uint32_t  kCatKeyboard  = 4;
 constexpr std::uint32_t  kCatPad       = 5;
-// Options controller and tab entries
-constexpr std::uintptr_t kCtrlTabs     = 0x208;
-constexpr std::uintptr_t kCtrlTabCount = 0x210;
-constexpr std::uintptr_t kTabStride    = 0x48;
+// Tab entries (the controller offsets are in hook_menu_common.h)
 constexpr std::uintptr_t kTabType      = 0x18;
 constexpr std::uintptr_t kTabRows      = 0x20;
 constexpr std::uintptr_t kTabRowCount  = 0x28;
 constexpr std::uint8_t   kTabKeyboard  = 4;
 constexpr std::uint8_t   kTabPad       = 5;
-constexpr std::uintptr_t kRowValue     = 0x98;
 constexpr std::uintptr_t kRowIcon      = 0xa0;
 constexpr std::uintptr_t kIconAction   = 0x340;
 // The vanilla row each mod row is spawned from: Explo::DashAbility, an
@@ -472,20 +465,20 @@ void add_rows(void* ctrl, std::uint32_t tab_index, std::uint8_t want_type) {
 }
 
 std::uint32_t tab_count(void* ctrl) {
-    std::uint32_t count = UINT32_MAX;
-    if (!mem_load(reinterpret_cast<std::uintptr_t>(ctrl) + kCtrlTabCount, &count)) {
-        return UINT32_MAX;
-    }
+    std::uint32_t count = UINT32_MAX;   // stays so when the field is unreadable
+    read_tab_count(ctrl, &count);
     return count;
 }
 
 void hook_build_kb(void* ctrl, void* page, void* parent) {
+    if (book_pages_building(ctrl)) return;
     const std::uint32_t index = tab_count(ctrl);   // the tab the builder is about to add
     g_real_build_kb(ctrl, page, parent);
     if (index != UINT32_MAX) add_rows(ctrl, index, kTabKeyboard);
 }
 
 void hook_build_pad(void* ctrl, void* page, void* parent) {
+    if (book_pages_building(ctrl)) return;
     const std::uint32_t index = tab_count(ctrl);
     g_real_build_pad(ctrl, page, parent);
     if (index != UINT32_MAX) add_rows(ctrl, index, kTabPad);
@@ -503,11 +496,6 @@ void hook_clear(void* ctrl, void* unused, std::uint32_t key) {
         if (value_of(b.opt_kb) == key) set_value(b.opt_kb, 0);
         if (value_of(b.opt_pad) == key) set_value(b.opt_pad, 0);
     }
-}
-
-template <typename F>
-bool need(const char* what, const char* pattern, F* out) {
-    return resolve_checked("keybinds", what, pattern, reinterpret_cast<void**>(out));
 }
 
 } // anonymous namespace
@@ -638,12 +626,12 @@ bool install_keybind_hooks() {
         L.log("[keybinds] not arming: the input poll hook is not live");
         return install_failed("input poll hook not live (see the loader log)");
     }
-    if (!need("register option", Sym::GameOptionsManager_Register_Pattern, &g_register)
-        || !need("request load", Sym::GameOptionsManager_RequestLoad_Pattern, &g_request_load)
-        || !need("spawn key row", Sym::OptionsMenu_SpawnExploKeyRow_Pattern, &g_spawn_row)
-        || !need("set title", Sym::OptionsMenuElement_SetTitle_Pattern, &g_set_title)
-        || !need("string assign", Sym::String_Assign_Pattern, &g_str_assign)
-        || !need("action map add", Sym::InputActionMap_Add_Pattern, &g_map_add)) {
+    if (!resolve_checked(kTag, "register option", Sym::GameOptionsManager_Register_Pattern, &g_register)
+        || !resolve_checked(kTag, "request load", Sym::GameOptionsManager_RequestLoad_Pattern, &g_request_load)
+        || !resolve_checked(kTag, "spawn key row", Sym::OptionsMenu_SpawnExploKeyRow_Pattern, &g_spawn_row)
+        || !resolve_checked(kTag, "set title", Sym::OptionsMenuElement_SetTitle_Pattern, &g_set_title)
+        || !resolve_checked(kTag, "string assign", Sym::String_Assign_Pattern, &g_str_assign)
+        || !resolve_checked(kTag, "action map add", Sym::InputActionMap_Add_Pattern, &g_map_add)) {
         g_register = nullptr;
         g_request_load = nullptr;
         return install_failed("keybind engine calls did not resolve (see the loader log)");

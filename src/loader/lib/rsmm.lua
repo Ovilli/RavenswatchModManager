@@ -3130,6 +3130,25 @@ do
     if ok and type(x) == "table" then R.ui = x end
 end
 
+-- Lives in rsmm/ui_menus.lua. The game's book menu pages: a Settings entry that
+-- opens a page of categories and rows built from Lua data. Soft-fails to
+-- available() == false on a loader without I.ui_menus_*.
+--
+--   R.ui.menus.page(id, def) / .entry{...} / .open(id, ctx) / .back() / .current()
+--   R.on("ui:menus_change" | "ui:menus_select" | "ui:menus_reset" | ...)
+if R.ui then
+    local ok, x = _submodule_fn("ui_menus", { R = R, I = I })
+    if ok and type(x) == "table" then R.ui.menus = x end
+end
+
+-- Lives in rsmm/mods_menu.lua. The Settings > Mods page (installed mods, their
+-- Off/On rows and schema fields) is a core feature, not a mod: only the
+-- loader-owned state mounts it, so it exists whether or not any mod is installed.
+-- Not exposed on R; it uses nothing but R.ui.menus and the I.mods_* natives.
+if R.ui and R.ui.menus and I.mods_menu_owner and I.mods_menu_owner() then
+    _submodule_fn("mods_menu", { R = R, I = I })
+end
+
 -- chapter timer -----------------------------------------------------------
 --
 -- Lives in rsmm/daynight.lua. Reads and sets the day/night cycle every

@@ -396,6 +396,12 @@ m.i18n("FR", {"FrostBlade_desc": "Gèle à l'impact."})
 print(m.summary())                            # dict of everything staged, no disk write
 ```
 
+The same config is editable in the game: **Settings > Mods** opens a page that
+lists every installed mod, each with its Off/On row (applied on the next launch)
+and one row per `config_schema.toml` field, in file order. `bool`, `enum`, `int`
+and `float` fields are choices you change in place; fields the page cannot edit
+(`string`, `multiselect`, `item-grid`) are listed with "Edit in the desktop app".
+
 #### Config with icons (`multiselect`)
 
 A config field is normally `bool`/`int`/`float`/`string`/`enum`. A
@@ -1852,13 +1858,14 @@ camera-control does exactly this.
 ### What the UI is showing (`R.ui`)
 
 ```lua
-R.ui.is_open("menu")     --> true | false | nil, reason   (kinds: menu, book, modal, loading, page)
-R.ui.page()              --> the book page shown: "HeroSelectPage", "TutorialPage", ... or nil
+R.ui.is_open("menu")     --> true | false | nil, reason   (kinds: menu, book, modal, loading, page, root)
+R.ui.book()              --> which book is shown: "main", "settings", "score", "credits", or nil
+R.ui.page()              --> the book page shown: "PlayPage", "OptionsPage", "CreditsPage", ... or nil
 R.ui.any()               --> is a menu, the book or a modal open?
 R.ui.count("menu")       --> how many menus are open (nested ones count)
 R.ui.open()              --> { {kind, class, ptr}, ... }, oldest first
 R.on("ui:open",  function(e) R.log(e.kind .. " " .. e.class) end)
-R.on("ui:close", function(e) ... end)
+R.on("ui:close", function(e) ... end)   -- book events also carry e.which
 ```
 
 The loader tracks the game's own UI controllers rather than scene flags, so a
@@ -1866,10 +1873,11 @@ sub-panel closing does not report the pause menu as closed. The kinds:
 
 | kind | controllers |
 |---|---|
-| `menu` | pause menu, main menu, hero selection, Sandman's shop, inventory, magic mirror, social options |
-| `book` | the 3D book |
+| `menu` | pause menu, hero selection, Sandman's shop, inventory, magic mirror, social options |
+| `book` | the 3D book is shown (main menu, Settings from pause, score, credits) |
 | `modal` | modal dialogs (including the EULA, multiplayer and MyNacon ones) |
 | `loading` | the loading screen |
+| `root` | MainMenu and BookMenu, the session-long controllers. They are active from boot to shutdown, so this is not a visibility signal |
 | `page` | a page of the book: play, hero selection, hero page and story, Merlin's abilities, the compendium and its heroes / items / memories / tutorial tabs, challenges, social, options, the end-of-run recap, stats and score |
 
 It arms when the loader starts, so controllers already open when a mod first
@@ -1878,6 +1886,99 @@ per component the engine shows or hides. When it cannot
 arm (a game patch, or `RSMM_DISABLE_UI_STATE=1`), `is_open` returns `nil` and a
 reason: unknown is never reported as closed. `ui:open` / `ui:close` fire after
 the game has finished showing or hiding the controller.
+
+`book` reads the book's own mode, so it is true only while a book is on screen,
+and `R.ui.book()` says which one. A book `ui:open` / `ui:close` carries
+`e.which` (`"main"`, `"settings"`, `"score"` or `"credits"`); going from one book
+to another is a close and an open.
+
+`R.ui.page()` follows the book's current page and its open child pages, so tab
+switches are seen, and Credits reads `"CreditsPage"` even though it shares a
+class with the tutorial tab. The `page` kind's `count` and events still follow
+controller activation: the main-menu book activates all five tab pages at once,
+so use `page()` to ask which page is shown.
+
+### Book menu pages (`R.ui.menus`)
+
+```lua
+R.ui.menus.page("my.page", {
+    title = "My Mod",
+    categories = function(ctx)
+        return { { id = "a", label = "Alpha",
+                   header = { title = "Alpha", text = "line one\nline two" },
+                   rows = { { id = "speed", label = "Speed",
+                              choices = { "Slow", "Normal", "Fast" },
+                              value = 2, default = 2 } } } }
+    end,
+    on_back = function(ctx) return true end,      -- false vetoes the Back press
+})
+R.ui.menus.entry{ id = "my", title = "My Mod", page = "my.page" }
+R.on("ui:menus_change", function(e) R.log(e.category .. "/" .. e.row .. " = " .. e.index) end)
+```
+
+A page is a second copy of the game's own Settings page: a column of categories
+on the left, the selected category's rows on the right, and the game's Reset
+button. An entry adds a button to the Settings tab column that opens it, with
+the book's own page turn and its own Back. The vanilla tabs (Graphics, Audio,
+Controls and the rest, plus Credits, EULA and Privacy) do not appear on your page, and the Settings page is unchanged after it closes.
+
+`R.ui.menus.page(id, def)` registers a page and returns a handle, or `nil` and a
+reason. `def.title` is the column heading and `def.kind` is `"categories"`, the
+only kind. `def.categories(ctx)` returns the list of categories; each has an
+`id`, a `label` (the column button), an optional `header` (`title`, `subtitle`,
+`text`) and `rows`. The game has no header text element, so each present header
+field becomes read-only rows at the top of the category, `text` one row per line.
+A row has `id`, `label`, `choices` (a list of strings), `value` (the initial
+choice) and `default` (what Reset restores). A row with `readonly = true` shows
+the single text `readonly_text` and cannot be changed. Every index is 1-based
+and clamped to `1..#choices`.
+
+`R.ui.menus.entry{ id, title, page, after }` returns a handle, or `nil` and a
+reason. `after = "settings"` (the default) puts the entry in the Settings tab
+column after the Mods entry. `after = "<page id>"` puts it in that page's column
+instead, so a page can lead to a nested page. The game builds the Settings page
+once, at boot, so register entries in `init.lua`: an entry registered later
+shows up on the next launch.
+
+`R.ui.menus.open(page_id, ctx)` opens a page from the current leaf page and
+`R.ui.menus.back()` pops one level like the Back button; both return `true`, or
+`nil` and a reason, and run on the game thread within a frame. `ctx` is any
+JSON-encodable value and reaches `categories(ctx)` and `on_back(ctx)`.
+`R.ui.menus.current()` returns `{ page, ctx, depth }` while one of your pages is
+the leaf, else `nil`. `R.ui.menus.off(handle)` removes a page or an entry for the
+next open. `R.ui.menus.available()` is `true`, or `false` and a reason (a loader
+without it, a symbol that did not resolve, `RSMM_DISABLE_UI_MENUS=1`, or the native
+menu being off or failed to install, `RSMM_DISABLE_NATIVE_MENU=1`: "needs the
+Settings build hook"); with that, every other call returns `nil` and the reason.
+Pages nest at most 8 deep: beyond that `open` returns `false` and "too deep (max
+8)", and an entry on the deepest page does not open. The page heading shows
+`def.title` instead of "Settings".
+
+Events, all with 1-based indices:
+
+| Event | Payload |
+|---|---|
+| `ui:menus_open` / `ui:menus_close` | `{ page, ctx, depth }` |
+| `ui:menus_select` | `{ page, category }`, a category was picked (no page turn) |
+| `ui:menus_change` | `{ page, category, row, index }` |
+| `ui:menus_reset` | `{ page, category }`, the rows are already back at `default` |
+
+When a page closes, its pending `ui:menus_change` events fire before its
+`ui:menus_close`.
+
+`R.ui.menus` holds no values, so a row shows its `value` again each time the page
+opens; the consumer rebuilds the snapshot in `categories(ctx)`. A consumer writes the result to `R.config` or
+anywhere else from `ui:menus_change` and `ui:menus_reset`.
+
+`categories(ctx)` runs at registration and again each time the page opens, with
+the `ctx` of that open. `on_back(ctx)` runs on every Back press while your page
+is the leaf. Both run inside the game's own UI code on the game thread, so keep
+them fast and never wait in them. An error is logged and the page keeps its
+last good rows (empty, if the first call failed). `ui:menus_change` events come
+from a watcher thread that polls every 200 ms.
+
+Sequences (the Credits and Tutorial page turns) and a multi-turn `flip` are not
+part of `R.ui.menus` yet.
 
 ### Overlays (`R.overlay`)
 

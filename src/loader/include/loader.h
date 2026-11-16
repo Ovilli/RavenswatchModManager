@@ -21,6 +21,7 @@ struct Mod {
     std::string name;
     std::string version;
     std::string author;
+    std::string description;
     std::filesystem::path root;
     std::vector<ModFile> files;
     bool enabled = false;
