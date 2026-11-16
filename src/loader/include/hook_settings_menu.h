@@ -40,4 +40,9 @@ bool mods_menu_model_json(std::string* out, std::string* why);
 bool mods_menu_set(const std::string& mod_id, const std::string& row_id, int index1,
                    std::string* why);
 
+// Re-read every mod's config.toml into the model (edits not yet on disk stay) and
+// recompute the rows. File reads: call it when a page is built, never under an
+// open page. Never throws; on failure the old values stay.
+void mods_menu_refresh();
+
 } // namespace rsmm

@@ -16,7 +16,8 @@
 //   * the OptionsMenu_BuildLastCategory detour that lets the book pages add
 //     their entries and build their categories after the vanilla builder;
 //   * the pause menu's Mods button, which opens the page.
-// The model is read from disk once; it reflects every set made this session.
+// The model is read from disk at first use; mods_menu_refresh re-reads each
+// config.toml when the page is built, and every set made this session stays.
 
 #include <windows.h>
 
@@ -75,6 +76,7 @@ struct Field {
     std::vector<std::string> texts;        // label per choice
     std::size_t value = 0;                 // 0-based
     std::size_t def = 0;
+    Value def_value;                       // the schema default (or the first value seen)
 };
 
 struct ModInfo {
@@ -84,7 +86,8 @@ struct ModInfo {
     bool wanted = false;     // what the menu asks for next launch
     std::map<std::string, Value> values;   // config.toml [config]
     std::vector<Field> fields;
-    bool values_dirty = false;
+    std::map<std::string, Value> pending;  // menu edits not confirmed on disk yet
+    bool pending_dirty = false;            // pending has something the watcher has not taken
 };
 
 std::mutex g_mu;                 // guards g_mods, g_requests_dirty, g_pending_logs
@@ -103,22 +106,27 @@ Value from_node(const toml::node& n) {
     return v;
 }
 
-void load_values(ModInfo& m) {
-    const fs::path p = m.root / "config.toml";
+// config.toml's values; false when the file exists but cannot be parsed.
+bool read_values(const std::string& id, const fs::path& root, std::map<std::string, Value>& out) {
+    const fs::path p = root / "config.toml";
     std::error_code ec;
-    if (!fs::exists(p, ec)) return;
+    if (!fs::exists(p, ec)) return true;
     try {
         toml::table doc = toml::parse_file(p.string());
         const toml::table* section = doc["config"].as_table();
         if (!section) section = &doc;
         for (auto&& [key, node] : *section) {
             const Value v = from_node(node);
-            if (v.kind != Value::None) m.values[std::string(key.str())] = v;
+            if (v.kind != Value::None) out[std::string(key.str())] = v;
         }
+        return true;
     } catch (const std::exception& e) {
-        Loader::get().log_warn("[native-menu] " + m.id + ": config.toml unreadable: " + e.what());
+        Loader::get().log_warn("[native-menu] " + id + ": config.toml unreadable: " + e.what());
+        return false;
     }
 }
+
+void load_values(ModInfo& m) { read_values(m.id, m.root, m.values); }
 
 // The choices a field offers, as values. Numbers step from min to max (every
 // integer when the span is small); the current value is kept as a choice so
@@ -233,6 +241,7 @@ void add_setting_rows(ModInfo& m) {
         ensure_choice(opts, def);
         f.value = find_choice(opts, cur);
         f.def = find_choice(opts, def);
+        f.def_value = def;
         f.options = std::move(opts);
         for (const auto& o : f.options) f.texts.push_back(label_of(o));
         m.fields.push_back(std::move(f));
@@ -308,8 +317,9 @@ struct ValuesCopy {
 };
 
 // Same shape the loader's config_write_file produces: a `[config]` table,
-// temp file + rename. Keys the menu does not know are kept.
-void write_values(const ValuesCopy& m) {
+// temp file + rename. Keys the menu does not know are kept; `values` is only
+// the delta the menu set, so a mod's own writes to other keys survive.
+bool write_values(const ValuesCopy& m) {
     const fs::path dst = m.root / "config.toml";
     const fs::path tmp = m.root / "config.toml.tmp";
     toml::table doc;
@@ -338,14 +348,16 @@ void write_values(const ValuesCopy& m) {
     out.insert("config", std::move(section));
     {
         std::ofstream f(tmp, std::ios::trunc);
-        if (!f) return;
+        if (!f) return false;
         f << out << "\n";
     }
     fs::rename(tmp, dst, ec);
     if (ec) {
         fs::remove(tmp, ec);
         Loader::get().log_warn("[native-menu] " + m.id + ": could not write config.toml");
+        return false;
     }
+    return true;
 }
 
 // ponytail: polling, because mods_menu_set must not do file IO (it can run on
@@ -365,14 +377,24 @@ DWORD WINAPI watch_dirty(LPVOID) {
                 for (const auto& m : g_mods) requests.push_back({m.id, m.enabled, m.wanted});
             }
             for (auto& m : g_mods) {
-                if (!m.values_dirty) continue;
-                m.values_dirty = false;
-                values.push_back({m.id, m.root, m.values});
+                if (!m.pending_dirty) continue;
+                m.pending_dirty = false;
+                values.push_back({m.id, m.root, m.pending});
             }
             logs.swap(g_pending_logs);
         }
         if (write_req) write_requests(requests);
-        for (const auto& v : values) write_values(v);
+        for (const auto& v : values) {
+            if (!write_values(v)) continue;   // failed: stays pending
+            std::lock_guard<std::mutex> lk(g_mu);
+            for (auto& m : g_mods) {
+                if (m.id != v.id) continue;
+                for (const auto& [key, written] : v.values) {
+                    auto it = m.pending.find(key);   // a newer edit stays pending
+                    if (it != m.pending.end() && it->second.same(written)) m.pending.erase(it);
+                }
+            }
+        }
         for (const auto& l : logs) Loader::get().log(l);
     }
 }
@@ -481,6 +503,46 @@ bool mods_menu_model_json(std::string* out, std::string* why) {
     return true;
 }
 
+void mods_menu_refresh() {
+    if (flag_enabled("RSMM_DISABLE_NATIVE_MENU") || g_off.load()) return;
+    ensure_model();
+    try {
+        std::vector<std::pair<std::string, fs::path>> roots;
+        {
+            std::lock_guard<std::mutex> lk(g_mu);
+            for (const auto& m : g_mods) roots.emplace_back(m.id, m.root);
+        }
+        std::map<std::string, std::map<std::string, Value>> disk;
+        for (const auto& [id, root] : roots) {
+            std::map<std::string, Value> vals;
+            if (read_values(id, root, vals)) disk[id] = std::move(vals);   // unreadable: keep old
+        }
+        std::lock_guard<std::mutex> lk(g_mu);
+        for (auto& m : g_mods) {
+            auto it = disk.find(m.id);
+            if (it == disk.end()) continue;
+            m.values = std::move(it->second);
+            for (const auto& [key, v] : m.pending) m.values[key] = v;
+            for (auto& f : m.fields) {
+                if (f.readonly) continue;
+                Value cur = f.def_value;
+                if (auto vit = m.values.find(f.id); vit != m.values.end()) cur = vit->second;
+                const std::size_t before = f.options.size();
+                ensure_choice(f.options, cur);
+                ensure_choice(f.options, f.def_value);
+                if (f.options.size() != before) {
+                    f.texts.clear();
+                    for (const auto& o : f.options) f.texts.push_back(label_of(o));
+                }
+                f.value = find_choice(f.options, cur);
+                f.def = find_choice(f.options, f.def_value);
+            }
+        }
+    } catch (const std::exception& e) {
+        Loader::get().log_warn(std::string("[native-menu] refresh failed: ") + e.what());
+    }
+}
+
 bool mods_menu_set(const std::string& mod_id, const std::string& row_id, int index1,
                    std::string* why) {
     if (flag_enabled("RSMM_DISABLE_NATIVE_MENU") || g_off.load()) {
@@ -517,7 +579,8 @@ bool mods_menu_set(const std::string& mod_id, const std::string& row_id, int ind
     if (k != f.value) {
         f.value = k;
         m.values[f.id] = f.options[k];
-        m.values_dirty = true;
+        m.pending[f.id] = f.options[k];
+        m.pending_dirty = true;
         g_pending_logs.push_back("[native-menu] " + m.id + "." + f.id + " = " + f.texts[k]);
     }
     return true;

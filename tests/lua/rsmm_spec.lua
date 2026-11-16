@@ -12419,7 +12419,9 @@ do
               } },
         },
     }
-    local I_saved = { I.mods_menu_owner, I.mods_model, I.mods_menu_set }
+    local I_saved = { I.mods_menu_owner, I.mods_model, I.mods_menu_set, I.mods_menu_refresh }
+    local refreshes = 0
+    I.mods_menu_refresh = function() refreshes = refreshes + 1 end
     I.mods_menu_owner = function() return owner end
     I.mods_model = function() return model end
     I.mods_menu_set = function(m, r, i) sets[#sets + 1] = { m, r, i }; return true end
@@ -12435,6 +12437,7 @@ do
           and pages[1].def.title == "Mods", "mods menu: owner registers the page once")
 
     local cats = pages[1].def.categories({})
+    check(refreshes == 1, "mods menu: building the page's categories refreshes the model once")
     check(#cats == 2 and cats[1].id == "alpha" and cats[2].id == "beta" and cats[1].label == "Alpha",
           "mods menu: one category per mod in model order")
     check(cats[1].header.title == "Alpha" and cats[1].header.subtitle == "v1.2.0 - by Ann - Enabled",
@@ -12482,7 +12485,7 @@ do
     check(#pages == npages and #logged >= 2, "mods menu: no model / no mods registers nothing and logs why")
 
     factory({ R = env_R, I = { mods_menu_owner = function() return false end } })   -- drop our handlers
-    I.mods_menu_owner, I.mods_model, I.mods_menu_set = I_saved[1], I_saved[2], I_saved[3]
+    I.mods_menu_owner, I.mods_model, I.mods_menu_set, I.mods_menu_refresh = I_saved[1], I_saved[2], I_saved[3], I_saved[4]
 end
 
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))

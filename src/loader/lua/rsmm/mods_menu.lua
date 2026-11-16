@@ -45,6 +45,9 @@ local function row_of(r)
 end
 
 local function categories()
+    -- Small config.toml reads on the game thread at page build, by design: the model
+    -- must show what mods wrote since it was built. Never mid-page (choice lists shift).
+    if I.mods_menu_refresh then I.mods_menu_refresh() end
     local model = I.mods_model()
     local out = {}
     for _, m in ipairs(model and model.mods or {}) do

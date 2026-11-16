@@ -2081,6 +2081,12 @@ int lua_mods_menu_set(lua_State* L) {
     return push_menus_result(L, ok, why);
 }
 
+// mods_menu_refresh()
+int lua_mods_menu_refresh(lua_State*) {
+    mods_menu_refresh();
+    return 0;
+}
+
 int lua_hook_report(lua_State* L) {
     HookInfo info[64];
     const std::size_t n = hook_snapshot(info, 64);
@@ -2432,6 +2438,7 @@ void register_api(lua_State* L) {
         { "mods_menu_owner",         lua_mods_menu_owner },
         { "mods_model",              lua_mods_model },
         { "mods_menu_set",           lua_mods_menu_set },
+        { "mods_menu_refresh",       lua_mods_menu_refresh },
         { "peek",                    lua_peek },
         { "poke",                    lua_poke },
         { "scratch",                 lua_scratch },
