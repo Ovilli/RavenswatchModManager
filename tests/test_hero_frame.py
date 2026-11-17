@@ -888,3 +888,34 @@ def test_a_button_grants_a_timed_buff():
     assert "Defense Ability Buff 1 Modifier" in held
     with pytest.raises(HA.AbilityError):
         HA.Ability.parse("defense", {"clip": clip, "buffs": [{"stat": "Armour", "value": 1}]})
+
+
+@needs_corpus
+def test_a_held_button_ends_when_let_go():
+    """``hold``: the button's state holds Geppetto's release tester, its input
+    read re-pointed at THIS button's accessor (special 0x15e13a3f, not the
+    donor's power 0x15e13a3d); letting go fires an event that ends the state."""
+    import struct
+
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import hero_ability as HA
+    clip = "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_BasicAttack01.fbx"
+    ef = _hero("Hero_T")
+    n0 = len(ef.objects)
+    HA.build(ef, HF.common(_read), HA.Ability.parse("special", {
+        "clip": clip, "duration": 3.0, "hold": True}), seed="t")
+    ef.to_bytes()
+    held = next(f.text for f in EF.fields(ef.component("State Special Ability"))
+                if f.name == "while_active")
+    assert "Special Ability Released Tester" in held
+    on_true = next(f.text for f in EF.fields(ef.component("Special Ability Released Tester"))
+                   if f.name == "on_true")
+    assert on_true.endswith("Event Special Ability Released")
+    ends = next(f.text for f in EF.fields(ef.component("Event Special Ability Released"))
+                if f.name == "deactivates?")
+    assert ends.endswith("State Special Ability")
+    new = [bytes(ef.objects[o]) for o in range(n0, len(ef.objects))]
+    assert sum(struct.pack("<I", 0x15E13A3F) in p for p in new) == 1
+    assert not any(struct.pack("<I", 0x15E13A3D) in p for p in new)
+    with pytest.raises(HA.AbilityError):
+        HA.Ability.parse("attack", {"clip": clip, "hold": True})

@@ -215,6 +215,9 @@ class Ability:
     #: move speed ... ``[{stat, value, seconds}]`` (``value`` as a talent's:
     #: "+20%", "+10"; vitality / attack power in points).
     buffs: list = field(default_factory=list)
+    #: Held: the button ends as soon as it is let go (``duration`` is then the
+    #: longest it can be held; ``loop`` keeps its clip going meanwhile).
+    hold: bool = False
 
     @classmethod
     def parse(cls, slot: str, raw: dict) -> Ability:
@@ -233,7 +236,7 @@ class Ability:
                               "desc_key", "indicator", "sound", "variant", "combo",
                               "icon", "icon_disabled", "root_motion", "moving",
                               "intangible", "strike", "passive", "loop", "charges",
-                              "buffs"}
+                              "buffs", "hold"}
         if unknown:
             raise AbilityError(f"ability {slot}: no {', '.join(sorted(unknown))}")
         bad = {v for v in str(raw.get("variant", "")).split("+") if v} - _VARIANTS
@@ -308,6 +311,10 @@ class Ability:
         charges = raw.get("charges", 1)
         if isinstance(charges, bool) or not isinstance(charges, int) or not 1 <= charges <= 20:
             raise AbilityError(f"ability {slot}: charges is a whole number 1..20")
+        if raw.get("hold") not in (None, True, False) or (raw.get("hold") and (
+                raw.get("combo") or passive or slot not in RELEASE_INPUT)):
+            raise AbilityError(f"ability {slot}: hold is true or false (a single-state "
+                               f"button of {', '.join(RELEASE_INPUT)})")
         if raw.get("buffs") and raw.get("combo"):
             raise AbilityError(f"ability {slot}: buffs are for a single-state button "
                                "(not a combo)")
@@ -334,10 +341,52 @@ class Ability:
                     else float(intang)),
                    dict(strike) if strike else None,
                    passive=passive, loop=bool(raw.get("loop")), charges=charges,
-                   buffs=[dict(b) for b in buffs])
+                   buffs=[dict(b) for b in buffs], hold=bool(raw.get("hold")))
 
 
 BUFF_KEYS = {"stat", "value", "seconds"}
+
+#: The Hero Controller's per-button input signal, read through these
+#: accessors (its accessor table, FUN_14039f0f0: one bool each, 0x20 apart at
+#: +0x1a38..+0x1ad8). Shipped hold buttons test it NEGATED (the test's mode
+#: word 1) to know the button was let go: Geppetto's power reads 0x15e13a3d,
+#: Beowulf's / Snow Queen's defensive 0x15e13a41, the ultimates 0x15e13a45
+#: (both share it); special and trait are the table's own 0x15e13a3f/43.
+RELEASE_INPUT = {"power": 0x15E13A3D, "special": 0x15E13A3F, "defense": 0x15E13A41,
+                 "trait": 0x15E13A43, "ultimate": 0x15E13A45, "ultimate2": 0x15E13A45}
+#: Geppetto's power's release tester lends the layout: a SimpleBoolTest of the
+#: Hero Controller's power input, negated.
+RELEASE_DONOR = "Ability Primary\\Primary Ability Has Been Released Tester"
+
+
+def add_release(ef: EntityFile, w, ab: Ability, *, tag: str, state: str,
+                state_link) -> None:
+    """``ab`` ends when its button is let go: Geppetto's release tester (its
+    input read re-pointed at this button's) held by ``state``; when it passes,
+    a one-frame event switches ``state`` off."""
+    donor = _cone_donor()
+    first_new = len(ef.objects)
+    ef.clone([RELEASE_DONOR], rename={RELEASE_DONOR.rsplit("\\", 1)[-1]:
+                                      f"{tag} Released Tester"},
+             group={"Ability Primary": w.group}, seed=f"{tag}:release", source=donor)
+    old = struct.pack("<I", RELEASE_INPUT["power"])
+    new = struct.pack("<I", RELEASE_INPUT[ab.slot])
+    hits = 0
+    for o in range(first_new, len(ef.objects)):
+        p = ef.objects[o]
+        at = bytes(p).find(b"Hero Controller\\Hero Controller")
+        if at < 0:
+            continue
+        end = bytes(p).find(P._E, at)
+        if end < 0 or bytes(p[end + 4:end + 8]) != old:
+            raise AbilityError(f"ability {ab.slot}: hold: the donor's input read moved")
+        p[end + 4:end + 8] = new
+        hits += 1
+    if hits != 1:
+        raise AbilityError(f"ability {ab.slot}: hold: expected one input read, found {hits}")
+    w.state(f"Event {tag} Released", deactivates=[state_link])
+    ef.set_ref(f"{tag} Released Tester", "on_true", f"Event {tag} Released")
+    ef.add_ref(state, "while_active", f"{tag} Released Tester")
 
 
 def add_buffs(ef: EntityFile, w, ab: Ability, *, tag: str, state: str) -> None:
@@ -1451,6 +1500,8 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
             timers = [window_timer]                 # the hits are the strike's
         _timer(w, f"{tag} End Timer", length, on_end=rush_end,
                ends=_NONE if ab.has("no_end_state", "bare") else state_link)
+        if ab.hold:
+            add_release(ef, w, ab, tag=tag, state=state, state_link=state_link)
         statuses(ef, ab.hits, tag=tag, switch=f"State {tag} Strike" if ab.strike else state,
                  seed=f"{seed}:{ab.slot}")
         if with_indicator:
