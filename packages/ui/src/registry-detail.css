@@ -60,6 +60,14 @@ body:has(.mod-detail) > .site-header {
   min-width: 0;
   margin-bottom: 24px;
 }
+.mod-heading-row{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;min-width:0}
+.mod-heading-copy{min-width:0;flex:1}
+.mod-heading-action{flex-shrink:0;align-self:flex-start}
+.mod-heading-action .btn-grim{min-height:42px}
+.registry-detail-embedded{grid-template-columns:minmax(0,1fr);gap:16px;padding-top:16px}
+.registry-detail-embedded .mod-download-sidebar{position:static;grid-column:1;grid-row:2}
+.registry-detail-embedded .mod-reading{grid-column:1;grid-row:1}
+@media(max-width:700px){.mod-heading-row{flex-direction:column}.mod-heading-action{width:100%}.mod-heading-action>*{max-width:100%}}
 .mod-heading h1 {
   width: 100%;
   font-family: var(--font-display), Georgia, serif;
