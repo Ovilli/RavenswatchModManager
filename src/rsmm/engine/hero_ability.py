@@ -206,6 +206,15 @@ class Ability:
     passive: bool = False
     #: Loop ``clip`` in the animatic's loop slot (``ref_4``) for ``duration``.
     loop: bool = False
+    #: Uses before it must cool down (each recharges on ``cooldown``): the
+    #: shared "<X> Ability Max Charges Counter" holds 1 (cap 20); the hero
+    #: overrides it, as Snow Queen's trait starts at 2. Talents still add
+    #: charges on top (Ability_Charge_<X>, proven 2026-10-23).
+    charges: int = 1
+    #: Stats the hero gains for ``seconds`` after each cast: a shield, armour,
+    #: move speed ... ``[{stat, value, seconds}]`` (``value`` as a talent's:
+    #: "+20%", "+10"; vitality / attack power in points).
+    buffs: list = field(default_factory=list)
 
     @classmethod
     def parse(cls, slot: str, raw: dict) -> Ability:
@@ -223,7 +232,8 @@ class Ability:
         unknown = set(raw) - {"clip", "cooldown", "duration", "hits", "bank", "name_key",
                               "desc_key", "indicator", "sound", "variant", "combo",
                               "icon", "icon_disabled", "root_motion", "moving",
-                              "intangible", "strike", "passive", "loop"}
+                              "intangible", "strike", "passive", "loop", "charges",
+                              "buffs"}
         if unknown:
             raise AbilityError(f"ability {slot}: no {', '.join(sorted(unknown))}")
         bad = {v for v in str(raw.get("variant", "")).split("+") if v} - _VARIANTS
@@ -295,6 +305,24 @@ class Ability:
                     raise AbilityError(f"ability {slot}: strike {k} is 0..10 seconds")
             if not hits:
                 raise AbilityError(f"ability {slot}: a strike needs hits (on its own clip)")
+        charges = raw.get("charges", 1)
+        if isinstance(charges, bool) or not isinstance(charges, int) or not 1 <= charges <= 20:
+            raise AbilityError(f"ability {slot}: charges is a whole number 1..20")
+        if raw.get("buffs") and raw.get("combo"):
+            raise AbilityError(f"ability {slot}: buffs are for a single-state button "
+                               "(not a combo)")
+        if charges > 1 and slot not in CHARGE_COUNTERS:
+            raise AbilityError(f"ability {slot}: has no charges (one of "
+                               f"{', '.join(CHARGE_COUNTERS)})")
+        buffs = raw.get("buffs") or []
+        if not isinstance(buffs, list) or not all(
+                isinstance(b, dict) and set(b) == BUFF_KEYS for b in buffs):
+            raise AbilityError(f"ability {slot}: buffs is a list of "
+                               "{ stat, value, seconds }")
+        for b in buffs:
+            if isinstance(b["seconds"], bool) or not isinstance(b["seconds"], (int, float)) \
+                    or not 0 < b["seconds"] <= 120:
+                raise AbilityError(f"ability {slot}: buff {b['stat']!r} lasts 0..120 seconds")
         return cls(slot, str(raw.get("clip", "")),
                    float(raw.get("cooldown", 0.0 if passive else 1.0)),
                    float(raw["duration"]) if raw.get("duration") is not None else None,
@@ -305,7 +333,69 @@ class Ability:
                    (bool(intang) if isinstance(intang, bool) or intang is None
                     else float(intang)),
                    dict(strike) if strike else None,
-                   passive=passive, loop=bool(raw.get("loop")))
+                   passive=passive, loop=bool(raw.get("loop")), charges=charges,
+                   buffs=[dict(b) for b in buffs])
+
+
+BUFF_KEYS = {"stat", "value", "seconds"}
+
+
+def add_buffs(ef: EntityFile, w, ab: Ability, *, tag: str, state: str) -> None:
+    """Each cast of ``ab`` (its ``state`` coming on) gives the hero its buffs
+    for their seconds: a persistent state holding a modifier of the stat, and
+    a timer (restarted by every cast) that switches it off. The amount is a
+    one-entry selector, the constant shape the game ships (the trait's default
+    charges selector)."""
+    from . import item_effect as IE
+    from . import talent_add_stat as TA
+    from .item_modifier import ItemModifierError, game_state_keys
+    for n, b in enumerate(ab.buffs, 1):
+        try:
+            key = TA.resolve_stat(b["stat"])
+        except ItemModifierError as e:
+            raise AbilityError(f"ability {ab.slot}: buff {n}: {e}") from e
+        if key in game_state_keys() or key in TA.applied_on_hit():
+            raise AbilityError(f"ability {ab.slot}: buff {n}: {b['stat']!r} is not a stat "
+                               "the hero can gain (game state, or put on whoever is hit)")
+        try:
+            amount = TA._amount(b["value"], f"ability {ab.slot} buff {n}")
+        except TA.AddStatError as e:
+            raise AbilityError(str(e)) from e
+        if IE._in_points(key) and not str(b["value"]).strip().endswith("%"):
+            amount /= 100            # points stored as a fraction (one point = 0.01)
+        name = f"{tag} Buff {n}"
+        sel = w._selector(f"{name} Amount", [w._entry(w._bool(True), P.Num.f32(amount))])
+        mod = w.modifier(f"{name} Modifier", key, sel)
+        on = w.state(f"State {name}", while_active=[mod], flags=TW.PERSISTENT)
+        _timer(w, f"{name} Timer", float(b["seconds"]), ends=on)
+        ef.add_ref(state, "activates", f"State {name}")
+        ef.add_ref(state, "activates", f"{name} Timer")
+
+
+#: A button's charges live in Hero_Common's per-slot counter (both ultimates
+#: share one; the basic attack has none).
+CHARGE_COUNTERS = {"power": "Primary Ability Max Charges Counter",
+                   "special": "Secondary Ability Max Charges Counter",
+                   "defense": "Defensive Ability Max Charges Counter",
+                   "trait": "Trait Ability Max Charges Counter",
+                   "ultimate": "Ultimate Ability Max Charges Counter",
+                   "ultimate2": "Ultimate Ability Max Charges Counter"}
+
+
+def set_charges(ef: EntityFile, hero_common: EntityFile, slot: str, n: int) -> None:
+    """The hero's ``slot`` starts with ``n`` charges: the shared counter
+    overridden with ``n`` in place of its 1 (the trait's read of its default
+    selector becomes the plain number)."""
+    counter = CHARGE_COUNTERS[slot]
+    have = next((c for c in ef.graph().components if c.name == counter), None)
+    if have is not None:            # the ultimates' shared counter, set by the other
+        now = next(f.text for f in EF.fields(have) if f.name == "value_2")
+        if now.split()[1] != str(n):
+            raise AbilityError(f"ability {slot}: both ultimates share one charge count "
+                               f"({now.split()[1]} already); give them the same charges")
+        return
+    HF.fill_slot(ef, hero_common, counter)
+    ef.set_value(counter, "value_2", n)
 
 
 #: What a button lent from a shipped hero (``template``) may say besides its
@@ -1263,6 +1353,11 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
     word = ab.slot.title()
     group = f"Ability {word}"
     tag = f"{word} Ability"
+    if ab.charges > 1:
+        try:
+            set_charges(ef, hero_common, ab.slot, ab.charges)
+        except (EntityEditError, HF.FrameError) as e:
+            raise AbilityError(f"ability {ab.slot}: charges: {e}") from e
     if ab.template is not None:
         return build_template(ef, hero_common, ab, seed=seed, read=read)
     if ab.passive:
@@ -1340,6 +1435,8 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
                              activates=[] if track else [aim], flags=TW.PERSISTENT)
         if ab.has("look_enter"):
             ef.add_ref(state, "on_enter?", f"{tag} Look At")
+        if ab.buffs:
+            add_buffs(ef, w, ab, tag=tag, state=state)
         # The rush's root motion stops at an enemy only while the detector
         # its selector reads is held on (see IN_RANGE_DETECTOR).
         if ab.root_motion is None or ab.strike:

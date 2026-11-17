@@ -847,3 +847,44 @@ def test_level_up_plays_the_shared_flash_and_the_heros_own():
     vfx = {m.group(0).decode() for o in ef.subtree({c.index - 1})
            for m in re.finditer(rb"[ -~]+\.vfx\.ot", bytes(ef.objects[o]))}
     assert vfx == {"Settings\\FX\\Common_FX\\Heroes_Level_Up_Base.vfx.ot", VW.NO_EFFECT}
+
+
+@needs_corpus
+def test_a_button_starts_with_its_own_charges():
+    """``charges`` overrides the slot's shared max-charges counter (1 by
+    default); both ultimates share one counter, so they must agree."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import hero_ability as HA
+    clip = "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_BasicAttack01.fbx"
+    hc = HF.common(_read)
+    ef = _hero("Hero_T")
+    HA.build(ef, hc, HA.Ability.parse("power", {"clip": clip, "charges": 3}), seed="t")
+    c = ef.component("Primary Ability Max Charges Counter")
+    assert c.override is not None
+    assert next(f.text for f in EF.fields(c) if f.name == "value_2") == "int 3"
+    HA.build(ef, hc, HA.Ability.parse("ultimate", {"clip": clip, "charges": 2}), seed="u")
+    with pytest.raises(HA.AbilityError):
+        HA.build(ef, hc, HA.Ability.parse("ultimate2", {"clip": clip, "charges": 3}), seed="v")
+    with pytest.raises(HA.AbilityError):
+        HA.Ability.parse("attack", {"clip": clip, "charges": 2})
+
+
+@needs_corpus
+def test_a_button_grants_a_timed_buff():
+    """``buffs``: each cast switches on a state holding a modifier of the stat
+    (a constant one-entry selector) and restarts the timer that ends it;
+    an on-hit-only stat is refused."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import hero_ability as HA
+    clip = "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_BasicAttack01.fbx"
+    ef = _hero("Hero_T")
+    HA.build(ef, HF.common(_read), HA.Ability.parse("defense", {
+        "clip": clip, "buffs": [{"stat": "Armour", "value": 20, "seconds": 4}]}), seed="t")
+    acts = next(f.text for f in EF.fields(ef.component("State Defense Ability"))
+                if f.name == "activates")
+    assert "State Defense Ability Buff 1" in acts and "Defense Ability Buff 1 Timer" in acts
+    held = next(f.text for f in EF.fields(ef.component("State Defense Ability Buff 1"))
+                if f.name == "while_active")
+    assert "Defense Ability Buff 1 Modifier" in held
+    with pytest.raises(HA.AbilityError):
+        HA.Ability.parse("defense", {"clip": clip, "buffs": [{"stat": "Armour", "value": 1}]})
