@@ -1,16 +1,13 @@
 'use client';
 
 import { type ModListItem, hasPrivateOnlyTag } from '@rsmm/schemas';
-import { RegistryModCard, Spinner, buttonVariants } from '@rsmm/ui';
+import { RegistryModCard, RegistryResultsControls, Spinner, buttonVariants } from '@rsmm/ui';
 import { useQuery } from '@tanstack/react-query';
 import {
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Download,
   ExternalLink,
-  LayoutGrid,
-  Rows3,
 } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
@@ -154,48 +151,18 @@ function RegistryInner() {
           filtersOpen={filtersOpen}
           onOpenFilters={() => setFiltersOpen(true)}
         />
-        <div className="registry-result-controls">
-          <label className="registry-sort">
-            <span>Sort by</span>
-            <select
-              aria-label="Sort mods"
-              value={sort}
-              onChange={(event) => {
-                const params = new URLSearchParams(window.location.search);
-                params.delete('page');
-                if (event.target.value === 'popular') params.delete('sort');
-                else params.set('sort', event.target.value);
-                window.history.replaceState(null, '', registryHref(params));
-              }}
-            >
-              <option value="popular">Popular</option>
-              <option value="recent">Recent</option>
-              <option value="rating">Top rated</option>
-            </select>
-            <ChevronDown size={14} aria-hidden />
-          </label>
-          <fieldset className="registry-view-switch">
-            <legend className="sr-only">Layout</legend>
-            <button
-              type="button"
-              className="registry-icon-button"
-              aria-label="Cards"
-              aria-pressed={view === 'grid'}
-              onClick={() => chooseView('grid')}
-            >
-              <LayoutGrid size={18} aria-hidden />
-            </button>
-            <button
-              type="button"
-              className="registry-icon-button"
-              aria-label="List"
-              aria-pressed={view === 'list'}
-              onClick={() => chooseView('list')}
-            >
-              <Rows3 size={18} aria-hidden />
-            </button>
-          </fieldset>
-        </div>
+        <RegistryResultsControls
+          sort={sort}
+          view={view}
+          onSortChange={(nextSort) => {
+            const params = new URLSearchParams(window.location.search);
+            params.delete('page');
+            if (nextSort === 'popular') params.delete('sort');
+            else params.set('sort', nextSort);
+            window.history.replaceState(null, '', registryHref(params));
+          }}
+          onViewChange={chooseView}
+        />
       </header>
 
       <div ref={resultsRef} className="registry-results" aria-busy={list.isFetching}>

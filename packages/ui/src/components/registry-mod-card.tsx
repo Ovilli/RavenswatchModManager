@@ -143,6 +143,11 @@ export function RegistryModCard({
             ) : null}
           </div>
         ) : null}
+        {actions ? (
+          <div className="mod-card-actions mod-card-actions--overlay" onClick={(event) => event.stopPropagation()}>
+            {actions}
+          </div>
+        ) : null}
       </div>
       <div className="mod-card-body">
         {privateOnly || mod.category ? (
@@ -161,11 +166,6 @@ export function RegistryModCard({
         </div>
         {mod.summary ? <p className="mod-card-summary">{mod.summary}</p> : null}
         <p className="mod-card-author">by {mod.author || labels.author || 'unknown'}</p>
-        {actions ? (
-          <div className="mod-card-actions" onClick={(event) => event.stopPropagation()}>
-            {actions}
-          </div>
-        ) : null}
         {mod.downloads != null || hasRating ? (
           <div className="mod-card-stats">
             {mod.downloads != null ? (

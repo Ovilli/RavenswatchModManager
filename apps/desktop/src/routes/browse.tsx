@@ -5,30 +5,27 @@ import {
   isPrivateOnlyTag,
 } from '@rsmm/schemas';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { RegistryModCard } from '@rsmm/ui';
+import {
+  RegistryFilterDialog,
+  RegistryModCard,
+  RegistryResultsControls,
+  RegistrySearchBar,
+} from '@rsmm/ui';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import {
-  ChevronDown,
-  ChevronRight,
   ExternalLink,
-  EyeOff,
-  LayoutGrid,
   Loader2,
   Plus,
-  Rows3,
-  Search,
   WifiOff,
   X,
 } from 'lucide-react';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Button,
   CopyButton,
   Cover,
-  MonoTag,
   Panel,
-  SectionHeader,
   StatPill,
   useModalChrome,
 } from '../components/chrome';
@@ -72,12 +69,7 @@ function BrowsePage() {
   // point of the whole layout: clicking through five mods should not cost five
   // navigations and five trips back.
   const [selected, setSelected] = useState<string | null>(null);
-  // `null` = follow the layout: open when browsing, collapsed while a mod's
-  // details are taking up the middle column. A click on the header pins it
-  // either way, because a filter panel that reopens itself is worse than one
-  // that stays where you put it.
-  const [filtersPinned, setFiltersPinned] = useState<boolean | null>(null);
-  const filterBodyId = useId();
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [minRating, setMinRating] = useState(0);
   const installed = useApp((s) => s.installed);
   const profiles = useApp((s) => s.profiles);
@@ -188,16 +180,6 @@ function BrowsePage() {
 
   const activeFilters = countActiveFilters({ category, tags, minRating, hideInstalled });
 
-  const clearFilters = () => {
-    setCategory(null);
-    setTags([]);
-    setMinRating(0);
-    setHideInstalled(false);
-  };
-
-  const toggleTag = (t: string) =>
-    setTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
-
   const collections = useMemo(
     () => (tab === 'mods' ? [] : filterCollections(colData?.items ?? [], q)),
     [colData, q, tab],
@@ -234,144 +216,8 @@ function BrowsePage() {
     if (view !== 'list') setSelected(null);
   }, [view]);
 
-  // Auto-collapse, unless the user has said otherwise.
-  const filtersOpen = filtersPinned ?? selected === null;
-
-  /**
-   * Hoisted so it can be rendered in either place: its own column while
-   * browsing, or folded into the narrow index column once a mod's page has
-   * taken the right-hand side. One definition, two homes — a second copy would
-   * drift the first time a facet was added.
-   */
-  const filterPanel =
-    tab === 'mods' ? (
-      <aside
-        aria-label={t('Filters')}
-        // Its own sticky column while browsing; a plain block at the top of the
-        // index column once a mod is open, where the column already sets the
-        // width and the sticky/order rules would fight it.
-        className={`grimoire-card flex flex-col gap-3 p-3 ${
-          selected
-            ? ''
-            : `p-4 lg:sticky lg:top-2 lg:order-3 lg:shrink-0 ${filtersOpen ? 'lg:w-64' : 'lg:w-auto'}`
-        }`}
-      >
-        <button
-          type="button"
-          onClick={() => setFiltersPinned(!filtersOpen)}
-          aria-expanded={filtersOpen}
-          aria-controls={filterBodyId}
-          className="flex items-baseline justify-between gap-3 text-left"
-        >
-          <span className="font-fraktur inline-flex items-baseline gap-2 text-lg text-parchment">
-            {filtersOpen ? (
-              <ChevronDown className="h-4 w-4 self-center text-ash" aria-hidden />
-            ) : (
-              <ChevronRight className="h-4 w-4 self-center text-ash" aria-hidden />
-            )}
-            {t('Filters')}
-          </span>
-          {/* Collapsed, the count of ACTIVE filters is the load-bearing
-                      number: it is the only way to tell a short result list from a
-                      filtered one when the facets are hidden. */}
-          <span className="font-mono whitespace-nowrap text-xs text-ash">
-            {filtersOpen
-              ? t.n(list.length, '{n} mod', '{n} mods')
-              : activeFilters > 0
-                ? t('{n} on', { n: activeFilters })
-                : t('off')}
-          </span>
-        </button>
-
-        {filtersOpen ? (
-          <div id={filterBodyId} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <span className="text-ash text-xs">{t('Category')}</span>
-              <div className="flex flex-wrap gap-1.5">
-                <FilterChip active={category === null} onClick={() => setCategory(null)}>
-                  {t('any')}
-                </FilterChip>
-                {facets.categories.map(([name, count]) => (
-                  <FilterChip
-                    key={name}
-                    active={category === name}
-                    onClick={() => setCategory(category === name ? null : name)}
-                  >
-                    {name} <span className="text-ash">{count}</span>
-                  </FilterChip>
-                ))}
-              </div>
-              {facets.categories.length === 0 ? (
-                <span className="font-serif-italic text-sm text-ash">
-                  {t('nothing published yet')}
-                </span>
-              ) : null}
-            </div>
-
-            {facets.tags.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                <span className="text-ash text-xs">{t('Tags')}</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {facets.tags.map(([name, count]) => (
-                    <FilterChip
-                      key={name}
-                      active={tags.includes(name)}
-                      onClick={() => toggleTag(name)}
-                    >
-                      {isPrivateOnlyTag(name) ? t('Private games only') : name}{' '}
-                      <span className="text-ash">{count}</span>
-                    </FilterChip>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            <label className="flex flex-col gap-2">
-              <span className="text-ash text-xs">{t('Rating')}</span>
-              <select
-                value={minRating}
-                onChange={(e) => setMinRating(Number(e.target.value))}
-                aria-label={t('Minimum rating')}
-                className="select-grim"
-              >
-                <option value={0}>{t('any')}</option>
-                <option value={3}>★ 3+</option>
-                <option value={4}>★ 4+</option>
-                <option value={4.5}>★ 4.5+</option>
-              </select>
-            </label>
-
-            <label className="flex cursor-pointer items-start gap-2 text-parchment">
-              <input
-                type="checkbox"
-                checked={hideInstalled}
-                onChange={(e) => setHideInstalled(e.target.checked)}
-                className="mt-1 h-4 w-4 accent-crimson"
-              />
-              <span className="font-serif-italic text-sm">{t('Hide what I already have')}</span>
-            </label>
-
-            {activeFilters > 0 ? (
-              <Button type="button" size="sm" onClick={clearFilters} className="w-full">
-                <X className="h-3.5 w-3.5" aria-hidden /> {t('clear {n}', { n: activeFilters })}
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
-      </aside>
-    ) : null;
-
   return (
     <div className="space-y-6">
-      <SectionHeader
-        title={tab === 'mods' ? t('Browse') : t('Collections')}
-        subtitle={
-          tab === 'mods'
-            ? t('The remote index. Mods from the community catalog.')
-            : t('Curated bundles of mods made by the community.')
-        }
-      />
-
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           {/* `aria-pressed`, like every other toggle group in the app: colour
@@ -395,82 +241,39 @@ function BrowsePage() {
             {t('Collections')}
           </Button>
         </div>
-        <div className="relative flex-1 min-w-[260px]">
-          <Search
-            className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ash"
-            aria-hidden
-          />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
+        <div className="min-w-[260px] flex-1">
+          <RegistrySearchBar
+            query={q}
+            onQueryChange={setQ}
             placeholder={tab === 'mods' ? t('Search the index…') : t('Search collections…')}
-            aria-label={tab === 'mods' ? t('Search mods') : t('Search collections')}
-            className="input-grim"
+            searchLabel={tab === 'mods' ? t('Search mods') : t('Search collections')}
+            activeFilters={activeFilters}
+            filtersOpen={filtersOpen}
+            onOpenFilters={tab === 'mods' ? () => setFiltersOpen(true) : undefined}
           />
         </div>
         {tab === 'mods' ? (
-          <>
-            <div className="flex items-center gap-2">
-              {(['popular', 'recent', 'rating'] as const).map((s) => (
-                <Button
-                  key={s}
-                  type="button"
-                  onClick={() => setSort(s)}
-                  aria-pressed={sort === s}
-                  variant={sort === s ? 'gilt' : 'default'}
-                  size="sm"
-                >
-                  {s === 'popular' ? t('popular') : s === 'recent' ? t('recent') : t('rating')}
-                </Button>
-              ))}
-            </div>
-            <label className="flex cursor-pointer items-center gap-2 text-parchment">
-              <input
-                type="checkbox"
-                checked={showNsfw}
-                onChange={(e) => update({ showNsfw: e.target.checked })}
-                className="h-4 w-4 accent-crimson"
-              />
-              <MonoTag tone="crimson">
-                <EyeOff className="mr-1 h-3 w-3" /> NSFW
-              </MonoTag>
-            </label>
-            <fieldset className="ml-auto flex items-center gap-1">
-              <legend className="sr-only">{t('Layout')}</legend>
-              <Button
-                type="button"
-                size="sm"
-                aria-pressed={view === 'grid'}
-                variant={view === 'grid' ? 'gilt' : 'default'}
-                onClick={() => update({ browseView: 'grid' })}
-                title={t('Cards')}
-              >
-                <LayoutGrid className="h-3.5 w-3.5" aria-hidden /> {t('cards')}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                aria-pressed={view === 'list'}
-                variant={view === 'list' ? 'gilt' : 'default'}
-                onClick={() => update({ browseView: 'list' })}
-                title={t('List')}
-              >
-                <Rows3 className="h-3.5 w-3.5" aria-hidden /> {t('list')}
-              </Button>
-            </fieldset>
-          </>
+          <RegistryResultsControls
+            sort={sort}
+            view={view}
+            labels={{
+              sortBy: t('Sort by'),
+              sort: t('Sort mods'),
+              popular: t('popular'),
+              recent: t('recent'),
+              rating: t('Top rated'),
+              layout: t('Layout'),
+              cards: t('Cards'),
+              list: t('List'),
+            }}
+            onSortChange={setSort}
+            onViewChange={(nextView) => update({ browseView: nextView })}
+          />
         ) : null}
       </div>
 
-      {/* TWO columns, never three. Faceted search reads as a column beside the
-          results — but once a mod's page is open there is no room for a third,
-          so the filters fold into the index column (collapsed, see
-          `filtersOpen`) and the store page takes the whole right-hand side.
-          Squeezed into a middle column it had nowhere to put its own two-column
-          layout, and the index beside it was too narrow to show a mod's name.
-
-          Below `lg` there is no second column at all, so everything stacks —
-          a filter you cannot reach is worse than one that costs a scroll. */}
+      {/* The shared registry filter dialog keeps filtering out of the list
+          layout, including when a mod detail is open beside it. */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         {selected ? (
           <section aria-label={t('Mod details')} className="min-w-0 flex-1 lg:order-2">
@@ -490,9 +293,6 @@ function BrowsePage() {
           </section>
         ) : null}
 
-        {/* Browsing: the filters get their own column on the right. */}
-        {selected ? null : filterPanel}
-
         {/* With a mod open the results become an index column, wide enough for
             a name and its install button and no wider. */}
         <div
@@ -502,8 +302,6 @@ function BrowsePage() {
               : 'min-w-0 flex-1 space-y-4 lg:order-1'
           }
         >
-          {/* …and the filters ride along above it, collapsed. */}
-          {selected ? filterPanel : null}
           {error ? (
             <div className="ember-banner flex flex-col gap-2 px-4 py-3">
               <div className="flex items-center gap-3">
@@ -681,6 +479,52 @@ function BrowsePage() {
           onCancel={() => setPickerSlug(null)}
         />
       ) : null}
+      {filtersOpen && tab === 'mods' ? (
+        <RegistryFilterDialog
+          value={{
+            category: category ?? '',
+            tags,
+            minRating,
+            toggles: { hideInstalled, showNsfw },
+          }}
+          categories={facets.categories.map(([name, count]) => ({ value: name, label: name, count }))}
+          tags={facets.tags.map(([name, count]) => ({
+            value: name,
+            label: isPrivateOnlyTag(name) ? t('Private games only') : name,
+            count,
+          }))}
+          ratings={[
+            { value: 0, label: t('any') },
+            { value: 3, label: '3+' },
+            { value: 4, label: '4+' },
+            { value: 4.5, label: '4.5+' },
+          ]}
+          toggles={[
+            { id: 'hideInstalled', label: t('Hide what I already have'), checked: hideInstalled },
+            { id: 'showNsfw', label: t('Include mature content'), checked: showNsfw },
+          ]}
+          labels={{
+            title: t('Filters'),
+            category: t('Category'),
+            tags: t('Tags'),
+            rating: t('Rating'),
+            preferences: t('Preferences'),
+            all: t('any'),
+            clear: t('Clear all'),
+            apply: t('Show mods'),
+          }}
+          onApply={(next) => {
+            setCategory(next.category || null);
+            setTags(next.tags);
+            setMinRating(next.minRating);
+            setHideInstalled(next.toggles.hideInstalled ?? false);
+            update({ showNsfw: next.toggles.showNsfw ?? showNsfw });
+            setFiltersOpen(false);
+          }}
+          onClose={() => setFiltersOpen(false)}
+          onClear={() => ({ category: '', tags: [], minRating: 0, toggles: { hideInstalled: false, showNsfw } })}
+        />
+      ) : null}
     </div>
   );
 }
@@ -720,10 +564,7 @@ function InstallButton({ m, installed, profile, installing, onPick }: InstallBut
       disabled={inProfile || installing[m.slug]}
       variant={inProfile ? 'default' : 'primary'}
       size="sm"
-      // The label cycles install → downloading → in profile,
-      // each a different width. Without a floor the button
-      // resizes mid-download and squeezes the title next to it.
-      className="min-w-[7.5rem] justify-center whitespace-nowrap"
+      className="registry-install-button min-w-0 justify-center whitespace-nowrap"
       title={
         inProfile
           ? t('Already in "{profile}"', { profile: profile.name })
@@ -734,19 +575,23 @@ function InstallButton({ m, installed, profile, installing, onPick }: InstallBut
     >
       {installing[m.slug] ? (
         <>
-          <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('downloading')}
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+          <span className="registry-install-label">{t('downloading')}</span>
         </>
       ) : inProfile ? (
         <>
-          <CheckIcon className="h-4 w-4" /> {t('in profile')}
+          <CheckIcon className="h-4 w-4 shrink-0" />
+          <span className="registry-install-label">{t('in profile')}</span>
         </>
       ) : onDisk ? (
         <>
-          <Plus className="h-3.5 w-3.5" /> {t('add')}
+          <Plus className="h-3.5 w-3.5 shrink-0" />
+          <span className="registry-install-label">{t('add')}</span>
         </>
       ) : (
         <>
-          <Plus className="h-3.5 w-3.5" /> {t('install')}
+          <Plus className="h-3.5 w-3.5 shrink-0" />
+          <span className="registry-install-label">{t('install')}</span>
         </>
       )}
     </Button>
@@ -797,33 +642,6 @@ function ModRow({
         privateOnly: t('Private games only'),
       }}
     />
-  );
-}
-
-/** One toggleable facet in the filter bar. `font-data`, like the `MonoTag` tags
- * it filters: the facet and the tag on a card read as the same word. */
-function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`font-data rounded border px-2 py-0.5 text-xs transition-colors duration-150 ${
-        active
-          ? 'border-gilt/70 bg-gilt/15 text-parchment'
-          : 'border-border text-smoke hover:border-gilt/40 hover:text-parchment'
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 

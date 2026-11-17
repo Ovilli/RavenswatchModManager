@@ -20,6 +20,12 @@
 .mod-card-private-tag svg{flex-shrink:0}
 .mod-card-summary{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;color:hsl(var(--foreground));font-size:1rem;line-height:1.5;overflow-wrap:anywhere}
 .mod-card-actions{display:flex;align-items:center;gap:8px}
+.mod-card-actions--overlay{position:absolute;right:10px;bottom:10px;z-index:3}
+.btn-grim.registry-install-button{padding-inline:.65rem;color:#fff;box-shadow:0 3px 8px rgb(0 0 0/.48)}
+.mod-card-actions--overlay .registry-install-button{display:inline-flex;align-items:center;justify-content:center;gap:0;width:40px;height:40px;min-height:40px;padding:0;overflow:hidden;border-radius:8px;transition:width 160ms ease,padding 160ms ease,gap 160ms ease}
+.mod-card-actions--overlay .registry-install-label{max-width:0;overflow:hidden;white-space:nowrap;text-transform:capitalize;transition:max-width 160ms ease}
+.mod-card:hover .mod-card-actions--overlay .registry-install-button,.mod-card:focus-within .mod-card-actions--overlay .registry-install-button{width:92px;gap:5px;padding-inline:6px}
+.mod-card:hover .mod-card-actions--overlay .registry-install-label,.mod-card:focus-within .mod-card-actions--overlay .registry-install-label{max-width:80px}
 .mod-card-stats{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-start;gap:8px;min-height:26px;padding-top:2px}
 .mod-card-rating-group{display:inline-flex;align-items:center;gap:8px}
 .mod-card-stat-dot{color:var(--mod-card-secondary);line-height:1}
@@ -46,4 +52,55 @@
 @media(min-width:640px){.mod-card-list-art{display:block}}
 @media(min-width:768px){.mod-card-list-category{display:block}}
 @media(min-width:1024px){.mod-card-list-rating,.mod-card-list-downloads{display:block}}
-@media(prefers-reduced-motion:reduce){.mod-card .mod-card-identity h2,.mod-card .mod-card-identity h3{transition:none}}
+@media(prefers-reduced-motion:reduce){.mod-card .mod-card-identity h2,.mod-card .mod-card-identity h3,.mod-card-actions--overlay .registry-install-button,.mod-card-actions--overlay .registry-install-label{transition:none}}
+
+/* Shared registry search and filter controls used by the website and desktop client. */
+.registry-search-slot{min-width:0;width:min(100%,640px)}
+.registry-search{display:flex;align-items:center;width:100%;min-width:0;height:52px;padding:5px;border:1px solid hsl(var(--char));border-radius:999px;background:hsl(var(--surface-1))}
+.registry-search:focus-within{border-color:hsl(var(--gilt))}
+.registry-search input{flex:1;min-width:0;width:100%;padding-inline:6px;border:0;outline:0;background:transparent;color:hsl(var(--foreground));font-size:1rem;line-height:1.4}
+.registry-search input::placeholder{color:hsl(32 17% 68%);opacity:1}
+.registry-search input::-webkit-search-cancel-button{-webkit-appearance:none}
+.registry-search-submit,.registry-search-clear{display:grid;place-items:center;flex:0 0 40px;width:40px;height:40px;border-radius:50%;color:hsl(32 17% 68%)}
+.registry-search-submit:hover,.registry-search-clear:hover{color:hsl(var(--foreground));background:hsl(var(--surface-2))}
+.registry-search-filters{position:relative;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;gap:7px;height:40px;margin-left:8px;padding:0 15px;border-left:1px solid hsl(var(--char));border-radius:0 999px 999px 0;font-size:.9375rem;font-weight:600}
+.registry-search-filters:hover{background:hsl(var(--surface-2))}
+.registry-search-filters[data-active="true"]{color:hsl(var(--crimson-text))}
+.registry-search-filter-count{position:absolute;top:-4px;right:2px;display:grid;place-items:center;min-width:18px;height:18px;padding-inline:4px;border-radius:50%;background:hsl(var(--parchment));color:hsl(var(--background));font-size:.6875rem;line-height:1}
+.registry-result-controls{display:flex;align-items:center;justify-content:flex-end;gap:20px;min-width:0}
+.registry-sort{display:flex;align-items:center;gap:6px;font-size:.9375rem;white-space:nowrap}
+.registry-sort>span{color:hsl(32 17% 68%)}
+.registry-sort select{appearance:none;min-height:44px;padding:8px 20px 8px 6px;background:transparent;border:0;color:inherit;font:inherit;cursor:pointer}
+.registry-sort option{color:hsl(var(--foreground));background:hsl(var(--background))}
+.registry-sort>svg{margin-left:-22px;pointer-events:none}
+.registry-view-switch{display:flex;gap:4px;padding-left:16px;border-left:1px solid hsl(var(--char)/.6)}
+.registry-icon-button{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:40px;height:40px;border-radius:8px;color:hsl(32 17% 68%)}
+.registry-icon-button:hover,.registry-icon-button[aria-pressed="true"]{color:hsl(var(--parchment));background:hsl(var(--surface-2))}
+.registry-chip{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;gap:8px;min-height:44px;padding:9px 18px;border:1px solid hsl(var(--char));border-radius:999px;font-size:.9375rem;line-height:1.4;white-space:nowrap;transition:background-color 140ms ease-out,border-color 140ms ease-out}
+.registry-chip:hover{background:hsl(var(--surface-2));border-color:hsl(var(--parchment)/.5)}
+.registry-chip[aria-pressed="true"]{background:hsl(var(--crimson)/.2);border-color:hsl(var(--crimson-text))}
+.registry-filter-dialog{--registry-muted:hsl(32 17% 68%);width:min(640px,calc(100vw - 40px));max-height:min(800px,calc(100dvh - 64px));margin:auto;padding:0;overflow:hidden;border:1px solid hsl(var(--char));border-radius:16px;background:hsl(var(--surface-1));color:hsl(var(--foreground))}
+.registry-filter-dialog::backdrop{background:rgb(0 0 0/.72)}
+.registry-filter-dialog>form{display:flex;flex-direction:column;max-height:inherit}
+.registry-filter-header{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:14px 24px;border-bottom:1px solid hsl(var(--border))}
+.registry-filter-header h2{font-size:1.375rem;font-weight:700}
+.registry-filter-body{min-height:0;padding:0 28px;overflow-y:auto;overscroll-behavior:contain}
+.registry-filter-body fieldset{min-width:0;padding:24px 0}
+.registry-filter-body fieldset+fieldset{border-top:1px solid hsl(var(--border))}
+.registry-filter-body legend{float:left;width:100%;margin-bottom:16px;font-size:1.125rem;font-weight:700}
+.registry-filter-body legend+*{clear:both}
+.registry-filter-options{display:flex;flex-wrap:wrap;gap:10px}
+.registry-filter-options .registry-chip{max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:left}
+.registry-facet-count{color:var(--registry-muted);font-size:.8125rem}
+.registry-filter-toggle{display:flex;align-items:center;justify-content:space-between;gap:24px;padding-top:18px;cursor:pointer}
+.registry-filter-body legend+.registry-filter-toggle{padding-top:0}
+.registry-filter-toggle strong{font-size:1rem;font-weight:500}
+.registry-filter-toggle input{flex-shrink:0;width:22px;height:22px;accent-color:hsl(var(--crimson))}
+.registry-filter-footer{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px 28px;border-top:1px solid hsl(var(--border))}
+.registry-icon-button{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:40px;height:40px;border-radius:8px;color:var(--registry-muted,hsl(32 17% 68%))}
+.registry-icon-button:hover,.registry-icon-button[aria-pressed="true"]{color:hsl(var(--parchment));background:hsl(var(--surface-2))}
+.registry-clear{min-height:44px;flex-shrink:0;text-decoration:underline;text-underline-offset:4px;font-size:.9375rem;font-weight:600}
+.registry-apply{display:inline-flex;justify-content:center;align-items:center;min-height:46px;padding:11px 24px;border-radius:8px;background:hsl(var(--crimson));color:hsl(var(--parchment));font-weight:700;font-size:1rem}
+.registry-apply:hover{background:hsl(var(--oxblood))}
+@media(max-width:640px){.registry-search-submit,.registry-search-clear{flex-basis:36px;width:36px}.registry-search-filters{gap:5px;margin-left:4px;padding-inline:10px}.registry-result-controls{gap:8px}.registry-sort>span{display:none}.registry-view-switch{gap:0;border:0;padding-left:0}.registry-result-controls .registry-icon-button{width:32px}.registry-chip{padding-inline:14px}.registry-filter-dialog{width:100%;max-width:100%;max-height:calc(100dvh - 24px);margin:auto 0 0;border-radius:16px 16px 0 0}.registry-filter-header{padding-inline:20px}.registry-filter-body{padding-inline:20px}.registry-filter-footer{padding:16px 20px max(16px,env(safe-area-inset-bottom))}}
+@media(prefers-reduced-motion:reduce){.registry-filter-dialog *{transition:none}}

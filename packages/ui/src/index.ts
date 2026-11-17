@@ -20,4 +20,15 @@ export {
   RegistryDetailContentLayout,
 } from './components/registry-detail-layout';
 export { RegistryListingGallery, type RegistryMedia } from './components/registry-listing-gallery';
+export { RegistrySearchBar } from './components/registry-search-bar';
+export {
+  RegistryResultsControls,
+  type RegistrySortValue,
+  type RegistryViewValue,
+} from './components/registry-results-controls';
+export {
+  RegistryFilterDialog,
+  type RegistryFilterOption,
+  type RegistryFilterValue,
+} from './components/registry-filter-dialog';
 export { getRegistryMedia } from './lib/registry-media';
