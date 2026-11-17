@@ -752,3 +752,35 @@ def test_a_copied_sound_overrides_nothing():
     HA.own_sound(ef, donor, name="T Sound", group="Ability Dash", seed="t")
     g = {c.name: c for c in EG.parse(ef.to_bytes(), "Hero_T").components}
     assert g["T Sound"].override is None
+
+
+@needs_corpus
+def test_an_attack_hit_reaches_a_cone_ahead_not_all_round():
+    """A combo step's hit takes Geppetto's cone shape (default 90 degrees),
+    its range and angle read from the hit's own parts; a hit with arc = 0
+    keeps the all-round circle (audit 2026-11-16: the chop hit enemies behind)."""
+    import math
+    import struct
+
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import hero_ability as HA
+    clip = "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_BasicAttack01.fbx"
+    ab = HA.Ability.parse("attack", {"combo": [
+        {"clip": clip, "hits": [{"radius": 2.5}]},
+        {"clip": clip, "hits": [{"radius": 3, "arc": 0}]}]})
+    ef = _hero("Hero_T")
+    HA.build(ef, HF.common(_read), ab, seed="t")
+
+    def shape(pre):
+        c = ef.component(f"{pre} Traverser")
+        f = next(x for x in EF.fields(c) if x.name == "bytes_3")
+        oid = struct.unpack_from("<I", c.body, f.offset + 8)[0]
+        return oid, ef._class(oid)
+    oid, cls = shape("Attack Ability Step 1 Hit 1")
+    assert cls == "oCEntityGpnInConeTraverserSettings"
+    body = bytes(ef.objects[oid])
+    assert b"Hero_Geppetto" not in body and b"Step 1 Hit 1 Angle" in body
+    angle = next(f.text for f in EF.fields(ef.component("Attack Ability Step 1 Hit 1 Angle"))
+                 if f.name == "value")
+    assert float(angle.split()[-1]) == pytest.approx(math.radians(90), abs=1e-4)
+    assert shape("Attack Ability Step 2 Hit 1")[1] == "oCEntityGpnAroundPositionTraverserSettings"

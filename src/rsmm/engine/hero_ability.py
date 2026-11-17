@@ -24,6 +24,7 @@ chains for the basic attack (one swing per press), sounds.
 
 from __future__ import annotations
 
+import functools
 import struct
 from dataclasses import dataclass, field
 
@@ -131,6 +132,7 @@ class Hit:
     fx: str = ""              # the burst's look: any shipped .vfx.ot (default Red's bomb)
     shake: str = "none"       # camera shake: none, light, medium, heavy
     sound: str = ""           # "<entity ref> | <FMod event part>" played on the hit
+    arc: float = 0.0          # degrees of a cone ahead of the hero; 0 = all round
 
 
 #: A range indicator: Kintaro's ultimate target ring (a ground decal, the
@@ -382,6 +384,8 @@ def hits(ef: EntityFile, hero_common: EntityFile, w: P.PartWriter, todo: list[Hi
                        own_sound(ef, hit.sound, name=f"{pre} Sound", group=group,
                                  seed=f"{seed}:hit{i}:sound"))
         ef.set_value(f"{pre} Radius", "value", hit.radius)
+        if hit.arc:
+            _cone(ef, pre, group, seed=f"{seed}:hit{i}:cone", degrees=hit.arc)
         ef.set_value(f"{pre} Damage", "value_28", hit.damage / 100.0)
         if kind in DAMAGE_TYPE:
             ef.set_value(f"{pre} Damage", _TYPE_FIELD, DAMAGE_TYPE[kind])
@@ -397,7 +401,17 @@ def hits(ef: EntityFile, hero_common: EntityFile, w: P.PartWriter, todo: list[Hi
     return timers
 
 
-_HIT_KEYS = {"at", "radius", "damage", "status", "fx", "shake", "sound", *HIT_FIELDS}
+_HIT_KEYS = {"at", "radius", "damage", "status", "fx", "shake", "sound", "arc", *HIT_FIELDS}
+#: A hit with an ``arc`` reaches only a cone ahead of the hero: the shape of
+#: Geppetto's basic attack (his traverser's InCone sub-object, which owns
+#: nothing), its range and angle reads re-pointed at the hit's own parts. Every
+#: shipped basic attack is a cone or a line; the copied explosion is a circle,
+#: so a chop hit enemies behind the hero (audit 2026-11-16). Shipped angles
+#: are 80-90 degrees (Carmilla 80, Geppetto 90).
+CONE_DONOR = ("Heroes\\Hero_Geppetto\\Hero_Geppetto.entity.ot", "Hero_Geppetto",
+              "Basic Ability Traverser", "Basic Ability Range", "Basic Ability Angle")
+#: A basic-attack combo step's cone when the step gives none (Geppetto's).
+COMBO_ARC = 90.0
 
 #: The donor explosion shakes the camera (Common_FX's medium explosion shake)
 #: on EVERY hit; a hit shakes only when asked. "none" points the shake's setup
@@ -508,7 +522,7 @@ def set_fx(ef: EntityFile, fx_part: str, vfx: str, *, old: str = "") -> None:
         raise AbilityError(f"{fx_part}: no {old_s} to replace")
 
 
-def parse_hits(raw, what: str) -> list[Hit]:
+def parse_hits(raw, what: str, *, arc: float = 0.0) -> list[Hit]:
     from .talent_status import STATUSES
     out = []
     for n, h in enumerate(raw or [], 1):
@@ -535,9 +549,12 @@ def parse_hits(raw, what: str) -> list[Hit]:
         if sound and "|" not in sound:
             raise AbilityError(f"{what}: hits[{n}].sound = {sound!r}: \"<entity ref> | "
                                "<FMod event part>\"")
+        a = float(h.get("arc", arc))
+        if not 0.0 <= a < 360.0:
+            raise AbilityError(f"{what}: hits[{n}].arc = {a}: degrees 0..359 (0 = all round)")
         out.append(Hit(float(h["at"]), float(h.get("radius", 3.0)),
                        float(h.get("damage", 100.0)), status=status, fx=fx, shake=shake,
-                       sound=sound, **extra))
+                       sound=sound, arc=a, **extra))
     return out
 
 
@@ -648,6 +665,38 @@ def own_sound(ef: EntityFile, spec: str, *, name: str, group: str, seed: str) ->
         ef.set_override(name, empty.guid, empty.path)
     _unlink_value_reads(ef, name)
     return name
+
+
+@functools.cache
+def _cone_donor() -> EntityFile:
+    """CONE_DONOR's file, read once (only read from: replace_subobject copies)."""
+    from . import corpus
+    ref, scope = CONE_DONOR[:2]
+    raw = corpus.read(f"EntitySettings/{ref.replace(chr(92), '/')}.EntitySettingsResource.gen")
+    if raw is None:
+        raise AbilityError(f"arc: {ref} is not in the game files")
+    return EntityFile(raw, scope)
+
+
+def _cone(ef: EntityFile, pre: str, group: str, *, seed: str, degrees: float) -> None:
+    """Hit ``pre``'s area becomes a cone of ``degrees`` ahead of the hero, as
+    deep as its radius (CONE_DONOR)."""
+    import math
+
+    _ref, scope, trav, rng, ang = CONE_DONOR
+    donor = _cone_donor()
+    t = donor.component(trav)
+    f = next(x for x in EF.fields(t) if x.name == "bytes_3")
+    shape = struct.unpack_from("<I", t.body, f.offset + 8)[0]        # (pad 4, count 1)
+    if donor._class(shape) != "oCEntityGpnInConeTraverserSettings":
+        raise AbilityError(f"arc: {scope}'s {trav} is no longer a cone")
+    a = donor.component(ang)
+    ef.clone([a.path], rename={ang: f"{pre} Angle"}, group={a.group: group}, seed=seed,
+             source=donor)
+    ef.set_value(f"{pre} Angle", "value", math.radians(degrees))
+    ef.replace_subobject(f"{pre} Traverser", "bytes_3", 0, donor, shape,
+                         refs={donor.component(rng).guid: f"{pre} Radius",
+                               a.guid: f"{pre} Angle"})
 
 
 def _drop_ref(ef: EntityFile, comp: str, field: str, target: str) -> None:
@@ -794,7 +843,7 @@ def _step_hits(st: dict, what: str) -> list:
     """A combo step's hits: its timeline lands them, at the step's ``hit_at``."""
     todo = [{"at": st.get("hit_at", 0.0), **h} if isinstance(h, dict) else h
             for h in (st.get("hits") or [])]
-    return parse_hits(todo, what)
+    return parse_hits(todo, what, arc=COMBO_ARC)
 
 
 def _combo_controller_by_base_guid(ef: EntityFile, hero_common: EntityFile, combo: str,
