@@ -67,20 +67,20 @@ Ghidra Jython scripts (run inside the headless analyzer):
 
 | Script | Purpose | Runtime |
 |---|---|---|
-| `scripts/dump_symbols_strings.py` | export every function + string to JSON | ~1 min |
-| `scripts/decompile_all.py` | pseudo-C per function, bucketed | ~25 min |
-| `scripts/decompile_by_addr.py` | decompile one address (debug aid) | seconds |
-| `scripts/decompile_targets.py` | hand-curated list of hotspots | seconds |
-| `scripts/dump_xrefs.py` | reference graph for tagged sites | <1 min |
-| `scripts/xrefs_to.py` | xrefs to one address | seconds |
-| `scripts/xrefs_to_addrs.py` | xrefs to a list of address targets | seconds |
+| `docs/_re/scripts/dump_symbols_strings.py` | export every function + string to JSON | ~1 min |
+| `docs/_re/scripts/decompile_all.py` | pseudo-C per function, bucketed | ~25 min |
+| `docs/_re/scripts/decompile_by_addr.py` | decompile one address (debug aid) | seconds |
+| `docs/_re/scripts/decompile_targets.py` | hand-curated list of hotspots | seconds |
+| `docs/_re/scripts/dump_xrefs.py` | reference graph for tagged sites | <1 min |
+| `docs/_re/scripts/xrefs_to.py` | xrefs to one address | seconds |
+| `docs/_re/scripts/xrefs_to_addrs.py` | xrefs to a list of address targets | seconds |
 
 Non-Ghidra (host Python) scripts:
 
 | Script | Purpose | Runtime |
 |---|---|---|
-| `../../scripts/gen_function_patterns.py` | build pattern DB from exe + symbols.json | ~5 min |
-| `../../scripts/test_pattern_resolve.py` | validate DB; resolve by name or addr | <30s for one, ~10 min for `--all` |
+| `scripts/gen_function_patterns.py` | build pattern DB from exe + symbols.json | ~5 min |
+| `scripts/test_pattern_resolve.py` | validate DB; resolve by name or addr | <30s for one, ~10 min for `--all` |
 
 ## Pattern signatures: how they survive patches
 

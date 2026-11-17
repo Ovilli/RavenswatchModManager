@@ -56,7 +56,7 @@ Do not edit by hand — run `rsmm docs-gen` after adding or renaming a subcomman
 | `rsmm rebuild-fn-patterns` | `rsmm.cli.cmd_rebuild_patterns` | `rsmm rebuild-fn-patterns` — regenerate the byte-pattern DB for the installed game. |
 | `rsmm repo` | `rsmm.cli.repo_cmd` | `rsmm repo`, `rsmm sign`, `rsmm verify`, `rsmm keygen`. |
 | `rsmm restore` | `rsmm.cli.apply_mods` | Ravenswatch Mod Manager — install-time mod applier. |
-| `rsmm run` | `rsmm.cli.run` | rsmm run — launch Ravenswatch via Steam, ensuring the WINEDLLOVERRIDES |
+| `rsmm run` | `rsmm.cli.run` | rsmm run — launch Ravenswatch via Steam with the loader override in place, |
 | `rsmm safe-mode` | `rsmm.cli.safe_mode` | `rsmm safe-mode` — drive the SDK health quarantine. |
 | `rsmm save` | `rsmm.cli.cmd_save` | `rsmm save` — inspect Ravenswatch profile saves. |
 | `rsmm schema` | `rsmm.cli.cmd_schema` | rsmm schema — list the vanilla ids a content kind's ``base`` accepts. |

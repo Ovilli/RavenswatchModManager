@@ -174,7 +174,8 @@ Script mods need the **loader**, a file called `winhttp.dll` that sits next to
   starts. Run **Commands → Doctor** to check it's there.
 - **With the modding tools:** run `rsmm install-loader`. Note that
   `rsmm restore --all` removes the loader, so install it again afterwards.
-- **Linux and Steam Deck:** Steam needs a launch option to load it. See
+- **Linux and Steam Deck:** a modded launch sets the loader override in the
+  game's Proton prefix, which needs the game to have run once under Proton. See
   [Script mods on Linux and Steam Deck](/getting-started/install/#script-mods-on-linux-and-steam-deck).
 
 Then check the **Log** page for errors from the mod.

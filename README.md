@@ -153,8 +153,9 @@ rsmm install-loader    # install the loader and the Lua SDK into the game folder
 rsmm log -f            # follow the loader log
 ```
 
-On Linux under Proton, add `WINEDLLOVERRIDES="winhttp=n,b" %command%` to the game's
-Steam launch options.
+On Linux under Proton, launch with `rsmm run`, which writes the loader override
+into the game's Proton prefix. If the prefix doesn't exist yet, add
+`WINEDLLOVERRIDES="winhttp=n,b" %command%` to the game's Steam launch options.
 
 ## If something goes wrong
 

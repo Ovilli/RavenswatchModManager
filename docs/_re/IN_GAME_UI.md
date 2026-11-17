@@ -1,5 +1,11 @@
 # In-game mod UI — recon (2026-10-24, build b9c3642884a8)
 
+> **Note (2026-11-17):** the Mods tab described below was replaced by a Mods
+> book page drawn by `R.ui.menus` (#111, #152, merged to main through #154).
+> `hook_settings_menu.cpp` still holds the model, persistence and the pause
+> menu Mods button; the page itself is `hook_book_pages.cpp` and
+> `src/loader/lua/rsmm/mods_menu.lua`.
+
 > **SUPERSEDED 2026-10-24 — the ImGui overlay below was removed.** It worked,
 > but painting our own book over the Settings page was too complicated and
 > looked wrong. The mod menu is now a **Mods tab inside the game's own Settings

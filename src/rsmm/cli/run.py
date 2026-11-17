@@ -1,15 +1,17 @@
 """
-rsmm run — launch Ravenswatch via Steam, ensuring the WINEDLLOVERRIDES
-launch option is set so the loader DLL gets picked up.
+rsmm run — launch Ravenswatch via Steam with the loader override in place,
+so Proton picks up the loader DLL.
 
 Default behavior:
-  1. Inspect Steam's localconfig.vdf for the app's LaunchOptions.
-  2. If it already contains "winhttp=n,b" or "winhttp=native,builtin",
-     hand off to the steam://rungameid URL — Steam respects the options.
-  3. Otherwise REFUSE to launch and print the exact text to paste into
-     the Steam properties dialog. The user can also pass --set-launch-
-     options to have us write it ourselves (Steam must be closed; we
-     back the file up first).
+  1. On Windows, hand off to the steam://rungameid URL; nothing else is needed.
+  2. On Proton, write "winhttp"="native,builtin" into the game prefix's
+     user.reg and launch. Skipped when the prefix doesn't exist yet or a
+     wine process holds it.
+  3. Otherwise inspect Steam's localconfig.vdf for the app's LaunchOptions.
+     If they contain "winhttp=n,b" or "winhttp=native,builtin", launch;
+     if not, REFUSE and print the exact text to paste into the Steam
+     properties dialog. --set-launch-options writes it for you (Steam
+     must be closed; the file is backed up first).
 
 Why not just exec Proton directly: the Flatpak Steam ships Proton
 inside its own runtime; running Proton from outside the sandbox skips
