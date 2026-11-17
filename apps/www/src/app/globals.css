@@ -2,6 +2,9 @@
    --font-display (headings), --font-body (text and UI), --font-fraktur (the
    wordmark only) and --font-mono. */
 
+@import '@rsmm/ui/registry.css';
+@import '@rsmm/ui/registry-detail.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

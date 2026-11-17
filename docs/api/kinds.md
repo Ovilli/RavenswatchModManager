@@ -6,7 +6,7 @@ Every content kind carries an honesty rating — how much the bytes it emits are
 Do not edit by hand, and do not restate a rating in prose — link here. Run `rsmm docs-gen` after changing a rating; CI `--check`s it.
 :::
 
-**22 kinds** — 16 confirmed, 4 experimental, 2 guess.
+**23 kinds** — 16 confirmed, 5 experimental, 2 guess.
 
 | Kind | Confidence | Builder | What it does |
 |---|---|---|---|
@@ -32,6 +32,7 @@ Do not edit by hand, and do not restate a rating in prose — link here. Run `rs
 | `scenery` | ⚠️ experimental | `rsmm.sdk.kinds.scenery` | Chapter scenery content builder. |
 | `skin` | ✅ confirmed | `rsmm.sdk.kinds.skins` | ``kind = "skin"`` — NEW skins for a shipped hero, in the hero's own skin list. |
 | `ingredient` | ✅ confirmed | `rsmm.sdk.kinds.ingredients` | A NEW ingredient — the carried resource of a collect-and-deliver quest. |
+| `nameplate_crown` | ⚠️ experimental | `rsmm.sdk.kinds.nameplate_crowns` | Experimental native crown layout; runtime host selection is not implemented. |
 
 A block that sets one of these fields is rated as the field, whatever its kind's rating (`FIELD_CONFIDENCE`):
 

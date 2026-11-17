@@ -25,7 +25,7 @@ corpus (survives game updates); **va** = base-relative absolute (data globals);
 Functions tagged `callable` have a typed C++ accessor in `engine::` and a Lua
 resolver entry. See [CLAUDE.md] for the workflow.
 
-Total: **409** symbols across 29 categories.
+Total: **414** symbols across 29 categories.
 
 ## analytics
 
@@ -166,7 +166,7 @@ Total: **409** symbols across 29 categories.
 | `oCCustomFlagList_vftable` | `0x140efe050` | 📍 va |  | vftable of oCCustomFlagList. An empty list is the 0x18-byte struct { vftable @+0x0, lis… |
 | `oCEntityHitData_vftable` | `0x140f101e8` | 📍 va |  | vftable of oCEntityHitData (the ~0xb0-byte hit descriptor passed to Entity_DispatchHit … |
 | `oCEntityValueUnion_vftable` | `0x140f91d68` | 📍 va |  | vftable of oCEntityValueUnion, the ~0x20-byte tagged value returned by EntityValue_Look… |
-| `oCGameEventNetworkModifier_vftable` | `0x140f343c0` | 📍 va |  | vftable of oCGameEventNetworkModifier — the durable stat-modifier named event (leaf of … |
+| `oCGameEventNetworkModifier_vftable` | `0x140f343c0` | 📍 va |  | vftable of oCGameEventNetworkModifier â€” the durable stat-modifier named event (leaf o… |
 
 ## entity-values
 
@@ -184,7 +184,7 @@ Total: **409** symbols across 29 categories.
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
 | `Analytics_SubmitNamedEvent` | `0x1401f48d0` | ✅ ok | ✔ | void(void* analytics_mgr, void* payload_kv, StringDesc* event_name, char has_run_ctx) |
-| `Crc32_TableInit` | `0x14051e100` | ✅ ok |  | Builds the 256-entry CRC32 lookup table at DAT_141436710 (lazy, runtime — the table is … |
+| `Crc32_TableInit` | `0x14051e100` | ✅ ok |  | Builds the 256-entry CRC32 lookup table at DAT_141436710 (lazy, runtime â€” the table i… |
 | `EventQueue_Drain` | `0x140662a80` | ✅ ok |  | void(void* queue) |
 | `Event_LevelUp` → `level_up` | `0x1401f0750` | ✅ ok | ✔ | Emitter whose body references the 'level_up_reach' string (xref 0x1401f64a4). void(ctx,… |
 | `Event_RunEnd` → `run_end` | `0x1401ef520` | ✅ ok | ✔ | Emitter whose body references the 'run_end' string (xref 0x1401f5347). Loader post-deto… |
@@ -297,20 +297,20 @@ Total: **409** symbols across 29 categories.
 | `HasGameModifierStateMachine_Register` | `0x1401900d0` | ✅ ok |  | void(void) |
 | `HeroDef_PostLoad` | `0x14031b3f0` | ✅ ok | ✔ | bool(void* definition) |
 | `IngredientDef_PostLoad` | `0x14031e8b0` | ✅ ok | ✔ | bool(void* definition) |
-| `Library_AchievementDefinition_vftable` | `0x140f23ff0` | 📍 va |  | vftable of oCTLibrary<oe::dt::AchievementDefinition> singleton. ⚠ ADDRESS CORRECTED 202… |
-| `Library_ChallengeDefinition_vftable` | `0x140f267c0` | 📍 va |  | vftable of oCTLibrary<oe::dt::ChallengeDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-… |
-| `Library_DreamShardDefinition_vftable` | `0x140f266a0` | 📍 va |  | vftable of oCTLibrary<oCDtDreamShardDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-… |
-| `Library_EnemyCampDifficultyDefinition_vftable` | `0x140f27818` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyCampDifficultyDefinition> singleton. ⚠ ADDRESS CORRECTED… |
-| `Library_EnemyCampTierDefinition_vftable` | `0x140f27858` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyCampTierDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-… |
-| `Library_EnemyDefinition_vftable` | `0x140f27d50` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: t… |
-| `Library_EnemyTribeDefinition_vftable` | `0x140f27a08` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyTribeDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-… |
-| `Library_EntitySettingsResource_vftable` | `0x140f72d90` | 📍 va |  | vftable of oCTLibrary<oCEntitySettingsResource> singleton. ⚠ ADDRESS CORRECTED 2026-09-… |
+| `Library_AchievementDefinition_vftable` | `0x140f23ff0` | 📍 va |  | vftable of oCTLibrary<oe::dt::AchievementDefinition> singleton. âš  ADDRESS CORRECTED 2… |
+| `Library_ChallengeDefinition_vftable` | `0x140f267c0` | 📍 va |  | vftable of oCTLibrary<oe::dt::ChallengeDefinition> singleton. âš  ADDRESS CORRECTED 202… |
+| `Library_DreamShardDefinition_vftable` | `0x140f266a0` | 📍 va |  | vftable of oCTLibrary<oCDtDreamShardDefinition> singleton. âš  ADDRESS CORRECTED 2026-0… |
+| `Library_EnemyCampDifficultyDefinition_vftable` | `0x140f27818` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyCampDifficultyDefinition> singleton. âš  ADDRESS CORRECT… |
+| `Library_EnemyCampTierDefinition_vftable` | `0x140f27858` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyCampTierDefinition> singleton. âš  ADDRESS CORRECTED 202… |
+| `Library_EnemyDefinition_vftable` | `0x140f27d50` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyDefinition> singleton. âš  ADDRESS CORRECTED 2026-09-17:… |
+| `Library_EnemyTribeDefinition_vftable` | `0x140f27a08` | 📍 va |  | vftable of oCTLibrary<oCDtEnemyTribeDefinition> singleton. âš  ADDRESS CORRECTED 2026-0… |
+| `Library_EntitySettingsResource_vftable` | `0x140f72d90` | 📍 va |  | vftable of oCTLibrary<oCEntitySettingsResource> singleton. âš  ADDRESS CORRECTED 2026-0… |
 | `Library_GameModifierDefinition_vftable` | `0x140f26b98` | 📍 va |  | vftable of oCTLibrary<oe::dt::GameModifierDefinition> singleton. GameModifiers = the ru… |
-| `Library_IngredientDefinition_vftable` | `0x140f26800` | 📍 va |  | vftable of oCTLibrary<oCDtIngredientDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-… |
-| `Library_MapDefinition_vftable` | `0x140f26608` | 📍 va |  | vftable of oCTLibrary<oCDtMapDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: the… |
-| `Library_MelodyDefinition_vftable` | `0x140f268e0` | 📍 va |  | vftable of oCTLibrary<MelodyDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: the … |
-| `Library_RewardDefinition_vftable` | `0x140f26660` | 📍 va |  | vftable of oCTLibrary<oCDtRewardDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: … |
-| `Library_TileDefinition_vftable` | `0x140f27af0` | 📍 va |  | vftable of oCTLibrary<oCDtTileDefinition> singleton. ⚠ ADDRESS CORRECTED 2026-09-17: th… |
+| `Library_IngredientDefinition_vftable` | `0x140f26800` | 📍 va |  | vftable of oCTLibrary<oCDtIngredientDefinition> singleton. âš  ADDRESS CORRECTED 2026-0… |
+| `Library_MapDefinition_vftable` | `0x140f26608` | 📍 va |  | vftable of oCTLibrary<oCDtMapDefinition> singleton. âš  ADDRESS CORRECTED 2026-09-17: t… |
+| `Library_MelodyDefinition_vftable` | `0x140f268e0` | 📍 va |  | vftable of oCTLibrary<MelodyDefinition> singleton. âš  ADDRESS CORRECTED 2026-09-17: th… |
+| `Library_RewardDefinition_vftable` | `0x140f26660` | 📍 va |  | vftable of oCTLibrary<oCDtRewardDefinition> singleton. âš  ADDRESS CORRECTED 2026-09-17… |
+| `Library_TileDefinition_vftable` | `0x140f27af0` | 📍 va |  | vftable of oCTLibrary<oCDtTileDefinition> singleton. âš  ADDRESS CORRECTED 2026-09-17: … |
 | `Library_VersionDefinition_vftable` | `0x140f265c8` | 📍 va |  | vftable of oCTLibrary<oe::dt::VersionDefinition> singleton (LiveOps version manifest). … |
 | `MapDef_PostLoad` | `0x14031ec10` | ✅ ok | ✔ | bool(void* definition) |
 | `MapDef_RegisterAssetLoader` | `0x14031ea70` | ✅ ok |  | void(void* assetClassDesc) |
@@ -355,7 +355,7 @@ Total: **409** symbols across 29 categories.
 | `Netcode_EntityReplSetup` | `0x140720350` | ✅ ok | ✔ | void(oCEntityCpntNetwork* self) |
 | `Netcode_PeerStateTick` | `0x1402aaf80` | ✅ ok |  | Per-peer connection-state tick (peer conn-state enum at peer+0xCC; 3=connected). Reconn… |
 | `Netcode_ReconnectMaxRead` | `0x1402ab327` | ✅ ok |  | (code location, not callable) |
-| `Netcode_SessionCtx_LocalGuid` | `0x1408b60d0` | ✅ ok |  | oCDtP2PSessionSceneContext::vft[0x88] — returns THIS machine's session id. Ghidra 2026-… |
+| `Netcode_SessionCtx_LocalGuid` | `0x1408b60d0` | ✅ ok |  | oCDtP2PSessionSceneContext::vft[0x88] â€” returns THIS machine's session id. Ghidra 202… |
 | `P2PSession_OnFcm2NewHost` | `0x1408b70b0` | ✅ ok |  | The game's ID_FCM2_NEW_HOST handler -- i.e. where RakNet's FullyConnectedMesh2 host ELE… |
 | `P2PSession_SetState` | `0x14085ae80` | ✅ ok |  | void(oCDtP2PSessionSceneContext* ctx, int newState) |
 | `P2PSession_StateNames` | `0x140ee98a0` | 📍 va |  | struct { const char* s; uint32 len; } [14]  // 0x10 stride |
@@ -548,8 +548,13 @@ Total: **409** symbols across 29 categories.
 | `UiController_OnHide` | `0x14034d320` | ✅ ok |  | void(void* uiController) |
 | `UiController_OnShow` | `0x14034d280` | ✅ ok |  | void(void* uiController) |
 | `UiController_UnbindComponent` | `0x1403469e0` | ❓ unverified |  | void(void* uiController) |
+| `UiElementDesc_Serialize` | `0x140570920` | ❓ unverified |  | Static serializer recon on b9c3642884a8; oC2dElementDesc RTTI primary vtable slot 3. v1… |
 | `UiLabel_MeasureWrapped` | `0x1405640d0` | ✅ ok | ✔ | float* (void* label, float out[2]) |
 | `UiLabel_New` | `0x14056dbd0` | ✅ ok | ✔ | oCUILabel* () |
+| `UiLabel_vftable` | `0x140f4f6e0` | 📍 va |  | Live read-only proof on b9c3642884a8, 2026-11-11: overhead Life Bar Spawner +0x88 -> oC… |
+| `UiLayoutWindow_vftable` | `0x140f4f808` | 📍 va |  | Live read-only proof on b9c3642884a8, 2026-11-11: overhead Life Bar Spawner +0x88 -> oC… |
+| `UiPictureDesc_Serialize` | `0x140574920` | ❓ unverified |  | Static serializer recon on b9c3642884a8; oC2dPictureDesc RTTI primary vtable slot 3. ca… |
+| `UiPicture_vftable` | `0x140f50d18` | 📍 va |  | Live read-only proof on b9c3642884a8, 2026-11-11: overhead Life Bar Spawner +0x88 -> oC… |
 | `UiScrollPanel_EnsureVisible` | `0x140553b60` | ✅ ok | ✔ | void(void* panel, int top, int bottom) |
 | `UiScrollPanel_Init` | `0x1405536b0` | ✅ ok | ✔ | void(void* panel, uint32_t vertical, uint32_t a, uint8_t b, uint8_t c) |
 | `UiScrollPanel_Layout` | `0x140553860` | ✅ ok | ✔ | void(void* panel) |
