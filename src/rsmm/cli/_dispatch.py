@@ -35,6 +35,11 @@ def _dispatch_module(modname: str, argv: list[str]) -> int:
 #: imported from that module so `main()` can route without importing it.
 HOOK_RUNNER_VERB = "__on-disable"
 
+#: Hidden: the detached restore-after-exit watcher `rsmm run` starts. Routed
+#: like the hook runner, so it stays out of `iter_commands()`, the help and
+#: the generated docs. `rsmm watch-restore --help` still works.
+WATCH_RESTORE_VERB = "watch-restore"
+
 LEGACY = {
     "apply":         ("rsmm.cli.apply_mods",                 []),
     "list":          ("rsmm.cli.apply_mods",                 ["--list"]),
@@ -303,6 +308,9 @@ def main(argv: list[str] | None = None) -> int:
     # out of the help listing and the generated CLI docs.
     if sub == HOOK_RUNNER_VERB:
         return _dispatch_module("rsmm.cli.cmd_run_hook", rest)
+
+    if sub == WATCH_RESTORE_VERB:
+        return _dispatch_module("rsmm.cli.watch_restore", rest)
 
     if sub in BUILTIN:
         return _dispatch_module(BUILTIN[sub], rest)

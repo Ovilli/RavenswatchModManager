@@ -18,12 +18,11 @@ import { noteModdedLaunch } from './support-nudge';
 /**
  * The single owner of "launch the game".
  *
- * Launching modded rewrites files in the game install, so every launch MUST
- * be followed by a restore once the game exits — and the window-close guard
- * needs to know a modded session is live. That bookkeeping used to sit inside
- * the status strip, which meant launching from anywhere else (the Commands
- * page) applied mods, launched, and then left the install modded forever with
- * no watcher and no close warning. Route every launch through here instead.
+ * Launching modded rewrites files in the game install. `rsmm run` detaches a
+ * `watch-restore` process that restores them once the game exits, so this
+ * provider only tracks the session for the UI (`running` / `busy`). A failed
+ * launch has no watcher, so that path restores here. Route every launch
+ * through here.
  */
 
 const GAME_POLL_INTERVAL_MS = 5000;
@@ -115,7 +114,7 @@ export function LaunchProvider({ children }: { children: ReactNode }) {
         if (mode === 'modded') {
           await appendLauncherLog(
             'warn',
-            'Could not observe Ravenswatch.exe after launch; automatic restore watcher ended',
+            'Could not observe Ravenswatch.exe after launch; the rsmm watcher restores the files regardless',
           );
         }
         if (launchSeq.current === seq) setRunning(null);
@@ -129,24 +128,14 @@ export function LaunchProvider({ children }: { children: ReactNode }) {
 
       if (launchSeq.current !== seq) return;
 
-      if (mode === 'modded') {
-        try {
-          await appendLauncherLog('info', 'Ravenswatch closed; restoring original files');
-          const result = await restoreAll();
-          if (!result || !result.ok) {
-            throw new Error(result?.stderr?.trim() || result?.stdout?.trim() || 'restore failed');
-          }
-          await appendLauncherLog('info', 'Restore complete');
-        } catch (e) {
-          // Shown in the status strip, so it is translated; the launcher log
-          // line below keeps the same (English) text a support reader expects.
-          const message = t('Automatic restore failed: {error}', { error: String(e) });
-          setLaunchError(message);
-          await appendLauncherLog('error', message);
-        }
-      } else {
-        await appendLauncherLog('info', 'Ravenswatch closed');
-      }
+      // The rsmm watcher that `rsmm run` detached restores the files; a second
+      // restore from here would race it for the install lock.
+      await appendLauncherLog(
+        'info',
+        mode === 'modded'
+          ? 'Ravenswatch closed; the rsmm watcher restores the original files'
+          : 'Ravenswatch closed',
+      );
 
       if (launchSeq.current === seq) setRunning(null);
     })();

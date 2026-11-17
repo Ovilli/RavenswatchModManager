@@ -176,6 +176,48 @@ def test_windows_launch_never_touches_proton_prefix(monkeypatch):
     monkeypatch.setattr(run_mod, "_steam_root",
                         lambda: (_ for _ in ()).throw(AssertionError("vdf checked")))
     monkeypatch.setattr(run_mod, "_open_steam_url", lambda u: opened.append(u) or 0)
+    monkeypatch.setattr(run_mod, "_spawn_restore_watcher", lambda: None)
 
     assert run_mod.main() == 0
     assert opened == ["steam://rungameid/2071280"]
+
+
+def _run_main(monkeypatch, argv, open_rc=0):
+    """Run `main()` on Windows with Steam and the watcher stubbed; return the
+    number of watcher spawns."""
+    from rsmm.cli import run as run_mod
+
+    spawned: list[int] = []
+    monkeypatch.setattr(run_mod.sys, "platform", "win32", raising=False)
+    monkeypatch.setattr(run_mod.sys, "argv", ["rsmm run", *argv])
+    monkeypatch.setattr(run_mod, "find_game_dir", lambda: None)
+    monkeypatch.setattr(run_mod, "_rsmm_subcommand", lambda _a: True)
+    monkeypatch.setattr(run_mod, "_open_steam_url", lambda _u: open_rc)
+    monkeypatch.setattr(run_mod, "_spawn_restore_watcher", lambda: spawned.append(1))
+    run_mod.main()
+    return len(spawned)
+
+
+def test_modded_launch_starts_the_restore_watcher(monkeypatch):
+    assert _run_main(monkeypatch, []) == 1
+
+
+def test_watcher_not_started_when_it_has_nothing_to_restore(monkeypatch):
+    assert _run_main(monkeypatch, ["--vanilla"]) == 0
+    assert _run_main(monkeypatch, ["--no-launch"]) == 0
+    assert _run_main(monkeypatch, ["--no-watch"]) == 0
+
+
+def test_watcher_not_started_when_the_launch_failed(monkeypatch):
+    assert _run_main(monkeypatch, [], open_rc=1) == 0
+
+
+def test_spawn_failure_only_warns(monkeypatch, capsys):
+    from rsmm.cli import run as run_mod
+
+    def boom(*_a, **_k):
+        raise OSError("nope")
+
+    monkeypatch.setattr(run_mod.subprocess, "Popen", boom)
+    run_mod._spawn_restore_watcher()
+    assert "Could not start the restore watcher" in capsys.readouterr().err
