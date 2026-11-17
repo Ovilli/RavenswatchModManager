@@ -590,6 +590,7 @@ def add_stat(raw: bytes, *, talent: str, stat: str | int, values=None, percent: 
     more_bleed = norm_stat == _MORE_BLEED
     crit_to_damage = norm_stat == _CRIT_TO_DAMAGE
     trait_charge = False
+    points_on_card = False          # a points stat: stored /100, its card shown x100
     if invulnerable:
         if not (during or after or on):
             raise AddStatError(f"always {held.lower()} is not offered (it would make the hero "
@@ -624,6 +625,15 @@ def add_stat(raw: bytes, *, talent: str, stat: str | int, values=None, percent: 
                 f"{stat!r} is something the game puts on whoever is hit, and an added stat "
                 f"applies to the hero itself, so {talent!r} would debuff its own hero")
         amounts = normalise_values(values)
+        from .item_effect import _in_points
+        if _in_points(key) and not percent:
+            # Vitality and attack power are written in POINTS but their
+            # modifiers store a fraction: one point is 0.01 (the item path,
+            # proven in game). A talent wrote the points raw, so Golden Bean's
+            # +10 vitality was +1000 (audit 2026-11-16). Stored /100 and shown
+            # x100 on the card, as shipped vitality items show it.
+            amounts = {t: v / 100 for t, v in amounts.items()}
+            points_on_card = True
         # The read-back: what these numbers do, so a misread value ("x0.4"
         # meant as -60% but written 0.4) shows before anyone plays it.
         import sys
@@ -791,7 +801,8 @@ def add_stat(raw: bytes, *, talent: str, stat: str | int, values=None, percent: 
         else:
             w.modifier(new_mod, key, amount)
             ef.add_ref(state.name, "while_active", new_mod)
-        slot = ef.add_format_slot(fmt.name, new_sel, percent=percent and not invulnerable) \
+        slot = ef.add_format_slot(fmt.name, new_sel,
+                                  percent=(percent or points_on_card) and not invulnerable) \
             if fmt else None
         out = ef.to_bytes()
     except (GE.EntityEditError, P.PartError) as e:

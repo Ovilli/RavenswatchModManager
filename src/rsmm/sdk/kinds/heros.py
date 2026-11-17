@@ -1257,6 +1257,7 @@ def _build_talents(specs: dict, b, hid: str, mod_id: str):
 _SCRATCH_FOLDER, _SCRATCH_BANK = "Hero_Common", "Common~GAM.xls"
 _SCRATCH_SORT = 14000
 _SCRATCH_FIELDS = frozenset({"rig", "mesh", "material", "albedo", "slots", "abilities",
+                             "level_up",
                              "ultimates", "weapon",
                              "talents", "sort", "portrait", "animations", "model",
                              "projectiles", "book", "new_hero", "skin_icon", "codex",
@@ -1825,7 +1826,7 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     button_steps: dict[str, list] = {}
     for slot, raw in (frame.get("abilities") or {}).items():
         raw = dict(raw)
-        word = str(slot).title()
+        word = HA.slot_word(str(slot))
         if raw.get("steps"):
             hooks.append({"when": f"State {word} Ability", "steps": raw["steps"],
                           "slot": str(slot)})
@@ -1934,7 +1935,8 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             read, scope=scope, fx_ref=fx_ref, common_alias=aliases["Hero_Common"].guid,
             mesh=mesh, material=body_mat, slots=slots, talents=talents,
             abilities=abilities, effects=effects, seed=f"{mod_id}:{hid}", indicators=False,
-            ultimates=ultimates, weapon=weapon, sounds=sounds, rig=rig, bones=n_bones)
+            ultimates=ultimates, weapon=weapon, sounds=sounds, rig=rig, bones=n_bones,
+            level_up=_level_up(frame.get("level_up"), hid))
     except (HF.FrameError, HA.AbilityError) as e:
         raise ContentError(f"hero {hid}: {e}") from e
 
@@ -2503,7 +2505,7 @@ def _frame_family(frame: dict, b, R, H, app: str, herodef: bytes, hero_alias: by
         for slot, raw in (frame.get("abilities") or {}).items():
             raw = dict(raw)
             card = {k: raw.pop(k) for k in ("name", "description") if k in raw}
-            word = str(slot).title()
+            word = HA.slot_word(str(slot))
             keys = {"name": f"Hero_{hid}_Ability_{word}_Name",
                     "description": f"Hero_{hid}_Ability_{word}_Desc"}
             for k, text in card.items():
@@ -2574,6 +2576,17 @@ def _borrow_closure(targets: list[str], out_dir: Path, hid: str) -> list[str]:
     # ``extra`` is cooked paths: each as its cache line, as poi does (59 raw
     # paths per hero cache were written as lines no shipped cache has)
     return sorted(kept | {RC.entry_for(c) for c in extra})
+
+
+def _level_up(v, hid: str) -> str:
+    """``frame.level_up``: the effect of the hero's own played on level up (an
+    ``fx:<name>`` of its effects, resolved by now, or a shipped .vfx.ot)."""
+    if not v:
+        return ""
+    if not isinstance(v, str) or not v.endswith(".vfx.ot"):
+        raise ContentError(f"hero {hid}: frame.level_up is an effect: \"fx:<name>\" of its "
+                           "own effects, or a shipped Settings\\...\\<name>.vfx.ot")
+    return v
 
 
 def _table(v, what: str, hid: str) -> dict:
