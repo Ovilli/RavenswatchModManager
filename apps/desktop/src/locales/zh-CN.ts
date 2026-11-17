@@ -22,6 +22,10 @@
  */
 
 export const zhCN: Record<string, string> = {
+  '{n} Active': '已启用 {n} 个',
+  'Library · {n} active': '模组库 · 已启用 {n} 个',
+  '{n} active mod in {profile}': '{profile} 中已启用 {n} 个模组',
+  '{n} active mods in {profile}': '{profile} 中已启用 {n} 个模组',
   '{name} by {author}': '{name}，作者 {author}',
   '{name} preview': '{name} 预览',
   'Co-author': '共同作者',
@@ -195,7 +199,6 @@ export const zhCN: Record<string, string> = {
     '请关闭游戏和 Steam，然后重试。在 Windows 上，游戏文件夹可能需要管理员权限。',
   'Close the {name} overlay (shift-click to recentre it)':
     '关闭 {name} 悬浮窗（按住 Shift 点击可重新居中）',
-  'Collapse sidebar': '折叠侧边栏',
   'Collapse the sidebar to icons': '把侧边栏折叠成图标',
   Collections: '合集',
   'Command log': '命令日志',
@@ -667,6 +670,7 @@ export const zhCN: Record<string, string> = {
   'Search installed mods': '搜索已安装的模组',
   'Search launcher log...': '搜索启动器日志…',
   'Search mods': '搜索模组',
+  Search: '搜索',
   'Search mods and commands': '搜索模组和命令',
   'Search mods, or type a command — launch, restore, settings…':
     '搜索模组，或输入命令——启动、还原、设置…',
@@ -853,9 +857,7 @@ export const zhCN: Record<string, string> = {
   'by {author}': '作者 {author}',
   cancel: '取消',
   close: '关闭',
-  command: '命令',
   conflict: '冲突',
-  conflicts: '冲突',
   context: '详细内容',
   'create + install': '创建并安装',
   'create new': '新建',
@@ -934,7 +936,6 @@ export const zhCN: Record<string, string> = {
   unknown: '未知',
   'update failed': '更新失败',
   'updated {date}': '更新于 {date}',
-  updates: '有更新',
   variant: '变体',
   version: '版本',
   'v{version} is available on the loader channel.': '加载器通道上有 v{version} 可用。',
