@@ -1,13 +1,17 @@
 'use client';
 
-import { type ModListItem, hasPrivateOnlyTag } from '@rsmm/schemas';
-import { RegistryModCard, RegistryResultsControls, Spinner, buttonVariants } from '@rsmm/ui';
+import type { ModListItem } from '@rsmm/schemas';
+import { Badge, Spinner, buttonVariants } from '@rsmm/ui';
 import { useQuery } from '@tanstack/react-query';
 import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Download,
   ExternalLink,
+  LayoutGrid,
+  Rows3,
+  Star,
 } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
@@ -23,6 +27,7 @@ import {
   registryHref,
 } from '../../../lib/registry-query';
 import { ListingCard } from '../../components/listing-card';
+import { ModCover } from '../../components/mod-cover';
 import { RegistrySearch, RegistrySearchFallback } from '../../components/registry-search';
 import { type RegistryFacet, RegistryFilterDialog } from './registry-filters';
 import './registry.css';
@@ -151,18 +156,48 @@ function RegistryInner() {
           filtersOpen={filtersOpen}
           onOpenFilters={() => setFiltersOpen(true)}
         />
-        <RegistryResultsControls
-          sort={sort}
-          view={view}
-          onSortChange={(nextSort) => {
-            const params = new URLSearchParams(window.location.search);
-            params.delete('page');
-            if (nextSort === 'popular') params.delete('sort');
-            else params.set('sort', nextSort);
-            window.history.replaceState(null, '', registryHref(params));
-          }}
-          onViewChange={chooseView}
-        />
+        <div className="registry-result-controls">
+          <label className="registry-sort">
+            <span>Sort by</span>
+            <select
+              aria-label="Sort mods"
+              value={sort}
+              onChange={(event) => {
+                const params = new URLSearchParams(window.location.search);
+                params.delete('page');
+                if (event.target.value === 'popular') params.delete('sort');
+                else params.set('sort', event.target.value);
+                window.history.replaceState(null, '', registryHref(params));
+              }}
+            >
+              <option value="popular">Popular</option>
+              <option value="recent">Recent</option>
+              <option value="rating">Top rated</option>
+            </select>
+            <ChevronDown size={14} aria-hidden />
+          </label>
+          <fieldset className="registry-view-switch">
+            <legend className="sr-only">Layout</legend>
+            <button
+              type="button"
+              className="registry-icon-button"
+              aria-label="Cards"
+              aria-pressed={view === 'grid'}
+              onClick={() => chooseView('grid')}
+            >
+              <LayoutGrid size={18} aria-hidden />
+            </button>
+            <button
+              type="button"
+              className="registry-icon-button"
+              aria-label="List"
+              aria-pressed={view === 'list'}
+              onClick={() => chooseView('list')}
+            >
+              <Rows3 size={18} aria-hidden />
+            </button>
+          </fieldset>
+        </div>
       </header>
 
       <div ref={resultsRef} className="registry-results" aria-busy={list.isFetching}>
@@ -259,41 +294,101 @@ function RegistryInner() {
  */
 function ModListRow({ m, onOpen }: { m: ModListItem; onOpen: () => void }) {
   return (
-    <RegistryModCard
-      view="list"
-      mod={m}
-      privateOnly={hasPrivateOnlyTag(m.tags)}
-      onOpen={onOpen}
-      labels={{
-        author: 'unknown',
-        featured: 'Featured',
-        nsfw: 'nsfw',
-        privateOnly: 'Private games only',
+    <div
+      tabIndex={0}
+      // biome-ignore lint/a11y/useSemanticElements: row-as-link composite with nested interactive children; an <a> may not legally wrap them.
+      role="link"
+      aria-label={`${m.name}${m.author ? ` by ${m.author}` : ''}`}
+      onClick={(e) => {
+        const el = e.target as HTMLElement;
+        if (el.closest('a, button, input, textarea, select, [role="switch"]')) return;
+        onOpen();
       }}
-      actions={
-        <>
-          {m.latestVersion ? (
-            <a
-              href={`${getApiUrl()}/api/mods/${m.slug}/${m.latestVersion}/download`}
-              className={buttonVariants({ variant: 'outline', size: 'sm' })}
-              title="Download mod archive"
-              aria-label={`Download ${m.name} archive`}
-              onClick={(event) => event.stopPropagation()}
-            >
-              <Download className="h-3.5 w-3.5" aria-hidden="true" />
-            </a>
-          ) : null}
-          <a
-            href={`rsmm://mods/${m.slug}`}
-            className={buttonVariants({ variant: 'outline', size: 'sm' })}
-            title="Open in RSMM desktop app"
-            aria-label={`Open ${m.name} in the RSMM desktop app`}
-            onClick={(event) => event.stopPropagation()}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className="grimoire-card flex cursor-pointer items-center gap-3 px-3 py-2"
+    >
+      {m.imageUrl ? (
+        <img
+          src={m.imageUrl}
+          alt=""
+          loading="lazy"
+          className="hidden h-10 w-16 shrink-0 rounded object-cover sm:block"
+        />
+      ) : (
+        <ModCover
+          seed={m.slug}
+          name={m.name}
+          size="sm"
+          className="hidden h-10 w-16 shrink-0 rounded sm:flex"
+        />
+      )}
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <Link
+            href={`/registry/${m.slug}` as Route}
+            onClick={(e) => e.stopPropagation()}
+            className="truncate text-base leading-tight transition-colors hover:text-gilt"
           >
-            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+            {m.name}
+          </Link>
+          {m.featured ? (
+            <Star className="h-3 w-3 shrink-0 text-gilt" aria-label="Featured" />
+          ) : null}
+          {m.nsfw ? (
+            <span className="shrink-0 rounded border border-crimson/40 bg-crimson/10 px-1 font-mono text-[10px] uppercase tracking-widest text-crimson">
+              nsfw
+            </span>
+          ) : null}
+        </div>
+        <p className="truncate text-xs text-muted-foreground">
+          {m.author ?? 'unknown'}
+          {m.latestVersion ? ` · v${m.latestVersion}` : ''}
+          {m.summary ? ` — ${m.summary}` : ''}
+        </p>
+      </div>
+
+      <div className="hidden w-24 shrink-0 md:block">
+        {m.category ? (
+          <Badge variant="secondary" className="text-[0.65rem]">
+            {m.category}
+          </Badge>
+        ) : null}
+      </div>
+      <div className="hidden w-14 shrink-0 text-right font-mono text-xs text-gilt lg:block">
+        {m.rating != null ? `★ ${m.rating.toFixed(1)}` : '—'}
+      </div>
+      <div className="hidden w-20 shrink-0 text-right font-mono text-xs text-muted-foreground lg:block">
+        {m.downloads != null ? `${m.downloads.toLocaleString()} dl` : ''}
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1">
+        {m.latestVersion ? (
+          <a
+            href={`${getApiUrl()}/api/mods/${m.slug}/${m.latestVersion}/download`}
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            title="Download mod archive"
+            aria-label={`Download ${m.name} archive`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Download className="h-3.5 w-3.5" aria-hidden="true" />
           </a>
-        </>
-      }
-    />
+        ) : null}
+        <a
+          href={`rsmm://mods/${m.slug}`}
+          className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          title="Open in RSMM desktop app"
+          aria-label={`Open ${m.name} in the RSMM desktop app`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+        </a>
+      </div>
+    </div>
   );
 }
