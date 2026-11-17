@@ -44,8 +44,8 @@ return function(env)
     local NE = env.named_event                   -- rsmm/named_event.lua
     local M = {}
 
-    local SLOTS_OFF, SLOT_STRIDE, SLOT_COUNT = 0x1008, 0x20, 10  -- 0xff0 before Update 6
-    local ULTI_LIST_OFF, ULTI_COUNT_OFF = 0xfd0, 0xfd8          -- 0xfb8/0xfc0 before Update 6
+    local SLOTS_OFF, SLOT_STRIDE, SLOT_COUNT = 0x1020, 0x20, 10  -- 0x1008 before the patch 2026-11-17 (2a88a3bd5647), 0xff0 before Update 6
+    local ULTI_LIST_OFF, ULTI_COUNT_OFF = 0xfe8, 0xff0          -- 0xfd0/0xfd8 before the patch 2026-11-17 (2a88a3bd5647), 0xfb8/0xfc0 before Update 6
 
     local function send(name, vtype, value)
         return NE.send_value("R.talent", name, vtype, value)

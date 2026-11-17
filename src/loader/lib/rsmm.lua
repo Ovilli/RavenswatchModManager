@@ -842,8 +842,8 @@ end
 -- resolved to a nil GLOBAL and every anchor event raised inside the event
 -- router — which pcalls handlers, so the ally guard silently did nothing and
 -- the hero capture stopped updating. Caught by the spec, not in-game.
-local ENTITY_HUDMIRROR_OFF = 0x1da8      -- ptr to the HUD HP mirror (hero-only; 0x1d80 before Update 6)
-local ENTITY_ISLOCAL_OFF   = 0x1db0      -- 1 = this machine's player (0x1d88 before Update 6)
+local ENTITY_HUDMIRROR_OFF = 0x1dc0      -- ptr to the HUD HP mirror (hero-only; 0x1da8 before the patch 2026-11-17 (2a88a3bd5647), 0x1d80 before Update 6)
+local ENTITY_ISLOCAL_OFF   = 0x1dc8      -- 1 = this machine's player (0x1db0 before the patch 2026-11-17 (2a88a3bd5647), 0x1d88 before Update 6)
 
 local function _dispatcher_is_local(d)
     if not _DISPATCHER_ENTITY_OFF then return nil end
@@ -2807,6 +2807,9 @@ local OPT_VALUE_OFF = 0x28
 -- other slot is unchanged. Update 6 (2026-10-12, ctor FUN_1401c2d70) inserted
 -- "Accepted Privacy Policy" plus one more slot ahead of "Dash at cursor", so
 -- every slot from there on moved +0x60; Forced seed / Dev / Test did not.
+-- The 2026-11-17 patch (ctor FUN_1401c2de0) inserted one more slot after
+-- "Dash at cursor": every slot from "Screen shake" on moved +0x30 (read off
+-- the ctor's per-name slot writes in both builds); the rest did not.
 local _OPT = {
     ["Forced seed"]                                 = { off = 0x0000, type = "uint"  },
     -- "Dev" is the build-type flag the ctor seeds from a baked constant; the
@@ -2815,17 +2818,17 @@ local _OPT = {
     ["Dev"]                                         = { off = 0x0030, type = "bool"  },
     ["Test"]                                        = { off = 0x0060, type = "bool"  },
     ["Dash at cursor"]                              = { off = 0x0ee0, type = "bool"  },
-    ["Screen shake"]                                = { off = 0x10f0, type = "bool"  },
-    ["Pause during choices"]                        = { off = 0x1150, type = "bool"  },
-    ["Show damage and healing numbers"]             = { off = 0x1210, type = "bool"  },
-    ["Select random skin when using random heroes"] = { off = 0x1240, type = "bool"  },
-    ["Show enemy debug info"]                       = { off = 0x1270, type = "bool"  },
-    ["Sectorize enemy camps"]                       = { off = 0x12a0, type = "bool"  },
-    ["Display fake unlock in recap"]                = { off = 0x12d0, type = "bool"  },
-    ["Show social options debug"]                   = { off = 0x1300, type = "bool"  },
-    ["Show hourglass debug info"]                   = { off = 0x1330, type = "bool"  },
-    ["Force epilogue"]                              = { off = 0x1360, type = "bool"  },
-    ["Force end credits"]                           = { off = 0x1390, type = "bool"  },
+    ["Screen shake"]                                = { off = 0x1120, type = "bool"  },
+    ["Pause during choices"]                        = { off = 0x1180, type = "bool"  },
+    ["Show damage and healing numbers"]             = { off = 0x1240, type = "bool"  },
+    ["Select random skin when using random heroes"] = { off = 0x1270, type = "bool"  },
+    ["Show enemy debug info"]                       = { off = 0x12a0, type = "bool"  },
+    ["Sectorize enemy camps"]                       = { off = 0x12d0, type = "bool"  },
+    ["Display fake unlock in recap"]                = { off = 0x1300, type = "bool"  },
+    ["Show social options debug"]                   = { off = 0x1330, type = "bool"  },
+    ["Show hourglass debug info"]                   = { off = 0x1360, type = "bool"  },
+    ["Force epilogue"]                              = { off = 0x1390, type = "bool"  },
+    ["Force end credits"]                           = { off = 0x13c0, type = "bool"  },
 }
 
 -- Accept the GameOptions singleton pointer only if a couple of known bool slots

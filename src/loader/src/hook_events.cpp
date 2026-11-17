@@ -790,10 +790,10 @@ constexpr std::uintptr_t kValueCtxStoreOff = 0x4c8;
 
 void publish_value_ctx(void* ctx);   // defined below, used by detour_give
 constexpr std::uint64_t kPermitUnknown = 0, kPermitYes = 1, kPermitNo = 2;
-constexpr std::uintptr_t kHeroHpOff = 0x15d0;     // 0x15c8 before Update 6
-constexpr std::uintptr_t kHeroMaxHpOff = 0x15d4;  // 0x15cc before Update 6
-constexpr std::uintptr_t kHeroHudMirrorOff = 0x1da8; // ptr to the HUD HP mirror (0x1d80 before Update 6)
-constexpr std::uintptr_t kHeroIsLocalOff = 0x1db0;   // u8, 1 = this machine's player (0x1d88 before Update 6)
+constexpr std::uintptr_t kHeroHpOff = 0x15e8;     // 0x15d0 before the patch 2026-11-17 (2a88a3bd5647), 0x15c8 before Update 6
+constexpr std::uintptr_t kHeroMaxHpOff = 0x15ec;  // 0x15d4 before the patch 2026-11-17 (2a88a3bd5647), 0x15cc before Update 6
+constexpr std::uintptr_t kHeroHudMirrorOff = 0x1dc0; // ptr to the HUD HP mirror (0x1da8 before the patch 2026-11-17 (2a88a3bd5647), 0x1d80 before Update 6)
+constexpr std::uintptr_t kHeroIsLocalOff = 0x1dc8;   // u8, 1 = this machine's player (0x1db0 before the patch 2026-11-17 (2a88a3bd5647), 0x1d88 before Update 6)
 constexpr int kCaptureLogCapKeep = 4;                 // "kept local hero" lines per session
 
 using SubscribeAll_t    = void (*)(void*);
