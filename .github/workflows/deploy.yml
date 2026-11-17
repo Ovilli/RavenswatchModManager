@@ -125,6 +125,12 @@ jobs:
             echo 'projects=[]' >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # A PR is compared from where it left main, not from main's tip:
+          # main moving on after the branch was cut made every newer main
+          # change look like the PR's, and deployed sites it never touched.
+          if [ "$EVENT" = "pull_request" ] && [ -n "$BASE" ]; then
+            BASE=$(git merge-base "$BASE" "$SHA" || echo "$BASE")
+          fi
           picked=""
           for p in www api docs; do
             if [ "$EVENT" = "workflow_dispatch" ]; then
