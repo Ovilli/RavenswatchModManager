@@ -72,11 +72,23 @@ def main() -> int:
     ap.add_argument("--write", type=Path, help="write old->new map JSON here")
     ap.add_argument("--update-symbols", action="store_true",
                     help="rewrite data/symbols.json raw/anchor refs in place")
+    ap.add_argument("--old-exe", type=Path,
+                    help="the PREVIOUS build's exe (a snapshot copy); its .text is read "
+                         "directly instead of the Ghidra dump in docs/_re/out/")
     args = ap.parse_args()
 
-    meta = json.loads(OLD_TEXT_META.read_text())
-    old_text = OLD_TEXT_BIN.read_bytes()
-    old_text_va = int(meta["text_va"], 16)
+    if args.old_exe:
+        old_data = args.old_exe.read_bytes()
+        old_base, old_secs = gen.parse_pe(old_data)
+        t = old_secs[0]
+        old_text = old_data[t["raw_off"]:t["raw_off"] + t["raw_size"]]
+        old_text_va = old_base + t["rva"]
+    else:
+        # A dump left over from an older build remaps from the wrong addresses
+        # (2026-11-17: the dump on disk was two builds back). --old-exe avoids it.
+        meta = json.loads(OLD_TEXT_META.read_text())
+        old_text = OLD_TEXT_BIN.read_bytes()
+        old_text_va = int(meta["text_va"], 16)
 
     new_data = Path(args.exe).read_bytes()
     img_base, sections = gen.parse_pe(new_data)
@@ -84,7 +96,7 @@ def main() -> int:
     new_text = new_data[text["raw_off"]:text["raw_off"] + text["raw_size"]]
     new_text_va = img_base + text["rva"]
 
-    doc = json.loads(SYMBOLS_JSON.read_text())
+    doc = json.loads(SYMBOLS_JSON.read_text(encoding="utf-8"))
     targets = collect_targets(doc["symbols"])
     print(f"{len(targets)} unique old function addresses to remap", file=sys.stderr)
 
@@ -267,7 +279,8 @@ def main() -> int:
                 if new_name != s["anchor"]["raw"]:
                     s["anchor"]["raw"] = new_name
                     changed += 1
-        SYMBOLS_JSON.write_text(json.dumps(doc, indent=1) + "\n")
+        SYMBOLS_JSON.write_text(json.dumps(doc, indent=1, ensure_ascii=False) + "\n",
+                                encoding="utf-8")
         print(f"updated data/symbols.json: {changed} refs rewritten", file=sys.stderr)
 
     return 0 if not unmatched else 1
