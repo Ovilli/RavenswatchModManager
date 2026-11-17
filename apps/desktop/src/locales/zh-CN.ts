@@ -51,6 +51,7 @@ export const zhCN: Record<string, string> = {
   'Show {label}': '显示 {label}',
   Video: '视频',
   'Clear search': '清除搜索',
+  'Close search': '关闭搜索',
   'Filters, {n} active': '筛选，已启用 {n} 项',
   'Close filters': '关闭筛选',
   '(currently running v{version})': '（当前运行 v{version}）',

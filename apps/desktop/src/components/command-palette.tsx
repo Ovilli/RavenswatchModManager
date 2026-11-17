@@ -1,6 +1,7 @@
+import { RegistrySearchBar } from '@rsmm/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { Search } from 'lucide-react';
+import { X } from 'lucide-react';
 import { type ReactNode, type RefObject, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { api, logApiError } from '../lib/api';
 import { useT } from '../lib/i18n-react';
@@ -294,52 +295,60 @@ export function CommandPalette() {
       focusRef={inputRef}
       onClose={() => setOpen(false)}
     >
-      <div className="flex items-center gap-3 border-b border-border px-3 py-2">
-        <Search className="h-4 w-4 text-ash" aria-hidden />
-        <input
-          ref={inputRef}
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
+      <div className="registry-search-dialog-header">
+        <RegistrySearchBar
+          inputRef={inputRef}
+          query={q}
+          onQueryChange={(query) => {
+            setQ(query);
             setCursor(0);
           }}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowDown') {
-              e.preventDefault();
-              setCursor((c) => Math.min(c + 1, rows.length - 1));
-            } else if (e.key === 'ArrowUp') {
-              e.preventDefault();
-              setCursor((c) => Math.max(c - 1, 0));
-            } else if (e.key === 'Home') {
-              e.preventDefault();
-              setCursor(0);
-            } else if (e.key === 'End') {
-              e.preventDefault();
-              setCursor(Math.max(rows.length - 1, 0));
-            } else if (e.key === 'Enter') {
-              e.preventDefault();
-              commit(cursor);
-            }
-          }}
+          onSubmit={() => commit(cursor)}
           placeholder={t('Search mods, or type a command — launch, restore, settings…')}
-          className="w-full bg-transparent text-parchment placeholder:text-ash focus:outline-none"
-          role="combobox"
-          aria-expanded={true}
-          aria-controls={listboxId}
-          aria-activedescendant={rows[cursor] ? `${listboxId}-opt-${cursor}` : undefined}
-          aria-autocomplete="list"
+          searchLabel={t('Search mods and commands')}
+          labels={{ clear: t('Clear search') }}
+          inputProps={{
+            role: 'combobox',
+            'aria-expanded': true,
+            'aria-controls': listboxId,
+            'aria-activedescendant': rows[cursor] ? `${listboxId}-opt-${cursor}` : undefined,
+            'aria-autocomplete': 'list',
+            onKeyDown: (e) => {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setCursor((c) => Math.min(c + 1, rows.length - 1));
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setCursor((c) => Math.max(c - 1, 0));
+              } else if (e.key === 'Home') {
+                e.preventDefault();
+                setCursor(0);
+              } else if (e.key === 'End') {
+                e.preventDefault();
+                setCursor(Math.max(rows.length - 1, 0));
+              }
+            },
+          }}
         />
-        <span className="font-mono text-ash">ESC</span>
+        <button
+          type="button"
+          className="registry-icon-button"
+          aria-label={t('Close search')}
+          title="Esc"
+          onClick={() => setOpen(false)}
+        >
+          <X size={20} aria-hidden />
+        </button>
       </div>
       <div
         id={listboxId}
         // biome-ignore lint/a11y/useSemanticElements: custom combobox results list — no native element implements the listbox interaction
         role="listbox"
         aria-label={t('Search results')}
-        className="max-h-[50vh] overflow-y-auto py-2"
+        className="registry-search-results"
       >
         {rows.length === 0 ? (
-          <div className="font-serif-italic px-4 py-6 text-center text-ash">
+          <div className="registry-search-empty">
             {remoteError && trimmedQ.length >= 2
               ? t(
                   'Nothing matches here — and the remote index is unreachable, so online results are unavailable.',
@@ -358,26 +367,24 @@ export function CommandPalette() {
                 role="option"
                 aria-selected={selected}
                 aria-disabled={row.kind === 'action' && row.action.disabled ? true : undefined}
-                className={`flex cursor-pointer items-center justify-between px-3 py-2 ${
-                  selected ? 'bg-oxblood/30' : ''
-                } ${row.kind === 'action' && row.action.disabled ? 'opacity-40' : ''}`}
+                className="registry-search-result"
                 onMouseEnter={() => setCursor(i)}
                 onClick={() => commit(i)}
               >
                 {row.kind === 'action' ? (
                   <>
-                    <span className="text-parchment">{row.action.label}</span>
-                    <span className="font-mono text-ash">{row.action.hint}</span>
+                    <span>{row.action.label}</span>
+                    <span className="registry-search-result-hint">{row.action.hint}</span>
                   </>
                 ) : (
                   <>
-                    <span className="flex items-baseline gap-3">
-                      <span className="text-parchment">{row.hit.name}</span>
-                      <span className="font-serif-italic text-ash">
+                    <span className="flex min-w-0 flex-wrap items-baseline gap-x-3">
+                      <span>{row.hit.name}</span>
+                      <span className="registry-search-result-hint">
                         {t('by {author}', { author: row.hit.author })}
                       </span>
                     </span>
-                    <span className="font-mono text-ash">
+                    <span className="registry-search-result-hint">
                       {row.hit.origin === 'library' ? t('library') : t('remote')}
                     </span>
                   </>
@@ -388,7 +395,7 @@ export function CommandPalette() {
         )}
       </div>
       {remoteError && trimmedQ.length >= 2 && hits.length > 0 ? (
-        <p className="border-t border-border px-4 py-2 font-mono text-xs text-crimson">
+        <p className="registry-search-error">
           {t('Remote index unreachable — showing installed mods only.')}
         </p>
       ) : null}
@@ -417,15 +424,13 @@ function PaletteFrame({
     <dialog
       open
       aria-label={label}
+      aria-modal="true"
       className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh] animate-fade-in"
       onClick={onClose}
       onKeyDown={onKeyDown}
     >
-      <div className="absolute inset-0 bg-pitch/80" />
-      <div
-        className="grimoire-card grimoire-card--raised relative w-[min(620px,90vw)] p-2"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="registry-search-backdrop" />
+      <div className="registry-search-dialog" onClick={(e) => e.stopPropagation()}>
         {children}
       </div>
     </dialog>

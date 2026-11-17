@@ -1,7 +1,7 @@
 'use client';
 
 import { Search, SlidersHorizontal, X } from 'lucide-react';
-import { useRef } from 'react';
+import { type ComponentPropsWithoutRef, type RefObject, useRef } from 'react';
 
 export function RegistrySearchBar({
   query,
@@ -13,6 +13,8 @@ export function RegistrySearchBar({
   activeFilters = 0,
   filtersOpen = false,
   onOpenFilters,
+  inputRef,
+  inputProps,
 }: {
   query: string;
   onQueryChange: (query: string) => void;
@@ -23,8 +25,19 @@ export function RegistrySearchBar({
   activeFilters?: number;
   filtersOpen?: boolean;
   onOpenFilters?: () => void;
+  inputRef?: RefObject<HTMLInputElement | null>;
+  inputProps?: Pick<
+    ComponentPropsWithoutRef<'input'>,
+    | 'role'
+    | 'aria-expanded'
+    | 'aria-controls'
+    | 'aria-activedescendant'
+    | 'aria-autocomplete'
+    | 'onKeyDown'
+  >;
 }) {
-  const input = useRef<HTMLInputElement>(null);
+  const localInput = useRef<HTMLInputElement>(null);
+  const input = inputRef ?? localInput;
   return (
     <search className="registry-search-slot">
       <form
@@ -38,6 +51,7 @@ export function RegistrySearchBar({
           <Search size={20} aria-hidden />
         </button>
         <input
+          {...inputProps}
           ref={input}
           type="search"
           aria-label={searchLabel}

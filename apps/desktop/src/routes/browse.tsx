@@ -206,7 +206,7 @@ function BrowsePage() {
 
   return (
     <div className="space-y-6">
-      <div className="desktop-browse-toolbar flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           {/* `aria-pressed`, like every other toggle group in the app: colour
               alone was the only signal that one of these two was active. */}
