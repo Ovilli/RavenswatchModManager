@@ -76,8 +76,8 @@ game install on every run is a footgun, so repairs are opt-in.
 What it covers: game install reachable and writable, asset map freshness, game
 version drift, the loader (DLL bytes by hash, the disk-loaded Lua SDK under
 `<game>/rsmm/lib`, the planted pattern DB, dangerous feature flags left armed,
-and — on Proton — whether Steam's launch options still carry the
-`WINEDLLOVERRIDES` the loader needs), mod manifests and asset paths, raw-file
+and — on Proton — whether the game's Proton prefix or Steam's launch options
+carry the `winhttp` override the loader needs), mod manifests and asset paths, raw-file
 and `[[patch]]` conflicts, whole-file overrides a declarative block could
 replace, the dependency graph, applier state versus what is actually on disk,
 `UsedRscList.ot` record alignment, and recent crash dumps.

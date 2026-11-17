@@ -10,11 +10,13 @@ are all welcome.
 - **Before you open a PR:**
   ```sh
   ruff check .                 # Python lint
-  pnpm test:python:fast        # Python tests (~2 s)
+  pnpm test:python:fast        # Python tests
   pnpm test:ts                 # TypeScript tests
   lua tests/lua/rsmm_spec.lua  # Lua SDK, if you touched src/loader/lib or src/loader/lua
   ```
-  Edited `data/symbols.json`? Run `rsmm symbols gen`. CI runs all of the above.
+  Edited `data/symbols.json`? Run `rsmm symbols gen`. CI runs all of the above, and
+  a PR merges into `main` only once its `ci ok` check passes. Nobody pushes to `main`
+  directly.
 - **Keep PRs small** and say how you tested. In-game changes need a note on what you
   saw in game.
 

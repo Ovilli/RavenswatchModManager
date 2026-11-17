@@ -28,14 +28,18 @@ Historical entries mention `tools/<script>.py`; those scripts now live under
 | **Pattern resolver + `rsmm.call`** | ~50k byte-pattern signatures in `data/function_patterns.json`, every one resolving to its recorded address by the loader's own scan (see [the pipeline](/reverse-engineering/pipeline/); the DB published before 2026-10-03 needs a republish to get there). Lua mods can call any of ~53k game functions by name, plus memory read/write. See [Calling game functions](/reverse-engineering/calling-game-functions/). |
 | **Seed surface mapped** | The built-in *Forced seed* option (`oe::UIntGameOption`, id `0x1949b098`) located with its enable bool. `ExampleSeedPin` pins a run's RNG for speedruns. See [Seed + mapgen](/reverse-engineering/seed-mapgen/). |
 
-## In-game "Mods" UI <Badge text="Abandoned" variant="danger" />
+## In-game "Mods" UI <Badge text="Shipped" variant="success" />
 
-Giving the mod manager a presence inside Ravenswatch's own menus (a Social-book
-tab, a title-menu button, a book-page mod list) was dropped. Mods are managed
-from the desktop app and the CLI. The tooling (`rsmm menu`, `rsmm intents`,
-`rsmm url`, `rsmm social-tab`, `rsmm menu-button`, `rsmm mods-list`) has been
-removed; what was learned about the game's UI is kept in
-[UI & the book menu](/reverse-engineering/ui-menus/).
+**Settings → Mods** and a Mods button in the pause menu open a native book page
+that lists installed mods and their settings. The page is drawn by the
+`R.ui.menus` SDK module in the loader, so it looks, navigates and sounds like the
+game's own Settings pages. `R.ui.state` reports which menus and books are open.
+Phases still open (in-run UI state, sequences) are tracked in issue #158.
+
+An earlier data-only attempt (cooked menu assets, a Social-book tab,
+`rsmm menu`, `rsmm intents`, `rsmm url`, `rsmm social-tab`, `rsmm menu-button`,
+`rsmm mods-list`) was abandoned and its tooling removed; what it taught about the
+game's UI is kept in [UI & the book menu](/reverse-engineering/ui-menus/).
 
 ## Hook API (`rsmm.hook`) <Badge text="Shipped" variant="success" />
 

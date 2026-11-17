@@ -250,8 +250,8 @@ rsmm backend http://85.214.117.164:8090
 
 That is the whole setup, on Windows and Linux alike. It writes the address to
 `<game>/mods/.rsmm_backend`, which the loader reads at every game start, so there is no `setx`, no
-Steam restart and no launch-option variable (on Linux the launch option is still
-`WINEDLLOVERRIDES="winhttp=n,b" %command%`; on Windows there is none). `rsmm backend off` goes back
+Steam restart and no launch-option variable (on Linux the loader itself still needs its
+override, which `rsmm run` writes into the Proton prefix; on Windows there is none). `rsmm backend off` goes back
 to the official servers, and `rsmm backend` on its own shows the state.
 
 It also checks the things that, when wrong, make the redirect silently do nothing, each of which has

@@ -1,16 +1,19 @@
 ---
 title: UI & the book menu
-description: The game's entity-component UI, the fixed five-tab book, the button-press choke point, and the abandoned attempt to build an in-game mod menu out of data plus one detour.
+description: The game's entity-component UI, the fixed five-tab book, the button-press choke point, and the abandoned data-only attempt at an in-game mod menu.
 ---
 
 :::caution
-**Abandoned, and the tooling is removed (2026-09-23).** The in-game mod menu was
-dropped; mods are managed from the desktop app and the CLI. `rsmm menu`,
+**This approach was abandoned, and its tooling removed (2026-09-23).** `rsmm menu`,
 `rsmm intents`, `R.mods.request` and the menu builders (`mod_menu`, `mods_tab`,
-`mods_modal`, `entity_inspect`) no longer exist. This page is kept as a record of
-how the game's UI works and what was tried. What survived is generic:
+`mods_modal`, `entity_inspect`) no longer exist. What survived is generic:
 `entity_strings`, `entity_append`, and the class-table helpers now in
 `entity_components`.
+
+The in-game Mods menu that ships today is built in code instead: **Settings →
+Mods** opens a second System book page drawn by `R.ui.menus`
+(`src/loader/src/hook_book_pages.cpp`, `src/loader/lua/rsmm/mods_menu.lua`).
+This page is kept as a record of how the game's UI works and what was tried.
 :::
 
 ## What the game's UI actually is

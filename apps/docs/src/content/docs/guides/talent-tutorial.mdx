@@ -504,13 +504,12 @@ scripts. Set it up once (and again after every `restore --all`, which removes it
     ```
   </TabItem>
   <TabItem label="Linux">
-    Close Steam first, then:
+    Start Ravenswatch once from Steam so Proton creates its prefix, close it, then:
     ```sh
     rsmm install-loader
-    rsmm run --set-launch-options --no-launch
     rsmm doctor
     ```
-    The second command sets Ravenswatch's Steam launch options. Without them, the game on Linux never loads the loader.
+    Launch with `rsmm run`. It writes the loader override into the Proton prefix before the game starts, which Proton needs to load the loader. Until the first `rsmm run`, `rsmm doctor` warns that the override is missing.
   </TabItem>
 </Tabs>
 

@@ -5,8 +5,16 @@ description: The 8-area architectural plan behind RSMM.
 
 Strategic blueprint for evolving the Ravenswatch Mod Manager from
 "functional foundation" to "community-grade modding framework".
-Strategy only — implementation details live in code, see `MODDING.md`
-+ `SDK.md` (TBD) for usage and `INTERNALS.md` for engine RE.
+Strategy only — implementation details live in code, see the
+[Modding guide](/guides/modding/) and the generated
+[SDK reference](/reference/sdk-api/) for usage and
+[Internals](/architecture/internals/) for engine RE.
+
+:::note
+This is the original blueprint, and its "Current state" section describes the
+project when it was written. What has shipped since is on the
+[Roadmap](/project/roadmap/).
+:::
 
 ## Current state (honest)
 
@@ -268,13 +276,13 @@ deliverable today.
 **Discoverability.**
 - `rsmm sdk list` enumerates every SDK verb with one-line doc.
 - `rsmm sdk show texture` prints full signature + example.
-- Auto-generated SDK reference at `docs/SDK.md` from docstrings,
-  regenerated in CI on every release.
+- Auto-generated SDK reference (`rsmm docs-gen` writes `docs/api/` and
+  [the site's SDK reference](/reference/sdk-api/)), checked in CI.
 
 **Documentation tiers** (in place, refine):
 - **README.md** — landing, quickstart only.
 - [Modding guide](/guides/modding/) — recipe book, one section per content kind.
-- **docs/SDK.md** — API reference, auto-generated.
+- [SDK reference](/reference/sdk-api/) — API reference, auto-generated.
 - [Internals](/architecture/internals/) — engine RE notes, quarantined for the curious.
 - [Roadmap](/project/roadmap/) — open work + version targets.
 
