@@ -4,31 +4,18 @@ import {
   hasPrivateOnlyTag,
   isPrivateOnlyTag,
 } from '@rsmm/schemas';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   RegistryFilterDialog,
   RegistryModCard,
   RegistryResultsControls,
   RegistrySearchBar,
 } from '@rsmm/ui';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
-import {
-  ExternalLink,
-  Loader2,
-  Plus,
-  WifiOff,
-  X,
-} from 'lucide-react';
+import { ExternalLink, Loader2, Plus, WifiOff, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  Button,
-  CopyButton,
-  Cover,
-  Panel,
-  StatPill,
-  useModalChrome,
-} from '../components/chrome';
+import { Button, CopyButton, Cover, Panel, StatPill, useModalChrome } from '../components/chrome';
 import { CheckIcon } from '../components/icons/CheckIcon';
 import { ModDetail } from '../components/mod-detail';
 import { PrivateGamesOnlyBadge } from '../components/private-games-only-badge';
@@ -44,6 +31,7 @@ import {
 import { TParts, useT } from '../lib/i18n-react';
 import { installModIntoProfile } from '../lib/profile-mods';
 import { validateProfileName } from '../lib/profile-name';
+import { registryCardLabels } from '../lib/registry-labels';
 import { activeProfile, useApp } from '../store';
 import type { Profile } from '../store';
 
@@ -247,6 +235,11 @@ function BrowsePage() {
             onQueryChange={setQ}
             placeholder={tab === 'mods' ? t('Search the index…') : t('Search collections…')}
             searchLabel={tab === 'mods' ? t('Search mods') : t('Search collections')}
+            labels={{
+              clear: t('Clear search'),
+              filters: t('Filters'),
+              activeFilters: t('Filters, {n} active', { n: activeFilters }),
+            }}
             activeFilters={activeFilters}
             filtersOpen={filtersOpen}
             onOpenFilters={tab === 'mods' ? () => setFiltersOpen(true) : undefined}
@@ -449,12 +442,8 @@ function BrowsePage() {
                             onPick={openPicker}
                           />
                         }
-                        labels={{
-                          author: t('unknown'),
-                          nsfw: t('nsfw'),
-                          featured: t('Featured'),
-                          privateOnly: t('Private games only'),
-                        }}
+                        locale={t.tag}
+                        labels={registryCardLabels(t, m)}
                       />
                     ))}
               </div>
@@ -487,7 +476,11 @@ function BrowsePage() {
             minRating,
             toggles: { hideInstalled, showNsfw },
           }}
-          categories={facets.categories.map(([name, count]) => ({ value: name, label: name, count }))}
+          categories={facets.categories.map(([name, count]) => ({
+            value: name,
+            label: name,
+            count,
+          }))}
           tags={facets.tags.map(([name, count]) => ({
             value: name,
             label: isPrivateOnlyTag(name) ? t('Private games only') : name,
@@ -505,6 +498,7 @@ function BrowsePage() {
           ]}
           labels={{
             title: t('Filters'),
+            close: t('Close filters'),
             category: t('Category'),
             tags: t('Tags'),
             rating: t('Rating'),
@@ -522,7 +516,12 @@ function BrowsePage() {
             setFiltersOpen(false);
           }}
           onClose={() => setFiltersOpen(false)}
-          onClear={() => ({ category: '', tags: [], minRating: 0, toggles: { hideInstalled: false, showNsfw } })}
+          onClear={() => ({
+            category: '',
+            tags: [],
+            minRating: 0,
+            toggles: { hideInstalled: false, showNsfw },
+          })}
         />
       ) : null}
     </div>
@@ -635,12 +634,8 @@ function ModRow({
       active={active}
       onOpen={onOpen}
       actions={install}
-      labels={{
-        author: t('unknown'),
-        nsfw: t('nsfw'),
-        featured: t('Featured'),
-        privateOnly: t('Private games only'),
-      }}
+      locale={t.tag}
+      labels={registryCardLabels(t, m)}
     />
   );
 }

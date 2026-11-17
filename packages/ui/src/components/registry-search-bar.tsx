@@ -9,6 +9,7 @@ export function RegistrySearchBar({
   onSubmit,
   placeholder = 'Search mods, authors, and more',
   searchLabel = 'Search mods',
+  labels = {},
   activeFilters = 0,
   filtersOpen = false,
   onOpenFilters,
@@ -18,6 +19,7 @@ export function RegistrySearchBar({
   onSubmit?: () => void;
   placeholder?: string;
   searchLabel?: string;
+  labels?: { clear?: string; filters?: string; activeFilters?: string };
   activeFilters?: number;
   filtersOpen?: boolean;
   onOpenFilters?: () => void;
@@ -25,7 +27,13 @@ export function RegistrySearchBar({
   const input = useRef<HTMLInputElement>(null);
   return (
     <search className="registry-search-slot">
-      <form className="registry-search" onSubmit={(event) => { event.preventDefault(); onSubmit?.(); }}>
+      <form
+        className="registry-search"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit?.();
+        }}
+      >
         <button className="registry-search-submit" type="submit" aria-label={searchLabel}>
           <Search size={20} aria-hidden />
         </button>
@@ -41,8 +49,11 @@ export function RegistrySearchBar({
           <button
             className="registry-search-clear"
             type="button"
-            aria-label="Clear search"
-            onClick={() => { onQueryChange(''); input.current?.focus(); }}
+            aria-label={labels.clear ?? 'Clear search'}
+            onClick={() => {
+              onQueryChange('');
+              input.current?.focus();
+            }}
           >
             <X size={16} aria-hidden />
           </button>
@@ -53,12 +64,16 @@ export function RegistrySearchBar({
             type="button"
             aria-haspopup="dialog"
             aria-expanded={filtersOpen}
-            aria-label={activeFilters ? `Filters, ${activeFilters} active` : 'Filters'}
+            aria-label={
+              activeFilters
+                ? (labels.activeFilters ?? `Filters, ${activeFilters} active`)
+                : (labels.filters ?? 'Filters')
+            }
             data-active={activeFilters > 0}
             onClick={onOpenFilters}
           >
             <SlidersHorizontal size={16} aria-hidden />
-            Filters
+            {labels.filters ?? 'Filters'}
             {activeFilters ? (
               <span className="registry-search-filter-count" aria-hidden>
                 {activeFilters}

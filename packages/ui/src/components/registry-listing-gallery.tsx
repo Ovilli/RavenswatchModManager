@@ -7,13 +7,21 @@ export type RegistryMedia =
   | { kind: 'image'; url: string; label: string }
   | { kind: 'video'; url: string; label: string };
 
-function GalleryImage({ item, priority = false }: { item: RegistryMedia; priority?: boolean }) {
+function GalleryImage({
+  item,
+  priority = false,
+  unavailable,
+}: {
+  item: RegistryMedia;
+  priority?: boolean;
+  unavailable?: string;
+}) {
   const [failed, setFailed] = useState(false);
   if (failed)
     return (
       <span className="mod-media-empty">
         <ImageOff size={24} aria-hidden />
-        <span>Image unavailable</span>
+        <span>{unavailable ?? 'Image unavailable'}</span>
       </span>
     );
   return (
@@ -31,7 +39,31 @@ export function RegistryListingGallery({
   media,
   name,
   nsfw = false,
-}: { media: RegistryMedia[]; name: string; nsfw?: boolean }) {
+  labels = {},
+}: {
+  media: RegistryMedia[];
+  name: string;
+  nsfw?: boolean;
+  labels?: {
+    imageUnavailable?: string;
+    empty?: string;
+    watchVideo?: string;
+    opensInNewTab?: string;
+    gallery?: string;
+    matureContent?: string;
+    showMedia?: string;
+    view?: (label: string) => string;
+    showAllMedia?: (count: number) => string;
+    viewFullImage?: string;
+    viewer?: string;
+    close?: string;
+    previous?: string;
+    next?: string;
+    choose?: string;
+    show?: (label: string) => string;
+    video?: string;
+  };
+}) {
   const [selected, setSelected] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -79,12 +111,20 @@ export function RegistryListingGallery({
     return (
       <div className="mod-gallery mod-gallery-empty">
         <ImageOff size={24} aria-hidden />
-        <p>No images added yet.</p>
+        <p>{labels.empty ?? 'No images added yet.'}</p>
       </div>
     );
 
   const renderCurrent = () => {
-    if (current.kind === 'image') return <GalleryImage key={current.url} item={current} priority />;
+    if (current.kind === 'image')
+      return (
+        <GalleryImage
+          key={current.url}
+          item={current}
+          unavailable={labels.imageUnavailable}
+          priority
+        />
+      );
     const embed = toEmbedUrl(current.url);
     return embed ? (
       <iframe
@@ -102,19 +142,20 @@ export function RegistryListingGallery({
         rel="noopener noreferrer"
       >
         <Play size={30} aria-hidden />
-        Watch video<span>Opens in a new tab</span>
+        {labels.watchVideo ?? 'Watch video'}
+        <span>{labels.opensInNewTab ?? 'Opens in a new tab'}</span>
       </a>
     );
   };
 
   return (
-    <section className="mod-gallery" aria-label={`${name} images and videos`}>
+    <section className="mod-gallery" aria-label={labels.gallery ?? `${name} images and videos`}>
       {hidden ? (
         <div className="mod-media-gate mod-media-empty">
           <EyeOff size={28} aria-hidden />
-          <p>This mod contains mature content.</p>
+          <p>{labels.matureContent ?? 'This mod contains mature content.'}</p>
           <button className="mod-reveal" type="button" onClick={() => setRevealed(true)}>
-            Show media
+            {labels.showMedia ?? 'Show media'}
           </button>
         </div>
       ) : (
@@ -124,11 +165,15 @@ export function RegistryListingGallery({
               className="mod-mosaic-tile"
               type="button"
               key={item.url}
-              aria-label={`View ${item.label}`}
+              aria-label={labels.view?.(item.label) ?? `View ${item.label}`}
               onClick={() => open(index)}
             >
               {item.kind === 'image' ? (
-                <GalleryImage item={item} priority={index === 0} />
+                <GalleryImage
+                  unavailable={labels.imageUnavailable}
+                  item={item}
+                  priority={index === 0}
+                />
               ) : (
                 <span className="mod-video-preview">
                   <Play size={28} aria-hidden />
@@ -139,14 +184,16 @@ export function RegistryListingGallery({
           ))}
           <button className="mod-show-media" type="button" onClick={() => open(0)}>
             <Grid2X2 size={16} aria-hidden />
-            {media.length > 1 ? `Show all media (${media.length})` : 'View full image'}
+            {media.length > 1
+              ? (labels.showAllMedia?.(media.length) ?? `Show all media (${media.length})`)
+              : (labels.viewFullImage ?? 'View full image')}
           </button>
         </div>
       )}
       <dialog
         ref={dialog}
         className="mod-lightbox"
-        aria-label={`${name} media viewer`}
+        aria-label={labels.viewer ?? `${name} media viewer`}
         onClose={() => setExpanded(false)}
         onKeyDown={(event) => {
           if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
@@ -161,7 +208,7 @@ export function RegistryListingGallery({
               <span>{name}</span>
               <button
                 type="button"
-                aria-label="Close media viewer"
+                aria-label={labels.close ?? 'Close media viewer'}
                 onClick={() => setExpanded(false)}
               >
                 <X size={24} aria-hidden />
@@ -175,34 +222,46 @@ export function RegistryListingGallery({
                 </p>
                 {media.length > 1 ? (
                   <div className="mod-media-pagination">
-                    <button type="button" onClick={() => move(-1)} aria-label="Previous media">
+                    <button
+                      type="button"
+                      onClick={() => move(-1)}
+                      aria-label={labels.previous ?? 'Previous media'}
+                    >
                       <ChevronLeft size={22} aria-hidden />
                     </button>
                     <span>
                       {activeIndex + 1} / {media.length}
                     </span>
-                    <button type="button" onClick={() => move(1)} aria-label="Next media">
+                    <button
+                      type="button"
+                      onClick={() => move(1)}
+                      aria-label={labels.next ?? 'Next media'}
+                    >
                       <ChevronRight size={22} aria-hidden />
                     </button>
                   </div>
                 ) : null}
               </div>
               {media.length > 1 ? (
-                <div className="mod-thumbnails" ref={thumbnails} aria-label="Choose media">
+                <div
+                  className="mod-thumbnails"
+                  ref={thumbnails}
+                  aria-label={labels.choose ?? 'Choose media'}
+                >
                   {media.map((item, index) => (
                     <button
                       type="button"
                       key={item.url}
-                      aria-label={`Show ${item.label}`}
+                      aria-label={labels.show?.(item.label) ?? `Show ${item.label}`}
                       aria-pressed={index === activeIndex}
                       onClick={() => setSelected(index)}
                     >
                       {item.kind === 'image' ? (
-                        <GalleryImage item={item} />
+                        <GalleryImage unavailable={labels.imageUnavailable} item={item} />
                       ) : (
                         <span>
                           <Play size={20} aria-hidden />
-                          Video
+                          {labels.video ?? 'Video'}
                         </span>
                       )}
                     </button>
