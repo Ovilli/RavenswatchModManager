@@ -1,7 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { Link, Outlet, createRootRouteWithContext, useLocation } from '@tanstack/react-router';
-import { AlertTriangle } from 'lucide-react';
-import { PanelLeftClose, PanelLeftOpen, ScrollText, Terminal, X } from 'lucide-react';
+import { AlertTriangle, PanelLeftClose, PanelLeftOpen, Search, ScrollText, Terminal, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import PromotedBanner from '../components/PromotedBanner';
@@ -138,24 +137,16 @@ function StatusStrip() {
 
   return (
     // `relative z-30`: `.surface-grain` sets `backdrop-filter`, which makes this
-    // strip a stacking context with `z-index: auto` — so its profile menu, no
-    // matter how high its own z-index, is confined here and painted before the
-    // `.grimoire-card`s below (they are `backdrop-filter` stacking contexts too,
-    // and later in the DOM). An explicit z-index lifts the whole strip instead.
+    // strip a stacking context with `z-index: auto` — so its launch controls,
+    // no matter how high their own z-index, are confined here and painted
+    // before the `.grimoire-card`s below. An explicit z-index lifts the strip.
     <div
       className="surface-grain relative z-30 flex items-center justify-between gap-3 border-b border-border px-3 py-2"
       data-tauri-drag-region
     >
       {/* Tauri checks the element under the pointer, so mark the empty-space
           containers too. Controls and their children stay unmarked. */}
-      {/* The left half yields space, the right half does not: the launch
-          buttons must never be squeezed, so the profile name truncates first. */}
-      <div className="flex min-w-0 items-center gap-3" data-tauri-drag-region>
-        <div className="min-w-0">
-          <ProfilePopover compact />
-        </div>
-      </div>
-
+      <div className="min-w-0 flex-1" data-tauri-drag-region />
       <div className="flex min-w-0 shrink items-center gap-2" data-tauri-drag-region>
         <div className="flex shrink-0 items-center gap-2 pr-2" data-tauri-drag-region>
           <Button
@@ -486,63 +477,91 @@ function RootLayout() {
                 collapsed ? 'w-20' : 'w-72'
               }`}
             >
-              <div className={collapsed ? 'px-3 pt-5 pb-4' : 'px-5 pt-5 pb-4'}>
-                <div className="flex items-center justify-center">
+              <div className={collapsed ? 'px-3 pt-4 pb-3' : 'px-4 pt-4 pb-3'}>
+                <div
+                  className={`flex items-center ${collapsed ? 'justify-center' : 'justify-between'}`}
+                >
                   <img
                     src="/logo.png"
                     alt="Ravenswatch Mod Manager"
                     className={`shrink-0 rounded-md object-cover ${
-                      collapsed ? 'h-10 w-10' : 'h-14 w-14'
+                      collapsed ? 'h-10 w-10' : 'h-11 w-11'
                     }`}
                   />
+                  {collapsed ? null : (
+                    <button
+                      type="button"
+                      onClick={() => update({ sidebarCollapsed: true })}
+                      aria-label={t('Collapse the sidebar to icons')}
+                      title={t('Collapse the sidebar to icons')}
+                      className="rounded-lg border border-transparent p-2 text-ash transition hover:border-border hover:bg-char/40 hover:text-parchment"
+                    >
+                      <PanelLeftClose className="h-4 w-4" aria-hidden />
+                    </button>
+                  )}
                 </div>
               </div>
 
-              <nav className="flex flex-1 flex-col gap-1 px-2 py-2">
+              <div className={collapsed ? 'px-2 pb-2' : 'px-4 pb-3'}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    window.dispatchEvent(
+                      new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }),
+                    )
+                  }
+                  aria-label={t('Search mods and commands')}
+                  title={t('Search mods and commands')}
+                  className={`flex w-full items-center gap-3 rounded-xl border border-border bg-char/50 px-3 py-2.5 text-ash shadow-inner transition hover:border-gilt/40 hover:text-parchment ${
+                    collapsed ? 'justify-center px-0' : ''
+                  }`}
+                >
+                  <Search className="h-4 w-4 shrink-0" aria-hidden />
+                  {collapsed ? null : (
+                    <>
+                      <span className="flex-1 text-left text-sm">{t('Search…')}</span>
+                      <kbd className="rounded border border-border/70 px-1.5 py-0.5 font-mono text-[0.65rem] text-ash">
+                        {shortcutLabel('K')}
+                      </kbd>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 py-1">
                 {nav.map((n) => (
                   <NavLink key={n.to} {...n} collapsed={collapsed} />
                 ))}
               </nav>
 
-              <div className="border-t border-border/60 px-2 pt-2 pb-1">
+              <div className="mt-auto border-t border-border/60 px-3 pt-2">
                 <NavLink {...SETTINGS_NAV} collapsed={collapsed} />
+                {collapsed ? null : (
+                  <>
+                    <div className="my-2 border-t border-border/50" />
+                    <ProfilePopover />
+                  </>
+                )}
               </div>
-
-              <div className={collapsed ? 'px-2 pb-2' : 'px-4 pb-2'}>
-                <button
-                  type="button"
-                  onClick={() => update({ sidebarCollapsed: !collapsed })}
-                  aria-label={
-                    collapsed ? t('Expand the sidebar') : t('Collapse the sidebar to icons')
-                  }
-                  title={collapsed ? t('Expand the sidebar') : t('Collapse the sidebar to icons')}
-                  aria-pressed={collapsed}
-                  className={`flex w-full items-center gap-2 rounded border border-transparent px-2 py-1.5 text-ash hover:border-border hover:text-parchment ${
-                    collapsed ? 'justify-center' : ''
-                  }`}
-                >
-                  {collapsed ? (
-                    <PanelLeftOpen className="h-4 w-4" aria-hidden />
-                  ) : (
-                    <PanelLeftClose className="h-4 w-4" aria-hidden />
-                  )}
-                  {collapsed ? null : (
-                    <span className="font-mono text-xs">{t('Collapse sidebar')}</span>
-                  )}
-                </button>
-              </div>
-
-              {/* Wide controls with nothing meaningful to show at 5rem, so
-                  they step aside rather than being squeezed into an unreadable
-                  version of themselves. */}
+              {collapsed ? null : <AccountStrip />}
               {collapsed ? null : (
-                <>
-                  <AccountStrip />
-                  <div className="px-4 pb-4">
-                    <PromotedBanner vertical />
-                  </div>
-                </>
+                <div className="px-4 pb-3 pt-2">
+                  <PromotedBanner vertical />
+                </div>
               )}
+              {collapsed ? (
+                <div className="px-2 pb-2">
+                  <button
+                    type="button"
+                    onClick={() => update({ sidebarCollapsed: false })}
+                    aria-label={t('Expand the sidebar')}
+                    title={t('Expand the sidebar')}
+                    className="flex w-full justify-center rounded-lg border border-transparent p-2 text-ash transition hover:border-border hover:bg-char/40 hover:text-parchment"
+                  >
+                    <PanelLeftOpen className="h-4 w-4" aria-hidden />
+                  </button>
+                </div>
+              ) : null}
             </aside>
 
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
