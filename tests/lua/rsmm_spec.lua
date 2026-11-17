@@ -7598,7 +7598,10 @@ do  -- 9g2. the session context does NOT require a damage row (regression)
     local mgr  = _plant_session_chain(0xb8000000, ctrl)
     I.write_u32(mgr + 0x70, 5)
 
-    local hero_ent = I.read_u64(ctrl[1] + 0x08)
+    local holder = mgr + 0x1000
+    I.write_u64(mgr + 0x218, holder)
+    I.write_u64(holder + 0x20, 1)
+    I.write_u64(holder + 0x48, 0x51101)
 
     -- The RakPeer and one CONNECTED remote system, laid out the way
     -- RakPeer_GetSystemList's disassembly reads them: count @peer+0x258,
@@ -7624,11 +7627,13 @@ do  -- 9g2. the session context does NOT require a damage row (regression)
     check(Rp.net.session_state() == nil,
           "no board and no hero means no context, reported as nil not as a guess")
 
-    Rp.entity.hero = function() return hero_ent end
+    Rp.entity.hero = function() return ctrl[1] end
     local code, name = Rp.net.session_state()
     check(code == 5 and name == "Connected",
           "with the local hero captured the session state resolves with an "
           .. "empty board -- the bug session 8b36 hit")
+    check(Rp.net.session_host() == 0x51101,
+          "with no damage rows the host comes from the controller's owning entity")
     local sys = Rp.net.systems()
     check(sys ~= nil and #sys == 1,
           "and the remote-system table resolves through the same fallback")

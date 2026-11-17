@@ -1161,13 +1161,13 @@ function F._dmg_conn_mgr()
     -- length of a live four-player match when the meter was off (observed
     -- 2026-09-20, session 8b36: peers read perfectly, all three of those
     -- returned nil, every poll). The session context has nothing to do with
-    -- damage; any replicated entity reaches it, and R.entity.hero() is one we
-    -- already hold. R.entity.hero() hands out the hero oCEntity, so it goes
-    -- straight into the walk with no controller hop.
+    -- damage. R.entity.hero() returns the captured controller. Follow the
+    -- same controller-to-entity link used for the damage rows above.
     if R.entity and R.entity.hero then
         local ok, hero = pcall(R.entity.hero)
-        if ok then
-            local mgr, scene = F._dmg_ctx_from_entity(hero)
+        if ok and _ptr_plausible(hero) then
+            local mgr, scene = F._dmg_ctx_from_entity(
+                I.read_u64(hero + DMG.HERO_ENTITY_OFF))
             if mgr then return mgr, scene end
         end
     end
