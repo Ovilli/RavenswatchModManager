@@ -105,6 +105,8 @@ jobs:
     runs-on: ubuntu-22.04
     permissions:
       contents: write
+      pull-requests: write
+      actions: write
     steps:
       - uses: actions/checkout@v5
         with:
@@ -168,20 +170,25 @@ jobs:
           python scripts/add_loader_changelog.py "${ARGS[@]}"
           scripts/publish_changelog.sh
 
-      # Rebase-and-retry for the same race publish-loader.yml documents.
-      - name: Commit the CLI version bump
+      # Lands through an auto-merge PR, as publish-loader.yml documents.
+      - name: Open the CLI version bump PR
         if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git diff --quiet -- data/cli_version.json data/changelog.json && { echo "nothing to commit"; exit 0; }
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           VERSION=$(python -c "import json;print(json.load(open('data/cli_version.json'))['cli_version'])")
+          BRANCH="bot/cli-v${VERSION}"
+          TITLE="chore(cli): publish cli channel v${VERSION}"
           git add data/cli_version.json data/changelog.json
-          git commit -m "chore(cli): publish cli channel v${VERSION}"
-          for attempt in 1 2 3 4 5; do
-            git push origin HEAD:main && exit 0
-            git pull --rebase origin main || { git rebase --abort || true; }
-            sleep $((attempt * 5))
-          done
-          echo "::error::cli v${VERSION} is published but the stamp was not pushed; set data/cli_version.json to ${VERSION} and commit it."
-          exit 1
+          git commit -m "$TITLE"
+          if ! git push origin "HEAD:refs/heads/${BRANCH}" \
+            || ! gh pr create --base main --head "$BRANCH" --title "$TITLE" \
+                 --body "Sets \`data/cli_version.json\` to v${VERSION} and adds its \`data/changelog.json\` entry." \
+            || ! gh pr merge "$BRANCH" --auto --squash \
+            || ! gh workflow run ci.yml --ref "$BRANCH"; then
+            echo "::error::cli v${VERSION} is published but its stamp PR did not go up; set data/cli_version.json to ${VERSION} and commit it."
+            exit 1
+          fi

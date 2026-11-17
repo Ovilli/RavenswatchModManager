@@ -184,7 +184,7 @@ def render_channel(channel: str, version: int, since: str | None, until: str, no
 
 def _repo() -> str:
     m = re.search(r"github\.com[:/](.+?)(?:\.git)?$", git("remote", "get-url", "origin").strip())
-    return m[1] if m else "Ovilli/RavenswatchModManager"
+    return m[1] if m else "Ravenswatch-Modding/RavenswatchModManager"
 
 
 def main_channel(argv: list[str]) -> int:

@@ -896,7 +896,9 @@ def test_a_hero_with_no_base_copies_no_hero(tmp_path):
     h = HDF.decode(next(p for p in files if p.name.startswith("Solo.herodef.ot")).read_bytes())
     rows = [d for c, d in h.objects if c == HDF.SKILL]
     assert rows[0]["name"] == "Skill Controller Attack One" and rows[0]["controller"] in main
-    assert sum(1 for r in rows if r["tail"][5] == 1) == 6
+    assert [r["name"] for r in rows if r["tail"][5] == 1] == [
+        "Skill Controller Ultimate 2 Upgrade 2"]
+    assert h.root["new_hero"] == ("", "")             # unlocked: no "new hero" picture
 
 
 @needs_corpus
@@ -1152,6 +1154,9 @@ def test_a_scratch_heros_talents_take_effects(tmp_path):
     assert "Dash Burst Action 1 Hit 1 Timer" in acts
     owned = next(f.text for f in EF.fields(g["Skill Dash Burst"]) if f.name == "while_active")
     assert "Listener" in owned
+    # the trigger is a one-frame event: a state that STAYS on is switched on
+    # once and never re-enters, so the action fired once per run
+    assert action.is_event and not g["Skill Dash Burst"].is_event
 
 
 @needs_corpus

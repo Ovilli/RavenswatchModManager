@@ -13,11 +13,13 @@ are all welcome.
 - **Before you open a PR:**
   ```sh
   ruff check .                 # Python lint
-  pnpm test:python:fast        # Python tests (~2 s)
+  pnpm test:python:fast        # Python tests
   pnpm test:ts                 # TypeScript tests
   lua tests/lua/rsmm_spec.lua  # Lua SDK, if you touched src/loader/lib or src/loader/lua
   ```
-  Edited `data/symbols.json`? Run `rsmm symbols gen`. CI runs all of the above.
+  Edited `data/symbols.json`? Run `rsmm symbols gen`. CI runs all of the above, and
+  a PR merges into `main` only once its `ci ok` check passes. Nobody pushes to `main`
+  directly.
 - **Keep PRs small** and say how you tested. In-game changes need a note on what you
   saw in game.
 
@@ -31,8 +33,8 @@ are all welcome.
   through a `manifest.toml` and high-level `R.*` calls. `rsmm lint` enforces this.
 - **No hardcoded engine addresses.** Add a symbol to `data/symbols.json` instead.
 
-Be kind, see the [code of conduct](https://github.com/Ovilli/RavenswatchModManager/blob/main/CODE_OF_CONDUCT.md). Security issues go through
-the [security policy](https://github.com/Ovilli/RavenswatchModManager/blob/main/SECURITY.md), not public issues.
+Be kind, see the [code of conduct](https://github.com/Ravenswatch-Modding/RavenswatchModManager/blob/main/CODE_OF_CONDUCT.md). Security issues go through
+the [security policy](https://github.com/Ravenswatch-Modding/RavenswatchModManager/blob/main/SECURITY.md), not public issues.
 
 ## Report issues
 

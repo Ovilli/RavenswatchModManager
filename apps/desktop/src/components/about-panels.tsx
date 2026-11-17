@@ -111,7 +111,7 @@ export function AboutPanels() {
         <div className="flex items-center gap-3">
           <MonoTag>v{version}</MonoTag>
           <a
-            href="https://github.com/Ovilli/RavenswatchModManager/blob/main/LICENSE"
+            href="https://github.com/Ravenswatch-Modding/RavenswatchModManager/blob/main/LICENSE"
             target="_blank"
             rel="noreferrer noopener"
             className={buttonClass}

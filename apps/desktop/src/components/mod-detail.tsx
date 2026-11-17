@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, describeApiError, logApiError } from '../lib/api';
 import { getApiUrl } from '../lib/api-url';
 import { useT } from '../lib/i18n-react';
+import { registryGalleryLabels, registryMediaLabels } from '../lib/registry-labels';
 import { inTauri } from '../lib/platform';
 import { installModIntoProfile, resolveInstallTarget } from '../lib/profile-mods';
 import {
@@ -245,7 +246,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
   const homepageUrl = apiMod?.homepageUrl ?? null;
   const screenshots = apiMod?.screenshots ?? [];
   const videos = apiMod?.videos ?? [];
-  const media = getRegistryMedia({ name, imageUrl, screenshots, videos });
+  const media = getRegistryMedia({ name, imageUrl, screenshots, videos }, registryMediaLabels(t));
   const dependencies = apiMod?.dependencies ?? {};
 
   const markdown =
@@ -337,7 +338,12 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
         }
       />
 
-      <RegistryListingGallery media={media} name={name} nsfw={nsfw} />
+      <RegistryListingGallery
+        media={media}
+        name={name}
+        nsfw={nsfw}
+        labels={registryGalleryLabels(t, name)}
+      />
 
       {/* Embedded, this renders in Browse's detail panel — a column of roughly
           370px once the index takes its fixed 22rem. `md:` fires on the

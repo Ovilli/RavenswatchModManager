@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Ovilli/RavenswatchModManager/releases/latest"><b>Download</b></a>
+  <a href="https://github.com/Ravenswatch-Modding/RavenswatchModManager/releases/latest"><b>Download</b></a>
   &nbsp;·&nbsp;
   <a href="https://rsmm.me/registry"><b>Browse mods</b></a>
   &nbsp;·&nbsp;
@@ -17,8 +17,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Ovilli/RavenswatchModManager/releases/latest"><img src="https://img.shields.io/github/v/release/Ovilli/RavenswatchModManager?label=release&color=882029" alt="Latest release"></a>
-  <a href="https://github.com/Ovilli/RavenswatchModManager/releases"><img src="https://img.shields.io/github/downloads/Ovilli/RavenswatchModManager/total?color=621A20" alt="Downloads"></a>
+  <a href="https://github.com/Ravenswatch-Modding/RavenswatchModManager/releases/latest"><img src="https://img.shields.io/github/v/release/Ravenswatch-Modding/RavenswatchModManager?label=release&color=882029" alt="Latest release"></a>
+  <a href="https://github.com/Ravenswatch-Modding/RavenswatchModManager/releases"><img src="https://img.shields.io/github/downloads/Ravenswatch-Modding/RavenswatchModManager/total?color=621A20" alt="Downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-d6b066" alt="MIT license"></a>
 </p>
 
@@ -56,7 +56,7 @@ scripting gameplay in Lua, and publishing to the site with one command.
 
 | Windows 10/11 | Linux (any distro) | Debian / Ubuntu |
 | :---: | :---: | :---: |
-| [Installer (`.exe`)](https://github.com/Ovilli/RavenswatchModManager/releases/latest) | [`.AppImage`](https://github.com/Ovilli/RavenswatchModManager/releases/latest) | [`.deb` package](https://github.com/Ovilli/RavenswatchModManager/releases/latest) |
+| [Installer (`.exe`)](https://github.com/Ravenswatch-Modding/RavenswatchModManager/releases/latest) | [`.AppImage`](https://github.com/Ravenswatch-Modding/RavenswatchModManager/releases/latest) | [`.deb` package](https://github.com/Ravenswatch-Modding/RavenswatchModManager/releases/latest) |
 
 On Windows, download the file ending in `x64-setup.exe`. The app keeps itself up to
 date after the first install. Steam Deck works through the Linux AppImage.
@@ -113,7 +113,7 @@ newer and Git. Never used a terminal? [Set up the modding tools](https://docs.rs
 goes through it one step at a time.
 
 ```sh
-git clone https://github.com/Ovilli/RavenswatchModManager
+git clone https://github.com/Ravenswatch-Modding/RavenswatchModManager
 cd RavenswatchModManager
 python3 -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
 pip install -e .
@@ -153,8 +153,9 @@ rsmm install-loader    # install the loader and the Lua SDK into the game folder
 rsmm log -f            # follow the loader log
 ```
 
-On Linux under Proton, add `WINEDLLOVERRIDES="winhttp=n,b" %command%` to the game's
-Steam launch options.
+On Linux under Proton, launch with `rsmm run`, which writes the loader override
+into the game's Proton prefix. If the prefix doesn't exist yet, add
+`WINEDLLOVERRIDES="winhttp=n,b" %command%` to the game's Steam launch options.
 
 ## If something goes wrong
 
@@ -174,7 +175,7 @@ Steam launch options.
 
 **Commands → Doctor** in the app (or `rsmm doctor`) checks your setup and reports what it finds. More fixes are in the
 [troubleshooting guide](https://docs.rsmm.me/getting-started/troubleshooting/). If you're
-still stuck, [open an issue](https://github.com/Ovilli/RavenswatchModManager/issues) with
+still stuck, [open an issue](https://github.com/Ravenswatch-Modding/RavenswatchModManager/issues) with
 your OS, RSMM version and the `rsmm doctor` output.
 
 ## Contributing
@@ -220,7 +221,7 @@ exactly what it touches:
 
 If anything here causes you a problem, or you'd rather we did something
 differently, email [contact@rsmm.me](mailto:contact@rsmm.me) or
-[open an issue](https://github.com/Ovilli/RavenswatchModManager/issues). We will
+[open an issue](https://github.com/Ravenswatch-Modding/RavenswatchModManager/issues). We will
 follow any modding guidelines you publish, and takedown requests are handled as
 described on [rsmm.me/dmca](https://rsmm.me/dmca).
 
@@ -241,4 +242,4 @@ Logo by Arch.</sub>
 
 ## Contributors
 
-[![Contributors](https://contrib.rocks/image?repo=Ovilli/RavenswatchModManager)](https://github.com/Ovilli/RavenswatchModManager/graphs/contributors)
+[![Contributors](https://contrib.rocks/image?repo=Ravenswatch-Modding/RavenswatchModManager)](https://github.com/Ravenswatch-Modding/RavenswatchModManager/graphs/contributors)

@@ -775,6 +775,7 @@ def talent_effects(raw: bytes, hero_common: EntityFile, effects: dict[str, dict]
                     during=e.get("during"), after=e.get("after"), seconds=e.get("seconds"),
                     cooldown=e.get("cooldown"), next_ability=e.get("next"), on=e.get("on"),
                     state_name=spec.get("state"))
+            from . import entity_graph as EG
             for n, a in enumerate(spec.get("actions") or [], 1):
                 raw, state = TA.add_action_trigger(raw, talent=talent, on=str(a["on"]), n=n,
                                                    seed=f"{seed}:{talent}")
@@ -788,7 +789,12 @@ def talent_effects(raw: bytes, hero_common: EntityFile, effects: dict[str, dict]
                                  group=group, seed=f"{seed}:{talent}:action{n}",
                                  kind=str(a["on"])):
                     ef.add_ref(state, "activates", t)
-                HA.statuses(ef, todo, tag=f"{talent} Action {n}", switch=state,
+                # the trigger is a one-frame event; hits land 0.3-1.5 s later,
+                # so their status is switched by the talent's owned state
+                g = EG.parse(raw)
+                ctl = next(c for c in g.components if c.name == f"Skill Controller {talent}")
+                HA.statuses(ef, todo, tag=f"{talent} Action {n}",
+                            switch=TA.owned_state(g, ctl, talent).name,
                             seed=f"{seed}:{talent}:action{n}")
                 raw = ef.to_bytes()
         except (TA.AddStatError, HA.AbilityError, EntityEditError, KeyError) as e:

@@ -6,7 +6,9 @@ description: Why a hero definition has no class UID, what its 29 named slots hol
 :::note
 Status: Tier-1 RE backing `src/rsmm/sdk/kinds/heros.py`, from live Ghidra MCP +
 headless decompilation. Fields marked *unconfirmed* need verification before byte
-emission. A **net-new hero is the hardest content kind**; a reskin works today.
+emission. A net-new hero works: a clone of a shipped hero showed as a 13th hero,
+was picked and ran (2026-09-24). See
+[`hero` in First mod by kind](/guides/first-mod-by-kind/#hero--add-a-hero-to-the-roster).
 :::
 
 Heroes are the hardest playable kind because `oCDtHeroDefinition` has **no

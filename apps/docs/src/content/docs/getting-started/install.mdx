@@ -17,7 +17,7 @@ you've started it at least once. RSMM works on **Windows 10/11**, **Linux** and
 ## 1. Download and install
 
 All downloads are on the
-[latest release page](https://github.com/Ovilli/RavenswatchModManager/releases/latest).
+[latest release page](https://github.com/Ravenswatch-Modding/RavenswatchModManager/releases/latest).
 Scroll down to **Assets** and pick the file for your system.
 
 <Tabs syncKey="os">
@@ -131,8 +131,14 @@ up to date in your game folder each time it starts.
 
 ## Script mods on Linux and Steam Deck
 
-On Linux, Ravenswatch runs through Steam's Proton. Script (Lua) mods need Steam
-to load RSMM's loader file, which takes one launch option:
+On Linux, Ravenswatch runs through Steam's Proton, and Proton has to be told to
+load RSMM's loader file. A modded launch from the app (or `rsmm run`) does this
+for you: it writes the setting into the game's Proton prefix before the game
+starts. Steam can stay open, so this works on a Steam Deck too.
+
+That needs the prefix to exist, so start Ravenswatch once from Steam before your
+first modded launch. If the setting still can't be written (the game is running,
+or it never ran under Proton), add a launch option instead:
 
 <Steps>
 1. In Steam, right-click **Ravenswatch** → **Properties**.

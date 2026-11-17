@@ -67,12 +67,12 @@ export default async function LegalPage() {
             <p>
               Project repository:{' '}
               <a
-                href="https://github.com/Ovilli/RavenswatchModManager"
+                href="https://github.com/Ravenswatch-Modding/RavenswatchModManager"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="underline hover:text-foreground"
               >
-                github.com/Ovilli/RavenswatchModManager
+                github.com/Ravenswatch-Modding/RavenswatchModManager
               </a>
             </p>
           </section>
@@ -93,7 +93,7 @@ export default async function LegalPage() {
               The source code is distributed under the terms of the license found in the repository.
               Third-party components bundled with the desktop client are listed in the{' '}
               <a
-                href="https://github.com/Ovilli/RavenswatchModManager/blob/main/THIRD_PARTY_NOTICES.md"
+                href="https://github.com/Ravenswatch-Modding/RavenswatchModManager/blob/main/THIRD_PARTY_NOTICES.md"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="underline hover:text-foreground"

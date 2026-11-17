@@ -6,6 +6,10 @@
 > ⚠ **ABANDONED — tooling removed 2026-09-23.** `rsmm menu`, `rsmm intents`,
 > `R.mods.request` / `_internal.intent_write` and `engine/{mod_menu,mods_tab,mods_modal,entity_inspect}.py`
 > are gone. Kept as field notes only; do not re-open.
+>
+> **2026-11-17:** the in-game Mods menu shipped by another route: a second System
+> book page drawn at runtime by `R.ui.menus` (`hook_book_pages.cpp`,
+> `src/loader/lua/rsmm/mods_menu.lua`), with no cooked asset.
 
 
 Goal: a **native** mod menu (enable/disable/uninstall mods in-game) built the same

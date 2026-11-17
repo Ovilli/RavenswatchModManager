@@ -296,15 +296,32 @@ jobs:
           # whole site, from the runner and from curl, 2026-10-06), so its
           # state says nothing about our docs: excluded rather than accepting
           # 503 everywhere, which would hide real outages.
+          # github.com answers runners with 503 on this repo's own blob/tree
+          # pages (2026-11-17, three links on two runs, all 200 from outside).
+          # Those files are in the checkout, so they are excluded too.
           args: >-
             --no-progress --root-dir "$GITHUB_WORKSPACE"
             --exclude '^file://' --exclude-path 'node_modules'
             --exclude '^https?://(localhost|127\.0\.0\.1|example\.com)'
             --exclude '^https?://([a-z]+\.)?rsmm\.me/llms[a-z-]*\.txt$'
             --exclude '^https://marketplace\.visualstudio\.com/'
+            --exclude '^https://github\.com/Ravenswatch-Modding/RavenswatchModManager/(blob|tree)/'
             --accept 200,206,403,429 --max-retries 2 --max-concurrency 4
             'apps/docs/src/content/docs/**/*.md'
             'apps/docs/src/content/docs/**/*.mdx'
           fail: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # The one check the main ruleset requires. Matrix jobs skipped by `changes`
+  # report under their unexpanded name (`python ${{ matrix.os }}`), so they
+  # cannot be required directly; this job rolls them up instead.
+  ci-ok:
+    name: ci ok
+    needs: [changes, python, sidecar, ts, loader-linux-mingw]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if a needed job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

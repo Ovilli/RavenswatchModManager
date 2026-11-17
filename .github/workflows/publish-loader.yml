@@ -41,7 +41,9 @@ jobs:
   publish:
     runs-on: ubuntu-22.04
     permissions:
-      contents: write     # create/upload the release AND push the version bump
+      contents: write     # create/upload the release AND push the version bump branch
+      pull-requests: write # open and auto-merge the bump PR
+      actions: write      # dispatch CI on the bump branch
 
     steps:
       - uses: actions/checkout@v5
@@ -155,16 +157,15 @@ jobs:
           python scripts/add_loader_changelog.py "${ARGS[@]}"
           scripts/publish_changelog.sh
 
-      # The push RACES every other commit to main: this job builds the DLL for
-      # ~15 minutes, and anything merged in that window makes a bare
-      # `git push origin HEAD:main` a non-fast-forward. That is what happened on
-      # the v12 publish — the channel went live, the stamp did not, and the repo
-      # then claimed v11 while users were being served v12, which is precisely
-      # the state `_replant_newer_loader` cannot correct. So rebase and retry;
-      # the bump touches two files nothing else writes, so there is nothing for
-      # a rebase to conflict with.
-      - name: Commit the loader version bump
+      # main is protected by a ruleset that requires `ci ok`, so the bump lands
+      # through its own PR with auto-merge. A PR opened with the GITHUB_TOKEN
+      # starts no workflows, so CI is dispatched on the branch to produce the
+      # check. The bump touches two files nothing else writes, so it merges
+      # cleanly whatever lands on main during the build.
+      - name: Open the loader version bump PR
         if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           if git diff --quiet -- data/loader_version.json data/changelog.json; then
             echo "nothing to commit"
@@ -173,20 +174,18 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           VERSION=$(python -c "import json;print(json.load(open('data/loader_version.json'))['loader_version'])")
+          BRANCH="bot/loader-v${VERSION}"
+          TITLE="chore(loader): publish loader channel v${VERSION}"
           git add data/loader_version.json data/changelog.json
-          git commit -m "chore(loader): publish loader channel v${VERSION}"
-          for attempt in 1 2 3 4 5; do
-            if git push origin HEAD:main; then
-              echo "pushed on attempt $attempt"
-              exit 0
-            fi
-            echo "push rejected (attempt $attempt) — rebasing onto origin/main"
-            git pull --rebase origin main || { git rebase --abort || true; }
-            sleep $((attempt * 5))
-          done
-          echo "::error::could not push the v${VERSION} stamp after 5 attempts."
-          echo "The channel IS published — repair the repo by setting"
-          echo "data/loader_version.json to ${VERSION} and committing"
-          echo "data/changelog.json as published, or main will keep claiming an"
-          echo "older loader than users are served."
-          exit 1
+          git commit -m "$TITLE"
+          if ! git push origin "HEAD:refs/heads/${BRANCH}" \
+            || ! gh pr create --base main --head "$BRANCH" --title "$TITLE" \
+                 --body "Sets \`data/loader_version.json\` to v${VERSION} and adds its \`data/changelog.json\` entry." \
+            || ! gh pr merge "$BRANCH" --auto --squash \
+            || ! gh workflow run ci.yml --ref "$BRANCH"; then
+            echo "::error::v${VERSION} is published but its stamp PR did not go up."
+            echo "Repair the repo by setting data/loader_version.json to ${VERSION}"
+            echo "and committing data/changelog.json as published, or main will"
+            echo "keep claiming an older loader than users are served."
+            exit 1
+          fi

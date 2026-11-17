@@ -1390,12 +1390,26 @@ The loader DLL (`dist/winhttp.dll`) runs `init.lua` once per launch in a sandbox
 ./rsmm install-loader     # Copy the DLL into the game install
 ```
 
-Add to Steam launch options: `WINEDLLOVERRIDES="winhttp=n,b" %command%`.
+On Linux, launch with `rsmm run`: it writes the loader override into the Proton prefix. The fallback is the Steam launch option `WINEDLLOVERRIDES="winhttp=n,b" %command%`.
 
-Lua API exposed to mods:
+`init.lua` gets the SDK from `require`, and every call goes through the `R` it returns:
 
 ```lua
--- Runtime
+local R = require "rsmm"
+
+R.log("hello from " .. R.mod_dir())
+R.on("ready", function() R.log("game is up") end)
+```
+
+`rsmm lint` fails a mod whose Lua reads `R` without that `local R = require "rsmm"`
+line, because the mod would die at load with `R` nil. It also fails raw game
+addresses and the low-level primitives (`_internal`, `peek`/`poke`, `read_*`/`write_*`,
+`module_base`, `scratch`, `call_raw`, `engine.resolve`); those stay inside the SDK,
+and a mod uses the high-level `R.*` calls built on them.
+
+Under the SDK, the loader's native `rsmm` table carries the runtime calls:
+
+```lua
 rsmm.log(msg)
 rsmm.mod_dir()                       -- this mod's directory
 rsmm.game_dir()                      -- absolute install dir
@@ -1406,17 +1420,12 @@ rsmm.decoded_path(encoded)           -- encoded -> decoded path
 rsmm.register_asset_override(decoded, src_abs_path)
 rsmm.commit()                        -- apply registered overrides
 rsmm.on_event(name, fn)              -- "ready" | "exit"
-
--- Game function access (53k functions resolvable by name)
-rsmm.resolve(name)                   -- "FUN_xxx" -> runtime VA
-rsmm.call(target, "sig", ...)        -- invoke by signature
-rsmm.module_base()                   -- Ravenswatch.exe image base
-rsmm.read_u8/u16/u32/u64/f32/f64(va) -- raw memory read
-rsmm.read_cstr(va, max)              -- read NUL-terminated string
-rsmm.write_u8/u16/u32/u64/f32/f64(va, v)
 ```
 
-To change a run from Lua — rerolls, cooldowns, shards, keys, levels, items, talents, melodies, controls, chapter flow — use the high-level calls in the [Lua gameplay API](/reference/lua-api/); the primitives above are the layer underneath.
+To call a game function by name, use `R.engine.call` (see
+[Calling game functions](/reverse-engineering/calling-game-functions/)).
+
+To change a run from Lua — rerolls, cooldowns, shards, keys, levels, items, talents, melodies, controls, chapter flow — use the high-level calls in the [Lua gameplay API](/reference/lua-api/).
 
 See `examples/ExampleEngineCall/init.lua` and `examples/ExampleSeedPin/init.lua` for working examples. Full game-function API + caveats: [Calling game functions](/reverse-engineering/calling-game-functions/).
 

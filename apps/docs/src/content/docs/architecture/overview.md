@@ -140,34 +140,17 @@ update if `UsedRscList.ot` changes.
   file and edit it (see [Authoring mods](/guides/modding/)). A free-form
   text-`.ot` -> binary-`.gen` re-encoder for arbitrary classes is still
   not built.
-- **Toggle mods in-game.** v1 is install-time only.
+- **Toggle mods mid-session.** Install is still install-time: the Off/On row on
+  the in-game Mods page takes effect at the next launch.
 
-## v2: in-game UI (research)
+## v2: in-game UI
 
-The end goal is a Mods entry inside the game's actual book menu, opening
-a native-styled mod list. Path forward:
-
-1. `tools/ot_decoder.py` is structural (header + class table + section
-   ranges) but does not decode object bodies. Extending it requires the
-   per-class serialization schemas. Best Rosetta we have:
-   `ApplicationSettings.ot` (text) and the 523 `*.UsedRscCache.ot` files
-   (per-asset cooking-pipeline manifests with plaintext bucket / path /
-   root-class triples).
-2. Build a text-`.ot` -> binary-`.gen` re-encoder, round-trip a known
-   simple file (e.g. one of the 224-byte `EnemyCampDifficultyDefinition`
-   files: two floats, that's the whole body).
-3. Modify the MainMenu cooked asset
-   (`_Cooking/Oi/KgxqJdv/HgdzHqzw.lqkql.ri.KgxqFiuqgx.yqz`,
-   decoded `Ot/GameUis/MainMenu.level.ot.GameStream.gen`). The menu is
-   an `oCGameStream` containing one `BOOK_SPAWNER` referencing
-   `Book_Menu\Book_Mesh_Controller.entity.ot`. The actual tab/page
-   logic lives in `Book_Mesh_Controller`, which contains
-   `oCDtEntityCpnt3DBookControllerSettings` and 74 other classes.
-4. Inject a "Mods" tab entry; route the click event back into either an
-   external manager or (further out) a DLL we re-introduce once we have
-   a stable way to run code in the game.
-
-See `FINDINGS.md` for the full reverse-engineering record.
+The plan written here was to edit the cooked MainMenu asset and inject a Mods
+tab through a text-`.ot` re-encoder. It was dropped. The Mods menu that shipped
+is built at runtime by the loader instead: **Settings → Mods** opens a second
+System book page drawn by `R.ui.menus`, with no cooked asset changed. See
+[UI & the book menu](/reverse-engineering/ui-menus/) for what the data-only
+attempt taught.
 
 ## The loader, and a parked subsystem
 

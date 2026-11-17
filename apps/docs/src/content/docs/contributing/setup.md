@@ -29,7 +29,7 @@ Platform extras for Tauri 2 desktop builds: see [tauri.app/start/prerequisites](
 
 ```sh
 # 1. Clone
-git clone https://github.com/Ovilli/RavenswatchModManager.git
+git clone https://github.com/Ravenswatch-Modding/RavenswatchModManager.git
 cd RavenswatchModManager
 
 # 2. Python virtual env (for the rsmm CLI)
@@ -206,7 +206,7 @@ pnpm --filter desktop dev:linux-soft     # Last resort: software GL
 
 - Fork the repo and create a focused topic branch.
 - Include a clear description, related issue, and testing steps.
-- Ensure CI passes before requesting review.
+- Ensure CI passes before requesting review. `main` accepts changes only through a PR whose `ci ok` check (the roll-up of every CI job) has passed.
 
 ### Communication
 

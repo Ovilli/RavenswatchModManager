@@ -84,7 +84,7 @@ export default function DmcaPage() {
             <p>
               Submit notices via the project&apos;s{' '}
               <a
-                href="https://github.com/Ovilli/RavenswatchModManager/issues/new"
+                href="https://github.com/Ravenswatch-Modding/RavenswatchModManager/issues/new"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="underline hover:text-foreground"

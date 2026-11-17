@@ -544,6 +544,18 @@ _simple("oC3dParticleEffectorSelfRotateSettings", ("speed_min", "f"), ("speed_ma
         doc="spins each particle")
 
 
+@_cls("oC3dParticleEffectorForceFieldSettings")
+def _force_field(io: _Io) -> None:
+    """0x140624a50 (v>=3): a constant acceleration (m/s², Y up; the update
+    0x1406247f0 adds ``force * dt`` to every particle's velocity), turned
+    into the emitter's frame when ``local``. Shipped: [0, -5, 0] most."""
+    _effector(io)
+    if io.ver("oC3dParticleEffectorForceFieldSettings") < 3:
+        raise VfxError("force field below v3 is not supported")
+    _vec(io, "force", 3)
+    io.u8("local")
+
+
 # renderers (objects, in a renderers list) ------------------------------------------
 
 def _renderer(io: _Io) -> None:
@@ -575,6 +587,48 @@ def _billboard(io: _Io) -> None:
         io.u32("blend")
     if v > 2:
         _vec(io, "uv_4c", 2)
+
+
+@_cls("oI3dMeshParticleRendererSettings")
+def _mesh_renderer(io: _Io) -> None:
+    """0x1406296b0 (v7): draws ``mesh`` (a 3D-rooted .fbx: ``DecalCube_1x1``
+    projects ``material`` onto the ground, others are slash arcs, feathers,
+    shards ...) at every particle with ``material``; the particle's colour is
+    fed to the shader parameter ``color_param`` (``u_color``). ``channels``
+    is a fixed 4-entry u32 array (shipped 2,2,2,2 most). The trailing three
+    floats are read by no Serialize branch seen (kept by name)."""
+    _renderer(io)
+    if io.ver("oI3dMeshParticleRendererSettings") != 7:
+        raise VfxError("mesh renderer other than v7 is not supported")
+    _resource(io, "mesh")
+    _vec(io, "vec_48", 3)
+    _resource(io, "material")
+    io.str("color_param")
+    io.u32("channel_count")
+    io.words("channels", 4)
+    io.str("param_b0")
+    io.str("param_c0")
+    io.str("param_118")
+    io.str("param_128")
+    _vec(io, "tail", 3)
+
+
+@_cls("oC3dLightParticleRendererSettings")
+def _light(io: _Io) -> None:
+    """0x14062a690 (v>=3): each live particle (up to ``max``) lights the scene
+    as a point light at its position in its own colour (the update 0x14062a0c0):
+    ``intensity`` (shipped 2..50), radius = particle size × ``radius``, inner
+    radius = that × ``inner``; drawn with ``material`` (Lights\\OmniLightToon)."""
+    _renderer(io)
+    if io.ver("oC3dLightParticleRendererSettings") < 3:
+        raise VfxError("light renderer below v3 is not supported")
+    io.f32("intensity")
+    io.f32("value_50")
+    io.f32("radius")
+    io.f32("inner")
+    io.u32("max")
+    io.u8("flag_48")
+    _resource(io, "material")
 
 
 # ---- files ------------------------------------------------------------------------

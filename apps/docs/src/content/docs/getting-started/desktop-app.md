@@ -221,7 +221,7 @@ The app works the same on both. The differences:
 | --- | --- | --- |
 | How it's installed | `x64-setup.exe` installer | AppImage, `.deb`, or the AUR |
 | Mods that change looks, numbers, text | ✅ | ✅ |
-| Script (Lua) mods | ✅ | Experimental, needs a [Steam launch option](/getting-started/install/#script-mods-on-linux-and-steam-deck) |
+| Script (Lua) mods | ✅ | Experimental, see [Script mods on Linux](/getting-started/install/#script-mods-on-linux-and-steam-deck) |
 | Finding the game automatically | Every Steam library on every drive | Normal and Flatpak Steam, plus `/mnt` |
 
 :::note[For translators]

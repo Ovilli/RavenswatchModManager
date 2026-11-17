@@ -3,8 +3,7 @@ title: Seed & map generation
 description: The run seed and map-generation surface, and how to pin a seed.
 ---
 
-Reverse-engineered from `Ravenswatch.exe` (build hashed under
-`data/exe_catalog.json`). Confirmed via Ghidra xref scan of the seed
+Reverse-engineered from `Ravenswatch.exe`. Confirmed via Ghidra xref scan of the seed
 strings interned in the read-only data segment. Addresses are
 link-time VAs; resolve at runtime via image-base relocation.
 
