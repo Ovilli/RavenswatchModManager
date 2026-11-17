@@ -212,21 +212,6 @@ jobs:
         if: matrix.platform == 'windows-latest'
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Fetch pattern DB (rolling pattern-db release)
-        shell: bash
-        # data/function_patterns.json is gitignored (game-derived), so the
-        # checkout never has it. Pull the latest published DB so released
-        # sidecars ship with a baseline; `rsmm update-data` refreshes it on
-        # user machines afterwards. Non-fatal: without it the loader falls
-        # back to rebased stored VAs.
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release download pattern-db --repo "$GITHUB_REPOSITORY" \
-            --pattern 'function_patterns*' --dir data --clobber
-          ls -la data/function_patterns* || true
-
       # scripts/build-sidecar.py is the one definition of what the frozen CLI
       # bundles; it then runs the binary from an empty folder and fails the
       # leg if a bundled file is missing or a command crashes, so a sidecar

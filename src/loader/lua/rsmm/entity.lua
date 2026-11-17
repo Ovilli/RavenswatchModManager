@@ -75,8 +75,8 @@ local function _deprecated(old, new)
            .. "(settled 2026-09-18). Use %s, or R.hp for real HP."):format(old, new))
 end
 
-local ENTITY_HP_OFF      = 0x15d0        -- f32 current HP on the hero character (0x15c8 before Update 6)
-local ENTITY_MAXHP_OFF   = 0x15d4        -- f32 max HP (0x15cc before Update 6)
+local ENTITY_HP_OFF      = 0x15e8        -- f32 current HP on the hero character (0x15d0 before the patch 2026-11-17 (2a88a3bd5647), 0x15c8 before Update 6)
+local ENTITY_MAXHP_OFF   = 0x15ec        -- f32 max HP (0x15d4 before the patch 2026-11-17 (2a88a3bd5647), 0x15cc before Update 6)
 -- The chain Hero_ModifyDreamShards dereferences in its first four instructions:
 --   r14 = *(entity + 0x8);  rbx = *(r14 + 0x30)
 -- Both are unguarded on the engine side, so both are ours to check. See

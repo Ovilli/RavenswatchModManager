@@ -554,6 +554,35 @@ def _open_steam_url(url: str) -> int:
     return 1
 
 
+def _spawn_restore_watcher() -> None:
+    """Start `rsmm watch-restore` detached, so it outlives this process and the
+    desktop app and puts the install back to vanilla once the game exits.
+
+    A spawn failure only warns: the launch itself already succeeded.
+    """
+    cmd = self_cmd(["watch-restore"])
+    kw: dict = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
+                "stderr": subprocess.DEVNULL, "cwd": REPO_ROOT}
+    try:
+        if sys.platform == "win32":
+            flags = (subprocess.DETACHED_PROCESS  # type: ignore[attr-defined]
+                     | subprocess.CREATE_NEW_PROCESS_GROUP)  # type: ignore[attr-defined]
+            try:
+                # Leave the launcher's job object (the desktop app's), or the
+                # watcher dies with it. 0x01000000 = CREATE_BREAKAWAY_FROM_JOB.
+                subprocess.Popen(cmd, creationflags=flags | 0x01000000, **kw)
+            except OSError:
+                # A job that forbids breakaway rejects the flag.
+                subprocess.Popen(cmd, creationflags=flags, **kw)
+        else:
+            from rsmm.engine.host_env import host_env
+
+            subprocess.Popen(cmd, env=host_env(), start_new_session=True, **kw)
+    except OSError as e:
+        print(f"Could not start the restore watcher: {e}. Run `rsmm restore` "
+              "after the game closes.", file=sys.stderr)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Launch Ravenswatch via Steam")
     ap.add_argument("--vanilla", action="store_true",
@@ -571,7 +600,16 @@ def main() -> int:
                          "(don't start the game)")
     ap.add_argument("--force", action="store_true",
                     help="launch even if launch options are missing the override")
+    ap.add_argument("--no-watch", action="store_true",
+                    help="don't start the background watcher that restores the "
+                         "original files when the game exits")
     args = ap.parse_args()
+
+    def launch(url: str) -> int:
+        rc = _open_steam_url(url)
+        if rc == 0 and not (args.vanilla or args.no_launch or args.no_watch):
+            _spawn_restore_watcher()
+        return rc
 
     if args.vanilla:
         if not _rsmm_subcommand(["restore"]):
@@ -610,7 +648,7 @@ def main() -> int:
     # Native Windows: the game loads winhttp.dll from its own directory
     # by default, so no WINEDLLOVERRIDES is needed. Just launch.
     if sys.platform == "win32":
-        return _open_steam_url(url)
+        return launch(url)
 
     # Proton: put the override in the game's prefix registry. It needs no Steam
     # restart, so it works on a Steam Deck where Steam is always running. The
@@ -619,18 +657,18 @@ def main() -> int:
         game_dir = find_game_dir()
         if game_dir is not None and ensure_prefix_override(game_dir):
             print("loader override set in the Proton prefix")
-            return _open_steam_url(url)
+            return launch(url)
 
     steam_root = _steam_root()
     if steam_root is None:
         print("Steam install not found — launching URL anyway.", file=sys.stderr)
-        return _open_steam_url(url)
+        return launch(url)
 
     vdfs = _localconfig_paths(steam_root)
     if not vdfs:
         print(f"No localconfig.vdf under {steam_root / 'userdata'}; "
               "launch options can't be verified.", file=sys.stderr)
-        return _open_steam_url(url)
+        return launch(url)
 
     # If multiple users share this Steam install, all of them need the
     # override or the active one does. We check the most recently
@@ -652,13 +690,13 @@ def main() -> int:
             except (OSError, ValueError) as e:
                 print(f"Failed to clear launch options in {vdf}: {e}", file=sys.stderr)
         print(f"cleared launch options in {changed}/{len(vdfs)} Steam user config(s)")
-        return _open_steam_url(url)
+        return launch(url)
 
     lo = _read_launch_options(primary, args.app_id)
 
     if lo is not None and _override_present(lo):
         print(f"launch options OK: {lo!r}")
-        return _open_steam_url(url)
+        return launch(url)
 
     print()
     print("=" * 64)
@@ -687,7 +725,7 @@ def main() -> int:
                 # so a caller that only wanted to fix the options (doctor
                 # --fix) would boot the game as a side effect.
                 return 0
-            return _open_steam_url(url)
+            return launch(url)
         return 1
 
     if args.force:
@@ -705,7 +743,7 @@ def main() -> int:
             except (OSError, ValueError) as e:
                 print(f"failed to write launch options: {e}; loader may not load.",
                       file=sys.stderr)
-        return _open_steam_url(url)
+        return launch(url)
 
     print("Re-run with --set-launch-options to have rsmm write it for you "
           "(Steam must be closed).")

@@ -995,8 +995,11 @@ class EntityFile:
             i = payload.find(head + old)
             if i < 0:
                 raise EntityEditError(f"sub-object #{obj} does not reference the node to re-point")
-            end = i + 28 + struct.unpack_from("<I", payload, i + 24)[0] + 4
-            payload[i:end] = self._picker(target)
+            new = self._picker(target)
+            while i >= 0:               # every read of it (an Fx setup reads its damage twice)
+                end = i + 28 + struct.unpack_from("<I", payload, i + 24)[0] + 4
+                payload[i:end] = new
+                i = payload.find(head + old, i + len(new))
         if switch is not None:
             t = self.component(switch)
             acc = self.BOOL_ACCESSOR.get(t.cls)

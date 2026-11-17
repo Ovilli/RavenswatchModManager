@@ -24,6 +24,7 @@ chains for the basic attack (one swing per press), sounds.
 
 from __future__ import annotations
 
+import functools
 import struct
 from dataclasses import dataclass, field
 
@@ -42,7 +43,20 @@ CONTROLLERS = {
     "trait": "Trait Ability Controller",
     "ultimate": "Ultimate Power 1 Controller",
     "ultimate2": "Ultimate Power 2 Controller",
+    # The dash, rewritten: its controller pointed at the hero's own state in
+    # place of Hero_Common's "State Dash Ability" (Carmilla, the one hero that
+    # overrides the dash controller, still points it at the shared state).
+    # Hero_Common's dash brings its dodge window and look-at; a custom dash
+    # says its own (``intangible``, ``root_motion``).
+    "dash": "Dash Ability Controller",
 }
+
+
+def slot_word(slot: str) -> str:
+    """The word a button's parts are named with ("Power" -> "Power Ability");
+    the dash's own is "Custom Dash": "Dash Ability ..." are the shared dash's
+    inherited parts and the hero's own "Dash Ability Anim" slot."""
+    return "Custom Dash" if slot == "dash" else slot.title()
 _CLIP = ("Dash Ability Clip Selector", "Dash Ability Clip", "Dash Ability Anim")
 #: Hero_Common's tester every shipped ability state activates on entry (see
 #: ``build``): it takes the body off the move/idle animation for the ability.
@@ -131,6 +145,8 @@ class Hit:
     fx: str = ""              # the burst's look: any shipped .vfx.ot (default Red's bomb)
     shake: str = "none"       # camera shake: none, light, medium, heavy
     sound: str = ""           # "<entity ref> | <FMod event part>" played on the hit
+    arc: float = 0.0          # degrees of a cone ahead of the hero; 0 = all round
+    impact: str = ""          # .vfx.ot played ON each enemy hit (default IMPACT_FX)
 
 
 #: A range indicator: Kintaro's ultimate target ring (a ground decal, the
@@ -203,6 +219,18 @@ class Ability:
     passive: bool = False
     #: Loop ``clip`` in the animatic's loop slot (``ref_4``) for ``duration``.
     loop: bool = False
+    #: Uses before it must cool down (each recharges on ``cooldown``): the
+    #: shared "<X> Ability Max Charges Counter" holds 1 (cap 20); the hero
+    #: overrides it, as Snow Queen's trait starts at 2. Talents still add
+    #: charges on top (Ability_Charge_<X>, proven 2026-10-23).
+    charges: int = 1
+    #: Stats the hero gains for ``seconds`` after each cast: a shield, armour,
+    #: move speed ... ``[{stat, value, seconds}]`` (``value`` as a talent's:
+    #: "+20%", "+10"; vitality / attack power in points).
+    buffs: list = field(default_factory=list)
+    #: Held: the button ends as soon as it is let go (``duration`` is then the
+    #: longest it can be held; ``loop`` keeps its clip going meanwhile).
+    hold: bool = False
 
     @classmethod
     def parse(cls, slot: str, raw: dict) -> Ability:
@@ -220,7 +248,8 @@ class Ability:
         unknown = set(raw) - {"clip", "cooldown", "duration", "hits", "bank", "name_key",
                               "desc_key", "indicator", "sound", "variant", "combo",
                               "icon", "icon_disabled", "root_motion", "moving",
-                              "intangible", "strike", "passive", "loop"}
+                              "intangible", "strike", "passive", "loop", "charges",
+                              "buffs", "hold"}
         if unknown:
             raise AbilityError(f"ability {slot}: no {', '.join(sorted(unknown))}")
         bad = {v for v in str(raw.get("variant", "")).split("+") if v} - _VARIANTS
@@ -292,8 +321,31 @@ class Ability:
                     raise AbilityError(f"ability {slot}: strike {k} is 0..10 seconds")
             if not hits:
                 raise AbilityError(f"ability {slot}: a strike needs hits (on its own clip)")
+        charges = raw.get("charges", 1)
+        if isinstance(charges, bool) or not isinstance(charges, int) or not 1 <= charges <= 20:
+            raise AbilityError(f"ability {slot}: charges is a whole number 1..20")
+        if raw.get("hold") not in (None, True, False) or (raw.get("hold") and (
+                raw.get("combo") or passive or slot not in RELEASE_INPUT)):
+            raise AbilityError(f"ability {slot}: hold is true or false (a single-state "
+                               f"button of {', '.join(RELEASE_INPUT)})")
+        if raw.get("buffs") and raw.get("combo"):
+            raise AbilityError(f"ability {slot}: buffs are for a single-state button "
+                               "(not a combo)")
+        if charges > 1 and slot not in CHARGE_COUNTERS:
+            raise AbilityError(f"ability {slot}: has no charges (one of "
+                               f"{', '.join(CHARGE_COUNTERS)})")
+        buffs = raw.get("buffs") or []
+        if not isinstance(buffs, list) or not all(
+                isinstance(b, dict) and set(b) == BUFF_KEYS for b in buffs):
+            raise AbilityError(f"ability {slot}: buffs is a list of "
+                               "{ stat, value, seconds }")
+        for b in buffs:
+            if isinstance(b["seconds"], bool) or not isinstance(b["seconds"], (int, float)) \
+                    or not 0 < b["seconds"] <= 120:
+                raise AbilityError(f"ability {slot}: buff {b['stat']!r} lasts 0..120 seconds")
         return cls(slot, str(raw.get("clip", "")),
-                   float(raw.get("cooldown", 0.0 if passive else 1.0)),
+                   float(raw.get("cooldown", 0.0 if passive else
+                                 -1.0 if slot == "dash" else 1.0)),
                    float(raw["duration"]) if raw.get("duration") is not None else None,
                    hits, ind, str(raw.get("bank", "")), str(raw.get("name_key", "")),
                    str(raw.get("desc_key", "")), sound, icons[0], icons[1],
@@ -302,7 +354,113 @@ class Ability:
                    (bool(intang) if isinstance(intang, bool) or intang is None
                     else float(intang)),
                    dict(strike) if strike else None,
-                   passive=passive, loop=bool(raw.get("loop")))
+                   passive=passive, loop=bool(raw.get("loop")), charges=charges,
+                   buffs=[dict(b) for b in buffs], hold=bool(raw.get("hold")))
+
+
+BUFF_KEYS = {"stat", "value", "seconds"}
+
+#: The Hero Controller's per-button input signal, read through these
+#: accessors (its accessor table, FUN_14039f0f0: one bool each, 0x20 apart at
+#: +0x1a38..+0x1ad8). Shipped hold buttons test it NEGATED (the test's mode
+#: word 1) to know the button was let go: Geppetto's power reads 0x15e13a3d,
+#: Beowulf's / Snow Queen's defensive 0x15e13a41, the ultimates 0x15e13a45
+#: (both share it); special and trait are the table's own 0x15e13a3f/43.
+RELEASE_INPUT = {"power": 0x15E13A3D, "special": 0x15E13A3F, "defense": 0x15E13A41,
+                 "trait": 0x15E13A43, "ultimate": 0x15E13A45, "ultimate2": 0x15E13A45,
+                 "dash": 0x183A61A8}
+#: Geppetto's power's release tester lends the layout: a SimpleBoolTest of the
+#: Hero Controller's power input, negated.
+RELEASE_DONOR = "Ability Primary\\Primary Ability Has Been Released Tester"
+
+
+def add_release(ef: EntityFile, w, ab: Ability, *, tag: str, state: str,
+                state_link) -> None:
+    """``ab`` ends when its button is let go: Geppetto's release tester (its
+    input read re-pointed at this button's) held by ``state``; when it passes,
+    a one-frame event switches ``state`` off."""
+    donor = _cone_donor()
+    first_new = len(ef.objects)
+    ef.clone([RELEASE_DONOR], rename={RELEASE_DONOR.rsplit("\\", 1)[-1]:
+                                      f"{tag} Released Tester"},
+             group={"Ability Primary": w.group}, seed=f"{tag}:release", source=donor)
+    old = struct.pack("<I", RELEASE_INPUT["power"])
+    new = struct.pack("<I", RELEASE_INPUT[ab.slot])
+    hits = 0
+    for o in range(first_new, len(ef.objects)):
+        p = ef.objects[o]
+        at = bytes(p).find(b"Hero Controller\\Hero Controller")
+        if at < 0:
+            continue
+        end = bytes(p).find(P._E, at)
+        if end < 0 or bytes(p[end + 4:end + 8]) != old:
+            raise AbilityError(f"ability {ab.slot}: hold: the donor's input read moved")
+        p[end + 4:end + 8] = new
+        hits += 1
+    if hits != 1:
+        raise AbilityError(f"ability {ab.slot}: hold: expected one input read, found {hits}")
+    w.state(f"Event {tag} Released", deactivates=[state_link])
+    ef.set_ref(f"{tag} Released Tester", "on_true", f"Event {tag} Released")
+    ef.add_ref(state, "while_active", f"{tag} Released Tester")
+
+
+def add_buffs(ef: EntityFile, w, ab: Ability, *, tag: str, state: str) -> None:
+    """Each cast of ``ab`` (its ``state`` coming on) gives the hero its buffs
+    for their seconds: a persistent state holding a modifier of the stat, and
+    a timer (restarted by every cast) that switches it off. The amount is a
+    one-entry selector, the constant shape the game ships (the trait's default
+    charges selector)."""
+    from . import item_effect as IE
+    from . import talent_add_stat as TA
+    from .item_modifier import ItemModifierError, game_state_keys
+    for n, b in enumerate(ab.buffs, 1):
+        try:
+            key = TA.resolve_stat(b["stat"])
+        except ItemModifierError as e:
+            raise AbilityError(f"ability {ab.slot}: buff {n}: {e}") from e
+        if key in game_state_keys() or key in TA.applied_on_hit():
+            raise AbilityError(f"ability {ab.slot}: buff {n}: {b['stat']!r} is not a stat "
+                               "the hero can gain (game state, or put on whoever is hit)")
+        try:
+            amount = TA._amount(b["value"], f"ability {ab.slot} buff {n}")
+        except TA.AddStatError as e:
+            raise AbilityError(str(e)) from e
+        if IE._in_points(key) and not str(b["value"]).strip().endswith("%"):
+            amount /= 100            # points stored as a fraction (one point = 0.01)
+        name = f"{tag} Buff {n}"
+        sel = w._selector(f"{name} Amount", [w._entry(w._bool(True), P.Num.f32(amount))])
+        mod = w.modifier(f"{name} Modifier", key, sel)
+        on = w.state(f"State {name}", while_active=[mod], flags=TW.PERSISTENT)
+        _timer(w, f"{name} Timer", float(b["seconds"]), ends=on)
+        ef.add_ref(state, "activates", f"State {name}")
+        ef.add_ref(state, "activates", f"{name} Timer")
+
+
+#: A button's charges live in Hero_Common's per-slot counter (both ultimates
+#: share one; the basic attack has none).
+CHARGE_COUNTERS = {"power": "Primary Ability Max Charges Counter",
+                   "special": "Secondary Ability Max Charges Counter",
+                   "defense": "Defensive Ability Max Charges Counter",
+                   "trait": "Trait Ability Max Charges Counter",
+                   "ultimate": "Ultimate Ability Max Charges Counter",
+                   "ultimate2": "Ultimate Ability Max Charges Counter",
+                   "dash": "Dash Ability Max Charges Counter"}
+
+
+def set_charges(ef: EntityFile, hero_common: EntityFile, slot: str, n: int) -> None:
+    """The hero's ``slot`` starts with ``n`` charges: the shared counter
+    overridden with ``n`` in place of its 1 (the trait's read of its default
+    selector becomes the plain number)."""
+    counter = CHARGE_COUNTERS[slot]
+    have = next((c for c in ef.graph().components if c.name == counter), None)
+    if have is not None:            # the ultimates' shared counter, set by the other
+        now = next(f.text for f in EF.fields(have) if f.name == "value_2")
+        if now.split()[1] != str(n):
+            raise AbilityError(f"ability {slot}: both ultimates share one charge count "
+                               f"({now.split()[1]} already); give them the same charges")
+        return
+    HF.fill_slot(ef, hero_common, counter)
+    ef.set_value(counter, "value_2", n)
 
 
 #: What a button lent from a shipped hero (``template``) may say besides its
@@ -382,6 +540,9 @@ def hits(ef: EntityFile, hero_common: EntityFile, w: P.PartWriter, todo: list[Hi
                        own_sound(ef, hit.sound, name=f"{pre} Sound", group=group,
                                  seed=f"{seed}:hit{i}:sound"))
         ef.set_value(f"{pre} Radius", "value", hit.radius)
+        if hit.arc:
+            _cone(ef, pre, group, seed=f"{seed}:hit{i}:cone", degrees=hit.arc)
+        _impact(ef, pre, group, seed=f"{seed}:hit{i}:impact", vfx=hit.impact or IMPACT_FX)
         ef.set_value(f"{pre} Damage", "value_28", hit.damage / 100.0)
         if kind in DAMAGE_TYPE:
             ef.set_value(f"{pre} Damage", _TYPE_FIELD, DAMAGE_TYPE[kind])
@@ -397,7 +558,28 @@ def hits(ef: EntityFile, hero_common: EntityFile, w: P.PartWriter, todo: list[Hi
     return timers
 
 
-_HIT_KEYS = {"at", "radius", "damage", "status", "fx", "shake", "sound", *HIT_FIELDS}
+_HIT_KEYS = {"at", "radius", "damage", "status", "fx", "shake", "sound", "arc", "impact",
+             *HIT_FIELDS}
+#: What every hit plays on each enemy it hits: 53 of 62 shipped ability damage
+#: records link ``ref_32`` to an "Event On ... Character Impact" (an Fx on the
+#: enemy + a light camera shake + a sound); a hit copied from the explosion
+#: linked none, so enemies showed nothing when hit (audit 2026-11-16). Layout:
+#: Geppetto's basic-attack impact, its two damage reads re-pointed at the hit's
+#: own damage; the look a shared Common_FX impact unless the hit names one.
+IMPACT_DONOR = ("Event On Basic Ability Character Impact", "Basic Ability Fx Character Impact",
+                "Basic Ability Damage", "Basic Ability FMod Event Character Impact")
+IMPACT_FX = "Settings\\FX\\Common_FX\\Basic_Impact_01.vfx.ot"
+_DONOR_IMPACT_FX = "Settings\\Heroes\\Hero_Geppetto_FX\\Geppetto_Impact_01.vfx.ot"
+#: A hit with an ``arc`` reaches only a cone ahead of the hero: the shape of
+#: Geppetto's basic attack (his traverser's InCone sub-object, which owns
+#: nothing), its range and angle reads re-pointed at the hit's own parts. Every
+#: shipped basic attack is a cone or a line; the copied explosion is a circle,
+#: so a chop hit enemies behind the hero (audit 2026-11-16). Shipped angles
+#: are 80-90 degrees (Carmilla 80, Geppetto 90).
+CONE_DONOR = ("Heroes\\Hero_Geppetto\\Hero_Geppetto.entity.ot", "Hero_Geppetto",
+              "Basic Ability Traverser", "Basic Ability Range", "Basic Ability Angle")
+#: A basic-attack combo step's cone when the step gives none (Geppetto's).
+COMBO_ARC = 90.0
 
 #: The donor explosion shakes the camera (Common_FX's medium explosion shake)
 #: on EVERY hit; a hit shakes only when asked. "none" points the shake's setup
@@ -508,7 +690,7 @@ def set_fx(ef: EntityFile, fx_part: str, vfx: str, *, old: str = "") -> None:
         raise AbilityError(f"{fx_part}: no {old_s} to replace")
 
 
-def parse_hits(raw, what: str) -> list[Hit]:
+def parse_hits(raw, what: str, *, arc: float = 0.0) -> list[Hit]:
     from .talent_status import STATUSES
     out = []
     for n, h in enumerate(raw or [], 1):
@@ -535,9 +717,16 @@ def parse_hits(raw, what: str) -> list[Hit]:
         if sound and "|" not in sound:
             raise AbilityError(f"{what}: hits[{n}].sound = {sound!r}: \"<entity ref> | "
                                "<FMod event part>\"")
+        impact = str(h.get("impact", ""))
+        if impact and not impact.endswith(".vfx.ot"):
+            raise AbilityError(f"{what}: hits[{n}].impact = {impact!r}: an effect "
+                               "(Settings\\...\\<name>.vfx.ot)")
+        a = float(h.get("arc", arc))
+        if not 0.0 <= a < 360.0:
+            raise AbilityError(f"{what}: hits[{n}].arc = {a}: degrees 0..359 (0 = all round)")
         out.append(Hit(float(h["at"]), float(h.get("radius", 3.0)),
                        float(h.get("damage", 100.0)), status=status, fx=fx, shake=shake,
-                       sound=sound, **extra))
+                       sound=sound, arc=a, impact=impact, **extra))
     return out
 
 
@@ -601,7 +790,7 @@ def add_indicator(ef: EntityFile, ab: Ability, *, seed: str) -> None:
     the hero's own parts (a kit step failed on them)."""
     if ab.indicator is None:
         return
-    word = ab.slot.title()
+    word = slot_word(ab.slot)
     tag = f"{word} Ability"
     disc = indicator(ef, ab.indicator, tag=tag, group=f"Ability {word}",
                      seed=f"{seed}:{ab.slot}")
@@ -648,6 +837,56 @@ def own_sound(ef: EntityFile, spec: str, *, name: str, group: str, seed: str) ->
         ef.set_override(name, empty.guid, empty.path)
     _unlink_value_reads(ef, name)
     return name
+
+
+@functools.cache
+def _cone_donor() -> EntityFile:
+    """CONE_DONOR's file, read once (only read from: replace_subobject copies)."""
+    from . import corpus
+    ref, scope = CONE_DONOR[:2]
+    raw = corpus.read(f"EntitySettings/{ref.replace(chr(92), '/')}.EntitySettingsResource.gen")
+    if raw is None:
+        raise AbilityError(f"arc: {ref} is not in the game files")
+    return EntityFile(raw, scope)
+
+
+def _cone(ef: EntityFile, pre: str, group: str, *, seed: str, degrees: float) -> None:
+    """Hit ``pre``'s area becomes a cone of ``degrees`` ahead of the hero, as
+    deep as its radius (CONE_DONOR)."""
+    import math
+
+    _ref, scope, trav, rng, ang = CONE_DONOR
+    donor = _cone_donor()
+    t = donor.component(trav)
+    f = next(x for x in EF.fields(t) if x.name == "bytes_3")
+    shape = struct.unpack_from("<I", t.body, f.offset + 8)[0]        # (pad 4, count 1)
+    if donor._class(shape) != "oCEntityGpnInConeTraverserSettings":
+        raise AbilityError(f"arc: {scope}'s {trav} is no longer a cone")
+    a = donor.component(ang)
+    ef.clone([a.path], rename={ang: f"{pre} Angle"}, group={a.group: group}, seed=seed,
+             source=donor)
+    ef.set_value(f"{pre} Angle", "value", math.radians(degrees))
+    ef.replace_subobject(f"{pre} Traverser", "bytes_3", 0, donor, shape,
+                         refs={donor.component(rng).guid: f"{pre} Radius",
+                               a.guid: f"{pre} Angle"})
+
+
+def _impact(ef: EntityFile, pre: str, group: str, *, seed: str, vfx: str) -> None:
+    """Hit ``pre`` plays ``vfx`` on each enemy it hits (IMPACT_DONOR)."""
+    event, fx, damage, sound = IMPACT_DONOR
+    donor = _cone_donor()
+    e, f = donor.component(event), donor.component(fx)
+    ef.clone([e.path, f.path], rename={event: f"Event {pre} Character Impact",
+                                       fx: f"{pre} Fx Character Impact"},
+             group={e.group: group}, seed=seed, source=donor)
+    _drop_ref(ef, f"Event {pre} Character Impact", "activates", sound)
+    # the setup (where and how the spark plays) reads the hit's own damage
+    setup = struct.unpack_from("<I", f.body, next(
+        x for x in EF.fields(f) if x.name == "bytes_1").offset + 4)[0]
+    ef.replace_subobject(f"{pre} Fx Character Impact", "bytes_1", 0, donor, setup,
+                         refs={donor.component(damage).guid: f"{pre} Damage"})
+    set_fx(ef, f"{pre} Fx Character Impact", vfx, old=_DONOR_IMPACT_FX)
+    ef.set_ref(f"{pre} Damage", "ref_32", f"Event {pre} Character Impact")
 
 
 def _drop_ref(ef: EntityFile, comp: str, field: str, target: str) -> None:
@@ -794,7 +1033,7 @@ def _step_hits(st: dict, what: str) -> list:
     """A combo step's hits: its timeline lands them, at the step's ``hit_at``."""
     todo = [{"at": st.get("hit_at", 0.0), **h} if isinstance(h, dict) else h
             for h in (st.get("hits") or [])]
-    return parse_hits(todo, what)
+    return parse_hits(todo, what, arc=COMBO_ARC)
 
 
 def _combo_controller_by_base_guid(ef: EntityFile, hero_common: EntityFile, combo: str,
@@ -1176,9 +1415,14 @@ def _build_passive(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed
 def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
           with_indicator: bool = True, read=None) -> str:
     """Write ``ab`` into the hero ``ef``; returns its state's name."""
-    word = ab.slot.title()
+    word = slot_word(ab.slot)
     group = f"Ability {word}"
     tag = f"{word} Ability"
+    if ab.charges > 1:
+        try:
+            set_charges(ef, hero_common, ab.slot, ab.charges)
+        except (EntityEditError, HF.FrameError) as e:
+            raise AbilityError(f"ability {ab.slot}: charges: {e}") from e
     if ab.template is not None:
         return build_template(ef, hero_common, ab, seed=seed, read=read)
     if ab.passive:
@@ -1256,6 +1500,8 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
                              activates=[] if track else [aim], flags=TW.PERSISTENT)
         if ab.has("look_enter"):
             ef.add_ref(state, "on_enter?", f"{tag} Look At")
+        if ab.buffs:
+            add_buffs(ef, w, ab, tag=tag, state=state)
         # The rush's root motion stops at an enemy only while the detector
         # its selector reads is held on (see IN_RANGE_DETECTOR).
         if ab.root_motion is None or ab.strike:
@@ -1270,6 +1516,8 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
             timers = [window_timer]                 # the hits are the strike's
         _timer(w, f"{tag} End Timer", length, on_end=rush_end,
                ends=_NONE if ab.has("no_end_state", "bare") else state_link)
+        if ab.hold:
+            add_release(ef, w, ab, tag=tag, state=state, state_link=state_link)
         statuses(ef, ab.hits, tag=tag, switch=f"State {tag} Strike" if ab.strike else state,
                  seed=f"{seed}:{ab.slot}")
         if with_indicator:

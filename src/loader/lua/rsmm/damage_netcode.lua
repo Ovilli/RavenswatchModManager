@@ -315,7 +315,7 @@ F._netid = {
     -- Three is enough to cover a row boarding a tick or two after its peer
     -- slot appears, without spinning for the rest of the match.
     RAK_IDLE_MAX = 3,
-    CONN_GUID = 0xf8,
+    CONN_GUID = 0xe8,    -- RakNetConnection ctor stores the owner GUID here (0xf8 before the patch 2026-11-17 (2a88a3bd5647))
     NODE_KEY  = 0x10,
     NODE_VAL  = 0x18,
     NODE_NEXT = 0x00,

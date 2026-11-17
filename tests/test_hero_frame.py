@@ -752,3 +752,189 @@ def test_a_copied_sound_overrides_nothing():
     HA.own_sound(ef, donor, name="T Sound", group="Ability Dash", seed="t")
     g = {c.name: c for c in EG.parse(ef.to_bytes(), "Hero_T").components}
     assert g["T Sound"].override is None
+
+
+@needs_corpus
+def test_an_attack_hit_reaches_a_cone_ahead_not_all_round():
+    """A combo step's hit takes Geppetto's cone shape (default 90 degrees),
+    its range and angle read from the hit's own parts; a hit with arc = 0
+    keeps the all-round circle (audit 2026-11-16: the chop hit enemies behind)."""
+    import math
+    import struct
+
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import hero_ability as HA
+    clip = "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_BasicAttack01.fbx"
+    ab = HA.Ability.parse("attack", {"combo": [
+        {"clip": clip, "hits": [{"radius": 2.5}]},
+        {"clip": clip, "hits": [{"radius": 3, "arc": 0}]}]})
+    ef = _hero("Hero_T")
+    HA.build(ef, HF.common(_read), ab, seed="t")
+
+    def shape(pre):
+        c = ef.component(f"{pre} Traverser")
+        f = next(x for x in EF.fields(c) if x.name == "bytes_3")
+        oid = struct.unpack_from("<I", c.body, f.offset + 8)[0]
+        return oid, ef._class(oid)
+    oid, cls = shape("Attack Ability Step 1 Hit 1")
+    assert cls == "oCEntityGpnInConeTraverserSettings"
+    body = bytes(ef.objects[oid])
+    assert b"Hero_Geppetto" not in body and b"Step 1 Hit 1 Angle" in body
+    angle = next(f.text for f in EF.fields(ef.component("Attack Ability Step 1 Hit 1 Angle"))
+                 if f.name == "value")
+    assert float(angle.split()[-1]) == pytest.approx(math.radians(90), abs=1e-4)
+    assert shape("Attack Ability Step 2 Hit 1")[1] == "oCEntityGpnAroundPositionTraverserSettings"
+
+
+@needs_corpus
+def test_a_hit_shows_an_impact_on_each_enemy_it_hits():
+    """Every hit's damage links an impact event (ref_32): an Fx on the enemy
+    hit, placed by reads of the hit's OWN damage (both re-pointed), the shared
+    impact look by default, Character_Common's light shake, no donor sound."""
+    import struct
+
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import hero_ability as HA
+    clip = "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_BasicAttack01.fbx"
+    ab = HA.Ability.parse("power", {"clip": clip, "duration": 1.0,
+                                    "hits": [{"at": 0.3, "radius": 3}]})
+    ef = _hero("Hero_T")
+    HA.build(ef, HF.common(_read), ab, seed="t")
+    ef.to_bytes()
+    pre = "Power Ability Hit 1"
+    dmg = next(f.text for f in EF.fields(ef.component(f"{pre} Damage")) if f.name == "ref_32")
+    assert dmg.endswith(f"Event {pre} Character Impact")
+    acts = next(f.text for f in EF.fields(ef.component(f"Event {pre} Character Impact"))
+                if f.name == "activates")
+    assert "FMod" not in acts and "Camera Shake" in acts
+    fx = ef.component(f"{pre} Fx Character Impact")
+    oid = struct.unpack_from("<I", fx.body, next(
+        x for x in EF.fields(fx) if x.name == "bytes_1").offset + 4)[0]
+    setup = bytes(ef.objects[oid])
+    assert b"Hero_Geppetto" not in setup and setup.count(f"{pre} Damage".encode()) == 2
+    assert HA.IMPACT_FX.encode() in setup
+
+
+@needs_corpus
+def test_a_locator_rebinds_to_a_bone_the_skeleton_has():
+    """``bone`` re-binds a shared locator (the torso's DEF.SpineMiddle is not
+    in Kintaro's bone set; Juliet re-binds hers to DEF.Chest); a non-locator
+    slot refuses it."""
+    import re
+
+    from rsmm.engine.entity_graph_edit import EntityFile
+    ef = _hero("Hero_T")
+    cc = EntityFile(_read("Character_Common\\Character_Common.entity.ot"), "Character_Common")
+    HF.fill_slot(ef, cc, "Locator Torso", bone="DEF.Chest")
+    c = ef.component("Locator Torso")
+    assert c.override is not None
+    assert re.findall(rb"DEF\.[A-Za-z0-9_.]+", bytes(ef.objects[c.index - 1])) == [b"DEF.Chest"]
+    with pytest.raises(HF.FrameError):
+        HF.fill_slot(ef, HF.common(_read), "Preview Camera Distance", bone="DEF.Chest")
+
+
+@needs_corpus
+def test_level_up_plays_the_shared_flash_and_the_heros_own():
+    """The level-up Fx overrides the shared (empty) slot with the shared flash
+    and the hero's own effect in place of the donor's (empty by default)."""
+    import re
+
+    from rsmm.engine import vfx_writer as VW
+    ef = _hero("Hero_T")
+    HF._level_up_fx(ef, _read, "", seed="t")
+    c = ef.component("Level Up Fx")
+    assert c.override is not None and c.override.path.endswith("Hero_Common\\Base\\Level Up Fx")
+    vfx = {m.group(0).decode() for o in ef.subtree({c.index - 1})
+           for m in re.finditer(rb"[ -~]+\.vfx\.ot", bytes(ef.objects[o]))}
+    assert vfx == {"Settings\\FX\\Common_FX\\Heroes_Level_Up_Base.vfx.ot", VW.NO_EFFECT}
+
+
+@needs_corpus
+def test_a_button_starts_with_its_own_charges():
+    """``charges`` overrides the slot's shared max-charges counter (1 by
+    default); both ultimates share one counter, so they must agree."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import hero_ability as HA
+    clip = "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_BasicAttack01.fbx"
+    hc = HF.common(_read)
+    ef = _hero("Hero_T")
+    HA.build(ef, hc, HA.Ability.parse("power", {"clip": clip, "charges": 3}), seed="t")
+    c = ef.component("Primary Ability Max Charges Counter")
+    assert c.override is not None
+    assert next(f.text for f in EF.fields(c) if f.name == "value_2") == "int 3"
+    HA.build(ef, hc, HA.Ability.parse("ultimate", {"clip": clip, "charges": 2}), seed="u")
+    with pytest.raises(HA.AbilityError):
+        HA.build(ef, hc, HA.Ability.parse("ultimate2", {"clip": clip, "charges": 3}), seed="v")
+    with pytest.raises(HA.AbilityError):
+        HA.Ability.parse("attack", {"clip": clip, "charges": 2})
+
+
+@needs_corpus
+def test_a_button_grants_a_timed_buff():
+    """``buffs``: each cast switches on a state holding a modifier of the stat
+    (a constant one-entry selector) and restarts the timer that ends it;
+    an on-hit-only stat is refused."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import hero_ability as HA
+    clip = "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_BasicAttack01.fbx"
+    ef = _hero("Hero_T")
+    HA.build(ef, HF.common(_read), HA.Ability.parse("defense", {
+        "clip": clip, "buffs": [{"stat": "Armour", "value": 20, "seconds": 4}]}), seed="t")
+    acts = next(f.text for f in EF.fields(ef.component("State Defense Ability"))
+                if f.name == "activates")
+    assert "State Defense Ability Buff 1" in acts and "Defense Ability Buff 1 Timer" in acts
+    held = next(f.text for f in EF.fields(ef.component("State Defense Ability Buff 1"))
+                if f.name == "while_active")
+    assert "Defense Ability Buff 1 Modifier" in held
+    with pytest.raises(HA.AbilityError):
+        HA.Ability.parse("defense", {"clip": clip, "buffs": [{"stat": "Armour", "value": 1}]})
+
+
+@needs_corpus
+def test_a_held_button_ends_when_let_go():
+    """``hold``: the button's state holds Geppetto's release tester, its input
+    read re-pointed at THIS button's accessor (special 0x15e13a3f, not the
+    donor's power 0x15e13a3d); letting go fires an event that ends the state."""
+    import struct
+
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import hero_ability as HA
+    clip = "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_BasicAttack01.fbx"
+    ef = _hero("Hero_T")
+    n0 = len(ef.objects)
+    HA.build(ef, HF.common(_read), HA.Ability.parse("special", {
+        "clip": clip, "duration": 3.0, "hold": True}), seed="t")
+    ef.to_bytes()
+    held = next(f.text for f in EF.fields(ef.component("State Special Ability"))
+                if f.name == "while_active")
+    assert "Special Ability Released Tester" in held
+    on_true = next(f.text for f in EF.fields(ef.component("Special Ability Released Tester"))
+                   if f.name == "on_true")
+    assert on_true.endswith("Event Special Ability Released")
+    ends = next(f.text for f in EF.fields(ef.component("Event Special Ability Released"))
+                if f.name == "deactivates?")
+    assert ends.endswith("State Special Ability")
+    new = [bytes(ef.objects[o]) for o in range(n0, len(ef.objects))]
+    assert sum(struct.pack("<I", 0x15E13A3F) in p for p in new) == 1
+    assert not any(struct.pack("<I", 0x15E13A3D) in p for p in new)
+    with pytest.raises(HA.AbilityError):
+        HA.Ability.parse("attack", {"clip": clip, "hold": True})
+
+
+@needs_corpus
+def test_a_custom_dash_replaces_the_shared_one():
+    """``dash``: the dash controller points at the hero's own state (named
+    "Custom Dash", so the hero's "Dash Ability Anim" slot still fills); with no
+    cooldown given it keeps the shared Dash Cooldown Default read."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import hero_ability as HA
+    clip = "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_BasicAttack01.fbx"
+    hc = HF.common(_read)
+    ef = _hero("Hero_T")
+    HF.fill_slot(ef, hc, "Dash Ability Anim", clip=clip)
+    HA.build(ef, hc, HA.Ability.parse("dash", {"clip": clip, "intangible": 0.3,
+                                                "hits": [{"at": 0.1, "radius": 2}]}), seed="t")
+    ctl = {f.name: f.text for f in EF.fields(ef.component("Dash Ability Controller"))}
+    assert ctl["ref_2"].endswith("State Custom Dash Ability")
+    assert "Dash Cooldown Default" in ctl["value_4"]
+    assert ef.component("Dash Ability Anim").override is not None

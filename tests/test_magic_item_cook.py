@@ -512,3 +512,36 @@ def test_every_shipped_item_has_one_unique_identity():
     if not found:
         pytest.skip("no magical-object corpus reachable")
     assert len(set(found.values())) == len(found), "two items share an identity"
+
+
+def test_a_merged_bank_repoints_the_later_mods_cached_rows(tmp_path, monkeypatch):
+    """Two mods append to one bank: the merge stacks mod b's key after mod a's,
+    so b's cooked text ref (built against vanilla + b) is re-pointed from row
+    2 to row 3; a's file, whose key kept its row, is left alone (the book and
+    HUD read the cached row, 2026-09-26)."""
+    import struct
+
+    from rsmm.engine import content_merge
+    from rsmm.engine import text_patches as TP
+    monkeypatch.setenv("RSMM_MODS_DIR", str(tmp_path / "mods"))
+
+    def ref(key, row):
+        return (b"\x04\x00\x00\x00Text" + struct.pack("<I", 14) + b"Common~GAM.xls"
+                + struct.pack("<I", row) + struct.pack("<I", len(key)) + key.encode())
+    dec = "Text/Common~GAM.xls.LocalText.gen"
+    vanilla, a, b, merged = (tmp_path / n for n in ("v", "a", "b", "m"))
+    _write_bank(vanilla, ["one", "two"])
+    _write_bank(a, ["one", "two", "A_Name"])
+    _write_bank(b, ["one", "two", "B_Name"])
+    merged = content_merge._merge_text_bank("x", [a, b], vanilla)
+    a_ent, b_ent = tmp_path / "a.gen", tmp_path / "b.gen"
+    a_ent.write_bytes(b"\x00" + ref("A_Name", 2))
+    b_ent.write_bytes(b"\x00" + ref("B_Name", 2))
+    collected = {"bank": [(a, "a", dec), (b, "b", dec)],
+                 "ea": [(a_ent, "a", "ea")], "eb": [(b_ent, "b", "eb")]}
+    wanted = {"bank": (merged, "b"), "ea": (a_ent, "a"), "eb": (b_ent, "b")}
+    notes = content_merge.repoint_moved_text_rows(collected, wanted)
+    assert TP.parse_text_file(merged).entries == ["one", "two", "A_Name", "B_Name"]
+    assert wanted["ea"] == (a_ent, "a")
+    assert wanted["eb"][0].read_bytes() == b"\x00" + ref("B_Name", 3)
+    assert len(notes) == 1 and notes[0].startswith("b:")

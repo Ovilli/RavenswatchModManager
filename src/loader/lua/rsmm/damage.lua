@@ -103,9 +103,9 @@ local DMG = {
     ATTACK_SYMBOL   = "Entity_ResolveAttackHits",
     -- oCDtEntityCpntHeroController
     HERO_ENTITY_OFF  = 0x08,     -- owning oCEntity
-    HERO_ISLOCAL_OFF = 0x1db0,   -- 1 = this machine's player (0x1d88 before Update 6)
-    HERO_MIRROR_OFF  = 0x1da8,   -- HUD HP mirror; LOCAL player only (0x1d80 before Update 6)
-    HERO_STATS_OFF   = 0x1dd8,   -- per-run stats record (end-screen source; 0x1db0 before Update 6)
+    HERO_ISLOCAL_OFF = 0x1dc8,   -- 1 = this machine's player (0x1db0 before the patch 2026-11-17 (2a88a3bd5647), 0x1d88 before Update 6)
+    HERO_MIRROR_OFF  = 0x1dc0,   -- HUD HP mirror; LOCAL player only (0x1da8 before the patch 2026-11-17 (2a88a3bd5647), 0x1d80 before Update 6)
+    HERO_STATS_OFF   = 0x1df0,   -- per-run stats record (end-screen source; 0x1dd8 before the patch 2026-11-17 (2a88a3bd5647), 0x1db0 before Update 6)
     STATS_TOTAL_OFF  = 0xa8,     -- u32 total damage — LOCAL hero only
     STATS_BEST_OFF   = 0xcc,     -- f32 biggest single hit
     -- oCDtProcessedDamage

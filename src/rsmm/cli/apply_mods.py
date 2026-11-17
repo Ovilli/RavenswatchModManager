@@ -1444,6 +1444,12 @@ def plan_apply(mods: list[Mod],
                   f"{last[1]}); keeping later mod {last[1]}", file=sys.stderr)
             wanted[enc] = (last[0], last[1])
 
+    # A merged text bank moves every later mod's appended rows; their cooked
+    # text refs cache the row (the book and HUD read it), so re-point them.
+    from rsmm.engine.content_merge import repoint_moved_text_rows
+    for note in repoint_moved_text_rows(collected, wanted):
+        print(f"  [merge] {note}")
+
     # Re-check both cache gates for every map whose pool a mod touched, on the
     # FINAL post-merge bytes. Each gate fails silently in game, so this is the
     # only place a broken POI shows up before a playtest.

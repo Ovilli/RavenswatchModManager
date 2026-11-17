@@ -69,6 +69,30 @@ def parse_pe(data: bytes):
     return img_base, sections
 
 
+def pdata_functions(data: bytes) -> list[dict]:
+    """Every function the exe itself declares: the start/end pairs of its
+    exception table (.pdata), as {name, addr, size}. This always matches the
+    exe being scanned, unlike a function list exported from some Ghidra
+    project, which carries the addresses of whatever build it came from."""
+    img_base, sections = parse_pe(data)
+    e_lfanew = struct.unpack_from("<I", data, 0x3C)[0]
+    opt_off = e_lfanew + 24
+    exc_rva, exc_size = struct.unpack_from("<II", data, opt_off + 112 + 3 * 8)
+    off = va_to_offset(img_base + exc_rva, img_base, sections)
+    if off is None or not exc_size:
+        raise RuntimeError("the exe has no exception table (.pdata)")
+    text = sections[0]
+    seen, out = set(), []
+    for i in range(exc_size // 12):
+        start, end, _unwind = struct.unpack_from("<III", data, off + 12 * i)
+        if start in seen or not text["rva"] <= start < text["rva"] + text["vsize"]:
+            continue
+        seen.add(start)
+        va = img_base + start
+        out.append({"name": f"FUN_{va:x}", "addr": hex(va), "size": end - start})
+    return sorted(out, key=lambda s: int(s["addr"], 16))
+
+
 def va_to_offset(va: int, img_base: int, sections):
     rva = va - img_base
     for s in sections:
@@ -198,7 +222,8 @@ def scan_many(text: bytes, patterns, workers: int | None = None) -> dict[str, li
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--exe", default=DEFAULT_EXE)
-    ap.add_argument("--symbols", default="docs/_re/out/symbols.json")
+    ap.add_argument("--symbols", default=None,
+                    help="function list {name, addr, size} (default: the exe's own .pdata)")
     ap.add_argument("--out", default="data/function_patterns.json")
     ap.add_argument("--limit", type=int)
     ap.add_argument("--workers", type=int, help="processes for the .text scans (default: cores-1)")
@@ -209,8 +234,24 @@ def main():
     img_base, sections = parse_pe(data)
     print(f"image_base=0x{img_base:x}, .text at rva=0x{sections[0]['rva']:x}", file=sys.stderr)
 
-    with open(args.symbols) as f:
-        syms = json.load(f)
+    # The function list. Default: the exe's own .pdata. A list exported from
+    # a Ghidra project carries ITS build's addresses: run against a patched
+    # exe it read prologues at stale addresses (2026-11-17: an old 54k-entry
+    # export gave 50k patterns, most of them not function starts), so a list
+    # whose addresses are mostly not function starts in THIS exe is refused.
+    starts = pdata_functions(data)
+    if args.symbols is None:
+        syms = starts
+        print(f"function list: the exe's .pdata ({len(syms)} functions)", file=sys.stderr)
+    else:
+        with open(args.symbols) as f:
+            syms = json.load(f)
+        real = {s["addr"] for s in starts}
+        hit = sum(1 for s in syms if hex(int(s["addr"], 16)) in real)
+        if syms and hit / len(syms) < 0.9:
+            sys.exit(f"{args.symbols}: only {hit} of {len(syms)} addresses are function "
+                     "starts in this exe (.pdata): it is from another build. Leave "
+                     "--symbols out to use the exe's own function table.")
 
     # Pass 1: generate default-length patterns.
     out = []

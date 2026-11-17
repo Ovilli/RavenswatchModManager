@@ -289,8 +289,9 @@ def build(layers: list[dict], *, length: float | None = None, empty: bool = Fals
                 "enabled": 1, "flag_58": 1, "flag_59": 1, "flag_5a": 1,
                 "damping": _curve(drag, f"layer {n}: drag")})))
         if raw.get("spin"):
-            # ponytail: speed_max is the field shipped spinning sprites set
-            # (speed_min 0); which of the two the billboard reads is unproven.
+            # speed_max turns the SPRITE: the emitter seeds particle +0x58 from
+            # the layer's rotation range (FUN_140617370) and SelfRotate adds
+            # speed_max*dt to +0x58 (FUN_140626210); speed_min feeds +0x54.
             mods.append(add(V.Obj("oC3dParticleEffectorSelfRotateSettings", {
                 "enabled": 1, "speed_min": 0.0,
                 "speed_max": math.radians(float(raw["spin"]))})))
