@@ -5759,7 +5759,7 @@ do  -- 6i. the session TWO hops down netcomp+0xb8, where the disassembly says it
     R = require "rsmm"
 end
 
-do  -- 6j. the OWNER path the decompile names: *(*(*(C+0xb8)+0x100)+0x28)
+do  -- 6j. the OWNER path the decompile names: *(*(*(C+0xb8)+0xf0)+0x28)
     package.loaded["rsmm"] = nil
     local Rn = require "rsmm"
     local logged = {}
@@ -5796,7 +5796,7 @@ do  -- 6j. the OWNER path the decompile names: *(*(*(C+0xb8)+0x100)+0x28)
         I.write_u32(slots, 0x154fce5c)
         I.write_u64(slots + 8, comp)
         I.write_u64(comp + 0xb8, netobj)
-        I.write_u64(netobj + 0x100, inner)
+        I.write_u64(netobj + 0xf0, inner)
         I.write_u64(inner + 0x28, peer)          -- the owning session
         -- ... which names the player. 32 characters is past the SSO limit, so
         -- it is the heap form: pointer at +0, size at +0x10, capacity at +0x18.
@@ -5808,7 +5808,7 @@ do  -- 6j. the OWNER path the decompile names: *(*(*(C+0xb8)+0x100)+0x28)
     end
     Rn.damage._netid_pass()
     local L = Rn.damage._netid()
-    check(L.path and #L.path == 3 and L.path[1] == 0xb8 and L.path[2] == 0x100
+    check(L.path and #L.path == 3 and L.path[1] == 0xb8 and L.path[2] == 0xf0
           and L.path[3] == 0x28 and L.off == 0x40,
           "the locator is the exact path oCSLNetworkObject::vft[0x18] walks")
     Rn.damage.relabel()
@@ -5903,7 +5903,7 @@ local function _guid_world(Rg, base, rows, opts)
         I.write_u32(slots, 0x154fce5c)
         I.write_u64(slots + 8, comp)
         I.write_u64(comp + 0xb8, netobj)
-        I.write_u64(netobj + 0x100, repl)
+        I.write_u64(netobj + 0xf0, repl)
         I.write_u64(repl + 0x28, opts.row_guid and opts.row_guid[i]
                                  or (0x51100 + (who and i or i)))
         deal(ctrl[i], 10.0 * i)
@@ -7268,7 +7268,7 @@ local function _peer_world(Rp, base, opts)
         I.write_u32(slots, 0x154fce5c)
         I.write_u64(slots + 8, comp)
         I.write_u64(comp + 0xb8, netobj)
-        I.write_u64(netobj + 0x100, repl)
+        I.write_u64(netobj + 0xf0, repl)
         I.write_u64(repl + 0x28, 0x51100 + i)
         I.write_u16(repl + 0x30, i + 6)
         -- The ownership key, where a row would carry it.
@@ -7506,7 +7506,7 @@ do  -- 9f. one GUID on two rows names neither, and does not latch the join off
     for i = 2, 3 do
         local ent  = I.read_u64(ctrl[i] + 0x08)
         local comp = I.read_u64(I.read_u64(ent + 0x5f0) + 8)
-        I.write_u64(I.read_u64(I.read_u64(comp + 0xb8) + 0x100) + 0x28, 0x777777)
+        I.write_u64(I.read_u64(I.read_u64(comp + 0xb8) + 0xf0) + 0x28, 0x777777)
     end
     _plant_session_chain(0xb6000000, ctrl, { guid = { [2] = 0x777777, [3] = 0x777777 } })
     check(Rp.damage._conn_join() == false, "nothing is named")
@@ -8442,11 +8442,11 @@ do  -- 9l. TWO stale ally rows are ambiguous, so it refuses instead of guessing
 end
 
 -- Give `ent` an owner GUID the way the engine lays it out: net component
--- +0xb8 -> +0x100 -> +0x28 (see F._dmg_controller_guid). `ncmap` backs the
+-- +0xb8 -> +0xf0 -> +0x28 (see F._dmg_controller_guid). `ncmap` backs the
 -- R.net.component stub.
 local function _guid_on(ncmap, ent, scratch, g)
     I.write_u64(scratch + 0xb8, scratch + 0x1000)
-    I.write_u64(scratch + 0x1000 + 0x100, scratch + 0x2000)
+    I.write_u64(scratch + 0x1000 + 0xf0, scratch + 0x2000)
     I.write_u64(scratch + 0x2000 + 0x28, g)
     ncmap[ent] = scratch
 end
@@ -9319,7 +9319,7 @@ end
 -- N. R.damage: the OWNER join merges an ally through a hero swap ------------
 --
 -- The identity is the engine's own: Entity_ResolveAttackHits stamps
--- *(*(*(netcomp+0xb8)+0x100)+0x28) into every hit it builds, and
+-- *(*(*(netcomp+0xb8)+0xf0)+0x28) into every hit it builds, and
 -- oCSLNetworkObject::vft[0x18] is literally that one line (Ghidra 2026-08-24).
 -- Two entities answering with the same id have the same owner, which is the
 -- only thing on this build that can attribute an ALLY's transformed hero -- the
@@ -9339,7 +9339,7 @@ do
         I.write_u32(ent + 0x9000, 0x154fce5c)        -- slot class = oCEntityCpntNet
         I.write_u64(ent + 0x9008, netcomp)           -- slot value = the component
         I.write_u64(netcomp + 0xb8, netobj)
-        I.write_u64(netobj + 0x100, holder)
+        I.write_u64(netobj + 0xf0, holder)
         I.write_u64(holder + 0x28, owner)
         I.write_u8(ent + 0x1db0, hero and 1 or 0)
     end

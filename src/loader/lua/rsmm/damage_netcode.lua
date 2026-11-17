@@ -196,9 +196,9 @@ F._netid = {
     HERO_TRIES = 3,
     -- The net component fields NamedEvent_NetSend dereferences by name.
     DEEP    = { 0xb8, 0xc0, 0xc8 },
-    -- oCSLNetworkObject::vft[0x18]: *(*(*(C+0xb8)+0x100)+0x28) is the session
+    -- oCSLNetworkObject::vft[0x18]: *(*(*(C+0xb8)+0xf0)+0x28) is the session
     -- this entity replicates to. Read straight off the decompile.
-    OWNER_PATH = { 0xb8, 0x100, 0x28 },
+    OWNER_PATH = { 0xb8, 0xf0, 0x28 },
     owner_said = 0,
     owner_vft_said = false,
     DEEPWIN = 0x200,   -- bytes of each of those objects to inspect
@@ -472,7 +472,7 @@ end
 ---
 --- `oCSLNetworkObject::vft[0x18]` (0x1408c0d40) is one line:
 ---
----     *out = *(*(netobj + 0x100) + 0x28);
+---     *out = *(*(netobj + 0xf0) + 0x28);
 ---
 --- netobj+0x100 is the oCSLNetReplica (set in its ctor, FUN_1408c0890's
 --- param_2), and the replica is a RakNet::Replica3 whose +0x28 is
@@ -501,7 +501,7 @@ function F._dmg_controller_guid(key)
     if not _ptr_plausible(ent) then return nil end
     local nc = R.net.component(ent)
     if not nc then return nil end
-    local inner = F._dmg_netid_walk(nc, { 0xb8, 0x100 })
+    local inner = F._dmg_netid_walk(nc, { 0xb8, 0xf0 })
     if not inner then return nil end
     local g = I.read_u64(inner + 0x28)
     if type(g) ~= "number" or g == 0 or g == -1 then return nil end
@@ -734,7 +734,7 @@ function F._dmg_owner_index(row)
     if not _ptr_plausible(ent) then return nil end
     local nc = R.net.component(ent)
     if not nc then return nil end
-    local inner = F._dmg_netid_walk(nc, { 0xb8, 0x100 })
+    local inner = F._dmg_netid_walk(nc, { 0xb8, 0xf0 })
     if not inner then return nil end
     local ix = I.read_u16(inner + 0x30)
     if type(ix) ~= "number" or ix == 0xffff then return nil end
@@ -1795,9 +1795,9 @@ function F._dmg_probe_netid(row, targets)
     --
     -- oCSLNetworkObject::vft[0x18] (0x1408c0d40) is one line:
     --
-    --     *out = *(*(netobj + 0x100) + 0x28);
+    --     *out = *(*(netobj + 0xf0) + 0x28);
     --
-    -- so the session an entity replicates to is `*(*(*(C+0xb8)+0x100)+0x28)`,
+    -- so the session an entity replicates to is `*(*(*(C+0xb8)+0xf0)+0x28)`,
     -- a plain three-hop field path. No vcall needed, and nothing here is a
     -- guess about WHICH offsets -- the disassembly names all three.
     --
@@ -1807,7 +1807,7 @@ function F._dmg_probe_netid(row, targets)
     do
         local owner = F._dmg_netid_walk(nc, F._netid.OWNER_PATH)
         local raw
-        local o = F._dmg_netid_walk(nc, { 0xb8, 0x100 })
+        local o = F._dmg_netid_walk(nc, { 0xb8, 0xf0 })
         if o then raw = I.read_u64(o + 0x28) end
         if raw and F._netid.owner_said < 4 then
             F._netid.owner_said = F._netid.owner_said + 1
@@ -2111,7 +2111,7 @@ end
 --- So this callback ran on EVERY gameplay event, for a field that could never
 --- answer. On the analytics firehose that is the one place per-event Lua work
 --- is actually felt, and the meter is the mod that gets blamed for it. The
---- owner lives at *(*(*(netcomp+0xb8)+0x100)+0x28) instead -- read once per
+--- owner lives at *(*(*(netcomp+0xb8)+0xf0)+0x28) instead -- read once per
 --- row, on the background tick, by F._dmg_probe_netid.
 ---
 --- `R.net.event_session(ev)` is kept: a mod hooking a genuine network event

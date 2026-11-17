@@ -4309,7 +4309,7 @@ R.net._k = {
     -- The owner chain, netcomp -> network object -> holder -> id. See
     -- R.net.owner for the two Ghidra sites this was read off.
     NETOBJ     = 0xb8,    -- netcomp -> oCSLNetworkObject
-    OWNER_HOP  = 0x100,   -- netobj  -> owner holder
+    OWNER_HOP  = 0xf0,    -- netobj  -> owner holder
     OWNER_OFF  = 0x28,    -- holder  -> u64 identity
 }
 
@@ -4345,8 +4345,8 @@ end
 ---       else fallback *(*(entity+0x30)+0x230)->vft[0x88](&out), else -1
 ---       hitdata+0x18 = out
 ---
----   oCSLNetworkObject::vft[0x18] (FUN_1408c0d40) is one line:
----       *out = *(*(obj+0x100) + 0x28)
+---   oCSLNetworkObject::vft[0x18] (FUN_1408bf8c0 on b9c3) is one line:
+---       *out = *(*(obj+0xf0) + 0x28)
 ---
 --- So this is not a heuristic: it is the field the engine uses to answer "who
 --- dealt this" for its own bookkeeping, read the same way. Two entities that

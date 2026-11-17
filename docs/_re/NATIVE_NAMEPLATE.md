@@ -88,3 +88,10 @@ reacquires the picture on each update and shows it only for a known owner
 matching the elected host. The test assets start visible, so expect a possible
 flash before the first update. Verify both clients, roster changes, and
 initial visibility before release.
+
+On November 17, the co-op build found four nameplates and showed exactly one
+crown after correcting the network owner holder offset to `+0xf0` for the
+verified game build. The player reported frame skips. The mod reads game state
+on the gameplay thread every 0.5 seconds and writes a log line only when the
+summary changes. It does not read the log. Profile the full component scan
+before releasing this build.
