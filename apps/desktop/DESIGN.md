@@ -3,6 +3,7 @@
 How the desktop app looks, and the rules screens follow to stay that way. The system itself lives in code. This file says what each piece is for, so a new screen can be built from the existing pieces instead of composing its own.
 
 - `packages/ui/src/styles.css` holds the tokens and component classes. Its comments record why each earlier treatment was removed. Read them before changing a rule.
+- **The web registry is the master style for search and filters.** `packages/ui/src/registry.css` and the shared `RegistrySearchBar`, `RegistryFilterDialog`, and `RegistryResultsControls` components own their visuals on web and desktop. This includes the desktop global search/command palette. Where these patterns differ from the generic desktop defaults below, the registry takes precedence. Change the shared implementation rather than adding desktop-only size, radius, color, or surface overrides.
 - `packages/ui/tailwind.preset.cjs` turns the tokens into Tailwind utilities.
 - `apps/desktop/src/components/chrome.tsx` holds the React helpers (`Button`, `Panel`, `MonoTag`, …).
 - `apps/desktop/src/desktop.css` gives desktop titles their white `--text-title` color, including headings in shared components.
@@ -14,7 +15,7 @@ How the desktop app looks, and the rules screens follow to stay that way. The sy
 2. **Depth comes from surface steps, not borders.** A border is spent only where something is inset or interactive.
 3. **Emphasis comes from being the only saturated thing on screen.** A primary button is a flat crimson fill with no glow. Destructive actions stay quiet until hovered.
 4. **Nothing moves on hover.** Hover changes colour, background or border. Press feedback is the only transform.
-5. **One of each.** One focus ring, one radius family, one primary colour.
+5. **Shared patterns stay shared.** The registry owns search/filter patterns across web and desktop; the desktop shell uses the Grimoire defaults for its remaining controls.
 6. **Text clears WCAG AA on pitch.** Crimson is a fill and never text.
 
 ## Colour
@@ -32,7 +33,7 @@ How the desktop app looks, and the rules screens follow to stay that way. The sy
 | `gilt` | Focus ring, selection, the `gilt` tone of buttons, tags and pills | Large fills |
 | `moss`, `frost` | Telling groups apart in a list (chapter, rarity) | State. State colour is gilt or crimson |
 
-- Every colour is a token. The only literals are third-party brand marks (the Google mark on sign-in) and colours a mod declares for its own themed UI (`item-grid-field.tsx`).
+- Desktop-specific colours use tokens. Shared registry patterns retain their canonical muted text and backdrop colours; third-party brand marks and mod-authored themed colours also keep their own values.
 - Error text is `text-crimson` at full opacity. An opacity suffix (`text-crimson/80`) dims it back towards failing contrast. `text-destructive` is a fill colour (3.05:1 on pitch) and is not used for text.
 - A tinted fill (`bg-crimson/10`, `bg-oxblood/20`) marks state: error, conflict, hover, active. It is not used to make a box. Boxes come from the surfaces below.
 
@@ -43,19 +44,20 @@ How the desktop app looks, and the rules screens follow to stay that way. The sy
 | Page | body | pitch + vignette |
 | Card, panel, rail | `Panel` (`.grimoire-card`) | `--surface-1` |
 | Raised: modal, popover, menu | `Panel variant="raised"` | `--surface-2` |
+| Registry filters and global search | Shared registry dialog styles | `--surface-1`, registry border and backdrop |
 | Inset: log body, output, wells | `Panel variant="inset"` | pitch / 0.5 |
-| Sidebar, top bar | `.surface-grain` | `--surface-1` + grain |
+| Sidebar | `.app-sidebar` | `--surface-1` + the update prompt's raster grain |
 | Conflict / warning strip | `.ember-banner` | crimson wash |
 
 - A container that needs its own background and border uses one of these, not a hand-composed `bg-pitch/60 border border-border`.
-- **Modal backdrop:** `bg-pitch/80` on an `absolute inset-0` layer behind a raised card, opened with `animate-fade-in`. The full-screen image viewer uses `bg-pitch/95`, because it replaces the screen rather than sitting over it.
+- **Modal backdrop:** Generic desktop dialogs use `bg-pitch/80` behind a raised card, opened with `animate-fade-in`. Registry filters and global search use the registry's shared backdrop. The full-screen image viewer uses `bg-pitch/95`, because it replaces the screen rather than sitting over it.
 - No `backdrop-blur` on surfaces. They are opaque, and the blur forced compositing layers that hid a WebKitGTK scroll artifact (see the `body` comment in `styles.css`).
 - **Exception: the in-game overlay HUD** (`components/overlay-hud.tsx`). Its card is `bg-pitch/85` with `backdrop-blur-sm`, because it sits in its own window over the running game, which should stay faintly visible through it. Nothing in the main window follows it.
 - **Exception: the startup update prompt** (`components/cli-update-dialog.css`). Its raised surface fades from crimson on the left through oxblood to pitch on the right, with a fine raster grain and a faded square grid. Layered inset lighting gives the top left a narrow parchment reflection at 18% opacity and a softer crimson glow at 8%, with faint bottom-right shading and a soft black drop shadow. There is no solid frame, and the lighting stays constant on hover. This treatment is local to the update prompt. Copy uses parchment for contrast against the colored surface; the close button uses a parchment circle with an oxblood icon.
 
 ## Text
 
-**Roles.** Titles and headings are white (`--text-title`). Primary body text is `parchment`, secondary `smoke`, tertiary `ash`. The aliases `text-text-primary/-secondary/-tertiary` say the same thing by role. Desktop title colors are applied centrally, including legacy display titles still carrying `text-parchment`; mod-authored item colors keep their explicit theme.
+**Roles.** Desktop-specific titles and headings are white (`--text-title`). Registry dialogs retain their shared foreground heading color. Primary body text is `parchment`, secondary `smoke`, tertiary `ash`. The aliases `text-text-primary/-secondary/-tertiary` say the same thing by role. Desktop title colors are applied centrally, including legacy display titles still carrying `text-parchment`; mod-authored item colors keep their explicit theme.
 
 **Faces.** Every face goes through four CSS variables, so the Appearance presets restyle the whole app.
 
@@ -90,12 +92,16 @@ Sizes are rem, so they follow the UI scale (80–150%). No arbitrary sizes below
   - `rounded-lg` for the crest only.
   - `rounded-full` for pills, switches, counters and avatars.
 
-  `rounded-md` on a control is the card radius on the wrong thing.
+  These are defaults for desktop-specific controls. Shared registry search fields and the global search panel use 8px corners. Registry filter chips use pill radii, filter dialogs use 16px corners, and their icon controls use 8px corners. Browse and global search retain these canonical registry shapes.
 - **Borders.** `border-border` for structural lines. Card and button hairlines are built into their classes. `border-gilt/…` marks selected, and `border-crimson/…` marks error or primary.
 
 ## Spacing and layout
 
 - **Page frame.** `.rsmm-main` pads the page (`px-6 py-6 md:px-8`) and content sits in `mx-auto max-w-7xl`. Screens don't add their own outer padding.
+- **Native window chrome.** A transparent, non-shrinking `h-12` drag region sits above the main content in both sidebar states, with window controls over its right edge. Main content uses `pt-2` beneath it. Keep this region in flow so update banners stay below it and remain clickable.
+- **Sidebar footer.** Launch Modded, Settings, then Sign in/account. Settings is a direct navigation link; Commands and Log live in the account menu. The collapsed rail keeps a visible launch icon and Settings gear, with names in their hover/focus tooltips. The launch disclosure appears only when expanded; Launch Vanilla is also available through the command palette.
+- **Browse toolbar.** Reuse the web registry's search, filter, sort, and view controls without restyling them. The shared search/filter bar is 40px tall with an 8px radius and 32px icon/filter controls. The desktop toolbar may wrap to fit the available content width.
+- **Global search.** The command palette uses `RegistrySearchBar` as the full-width, 40px top row of one 8px-radius panel, with results immediately below it. The shared registry dialog styles own its surface, border, and backdrop; its header has no nested input border or inset container. Result rows match the sidebar navigation's lightened hover and selected surfaces: char at 50%/55%, with a subtle parchment/gilt border. Keep command navigation, keyboard behavior, and desktop font/scale preferences intact.
 - **Rhythm.**
   - `space-y-6` between sections.
   - `space-y-3`/`space-y-4` inside a section.
@@ -134,14 +140,16 @@ Sizes are rem, so they follow the UI scale (80–150%). No arbitrary sizes below
 | Card / panel | `Panel`, variant default / raised / inset |
 | Cover art | `Cover`, `CoverPlaceholder` |
 | Authored Markdown | `Markdown` |
-| Search field | `.input-grim` with a leading icon. Its left padding is the icon's space |
+| Browse and global search | `RegistrySearchBar` + shared registry styles; global search supplies combobox semantics and keyboard navigation |
+| Other desktop search fields | `.input-grim` with a leading icon |
+| Browse filters | `RegistryFilterDialog` + shared registry styles |
 | Text field / textarea | `.field-grim`. Face, size and width come from the call site |
 | Select | `.select-grim`, or `.select-inline` inside another control |
 | Nav item | `.nav-link-grim` + `.nav-icon` |
 | Screenshot viewer | `ScreenshotLightbox` (`components/screenshot-lightbox.tsx`) |
 | Modal | A `fixed inset-0` overlay containing the backdrop above and a raised card. The card has `role="dialog"`, `aria-modal="true"` and a label, and calls `useModalChrome(focusRef, onClose)` for Escape and for moving focus in and back out |
 
-The shadcn-style components in `packages/ui/src/components/` serve the website. The desktop app uses its own helpers above.
+The shadcn-style primitives in `packages/ui/src/components/` serve the website. Registry components in that package are shared with the desktop app; other desktop controls use the helpers above.
 
 ### Private games only
 
@@ -149,14 +157,17 @@ Registry mods carrying a protected private-only tag use `PrivateGamesOnlyBadge` 
 
 This badge matches the website: sentence-case gilt text, a warning triangle, and a gilt wash. Its translated explanation says the mod **may** give an unfair advantage. Hover, keyboard focus, or tap opens a black, borderless tooltip with a soft drop shadow (a deliberate exception to the usual raised-surface treatment). It is portaled outside scrolling panels, clamped to the viewport, and flips above the badge when needed. Escape, blur, outside press, and resizing dismiss it. Scrolling dismisses hover warnings; a focused badge keeps its warning anchored while visible. Activating the badge does not open the surrounding mod card or row. Text sizes follow the app's UI scale.
 
+Sidebar tooltips use the same dark tooltip treatment with `--radius-sm`. The Search tooltip names both mods and commands and includes the Ctrl+K shortcut; the Browse search field filters the registry only.
+
 ## Layers
 
 Overlay z-index, lowest to highest:
 
 | z | Overlay |
 |---|---|
-| 30 | Top bar |
+| 30 | Native drag region |
 | 40 | Window controls |
+| 45 | Sidebar tooltips |
 | 50 | Command palette |
 | 70 | Dialogs |
 | 75 | Changelog, mod config |

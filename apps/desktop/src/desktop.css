@@ -9,3 +9,106 @@
 :root .font-fraktur.text-parchment {
   color: hsl(var(--text-title));
 }
+
+/* Reuse the update prompt's raster grain over the sidebar's dark surface. */
+.app-sidebar {
+  isolation: isolate;
+  background-color: hsl(var(--surface-1));
+}
+.app-sidebar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: url("./assets/update-grain.png");
+  background-size: 128px 128px;
+  mix-blend-mode: soft-light;
+  opacity: 0.18;
+  pointer-events: none;
+}
+
+/* The whole collapsed rail advertises expansion, while controls remain clicks. */
+.app-sidebar[data-collapsed="true"] {
+  cursor: e-resize;
+}
+.app-sidebar :is(button, a) {
+  cursor: pointer;
+}
+.app-sidebar [role="menu"] {
+  cursor: default;
+}
+.app-sidebar .sidebar-expand {
+  cursor: e-resize;
+  opacity: 0;
+}
+.sidebar-logo,
+.sidebar-expand {
+  transition: opacity 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.app-sidebar[data-collapsed="true"]:is(:hover, :focus-within) .sidebar-logo {
+  opacity: 0;
+}
+.app-sidebar[data-collapsed="true"]:is(:hover, :focus-within) .sidebar-expand {
+  opacity: 1;
+}
+/* Touch users do not have a hover state to reveal the affordance. */
+@media (hover: none) {
+  .app-sidebar[data-collapsed="true"] .sidebar-logo {
+    opacity: 0;
+  }
+  .app-sidebar[data-collapsed="true"] .sidebar-expand {
+    opacity: 1;
+  }
+}
+.sidebar-tooltip {
+  position: fixed;
+  z-index: 45;
+  max-width: min(20rem, calc(100vw - 1rem));
+  padding-left: 0.75rem;
+  color: hsl(var(--parchment));
+  font-size: 0.875rem;
+  line-height: 1.4;
+  pointer-events: auto;
+}
+.sidebar-tooltip[data-side="bottom"] {
+  padding-left: 0;
+  padding-top: 0.5rem;
+}
+.sidebar-tooltip > span {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.875rem;
+  border-radius: var(--radius-sm);
+  background: hsl(var(--pitch));
+  box-shadow: 0 4px 16px hsl(var(--pitch) / 0.5);
+}
+
+/* The first column never changes when labels disappear or the rail narrows. */
+.app-sidebar .sidebar-nav-item {
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr) auto;
+  column-gap: 0;
+  padding-inline: 0;
+  overflow: hidden;
+}
+.sidebar-nav-item > svg,
+.sidebar-launch-action > svg,
+.sidebar-account-action > span:first-child {
+  justify-self: center;
+}
+.sidebar-launch-action {
+  grid-template-columns: 3.25rem minmax(0, 1fr);
+}
+.sidebar-account-action {
+  grid-template-columns: 3.25rem minmax(0, 1fr) 1.75rem;
+}
+.sidebar-expanded-content {
+  white-space: nowrap;
+  opacity: 1;
+  transition: opacity 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.app-sidebar[data-collapsed="true"] .sidebar-expanded-content {
+  opacity: 0;
+  pointer-events: none;
+}

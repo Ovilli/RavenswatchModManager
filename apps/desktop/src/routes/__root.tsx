@@ -1,19 +1,17 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { Link, Outlet, createRootRouteWithContext, useLocation } from '@tanstack/react-router';
-import { AlertTriangle } from 'lucide-react';
-import { PanelLeftClose, PanelLeftOpen, ScrollText, Terminal, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Search, X } from 'lucide-react';
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
 import PromotedBanner from '../components/PromotedBanner';
 import { AccountStrip } from '../components/account-strip';
 import { FirstRunDialogs } from '../components/changelog-dialog';
 import { ChannelStatusBanner } from '../components/channel-status-banner';
-import { Button, CopyButton, StatPill } from '../components/chrome';
+import { CopyButton } from '../components/chrome';
 import { CommandPalette } from '../components/command-palette';
 import { BrowseIcon } from '../components/icons/BrowseIcon';
 import { ConflictsIcon } from '../components/icons/ConflictsIcon';
 import { LaunchIcon } from '../components/icons/LaunchIcon';
 import { LibraryIcon } from '../components/icons/LibraryIcon';
-import { ProfilesIcon } from '../components/icons/ProfilesIcon';
 import { SettingsIcon } from '../components/icons/SettingsIcon';
 import { WindowCloseIcon } from '../components/icons/WindowCloseIcon';
 import { WindowMaximizeIcon } from '../components/icons/WindowMaximizeIcon';
@@ -21,11 +19,12 @@ import { WindowMinimizeIcon } from '../components/icons/WindowMinimizeIcon';
 import { WindowRestoreIcon } from '../components/icons/WindowRestoreIcon';
 import { LaunchProvider, useLaunch } from '../components/launch';
 import { ProfilePopover } from '../components/profile-popover';
+import { SidebarTooltip } from '../components/sidebar-tooltip';
 import { DialogProvider, ToastProvider } from '../components/toast';
 import { UpdaterBanner, VersionFooter } from '../components/updater';
 import { msg } from '../lib/i18n';
 import { useT } from '../lib/i18n-react';
-import { shortcutLabel } from '../lib/platform';
+import { inTauri, shortcutLabel } from '../lib/platform';
 import { quitApp } from '../lib/quit';
 import { attachSmoothWheel } from '../lib/smooth-scroll';
 import { trackMainWindow } from '../lib/window-state';
@@ -36,7 +35,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 interface Nav {
-  to: '/' | '/browse' | '/profiles' | '/conflicts' | '/settings' | '/commands' | '/log';
+  to: '/' | '/browse' | '/conflicts' | '/settings';
   icon: React.ComponentType<{ className?: string }>;
   label: string;
 }
@@ -45,25 +44,12 @@ interface Nav {
 // `t(label)`): this table is module scope, where there is no active locale and
 // nothing to re-render when it changes.
 const CONFLICTS_NAV: Nav = { to: '/conflicts', icon: ConflictsIcon, label: msg('Conflicts') };
+const SETTINGS_NAV: Nav = { to: '/settings', icon: SettingsIcon, label: msg('Settings') };
 
 const NAV: Nav[] = [
-  { to: '/', icon: LibraryIcon, label: msg('Library') },
   { to: '/browse', icon: BrowseIcon, label: msg('Browse') },
-  { to: '/profiles', icon: ProfilesIcon, label: msg('Profiles') },
-  // /author (the cooked-asset inspector) has no sidebar entry — it is a dev
-  // tool, not a destination. The route still resolves by direct URL.
-  { to: '/commands', icon: Terminal, label: msg('Commands') },
-  { to: '/log', icon: ScrollText, label: msg('Log') },
+  { to: '/', icon: LibraryIcon, label: msg('Library') },
 ];
-
-/**
- * Pinned to the foot of the sidebar rather than sitting in the list.
- *
- * Settings is not a destination you browse between — it is where you go to
- * change how the rest behaves, and About now lives inside it as a tab. Keeping
- * it out of the run of content pages, down by the collapse control, says that.
- */
-const SETTINGS_NAV: Nav = { to: '/settings', icon: SettingsIcon, label: msg('Settings') };
 
 /**
  * Conflicts is a problem page: it only ever has something to say when two
@@ -78,19 +64,31 @@ function useNav(): Nav[] {
   const conflictCount = useMemo(() => detectConflicts(profile).length, [profile]);
   return useMemo(() => {
     if (conflictCount === 0 && location.pathname !== '/conflicts') return NAV;
-    const items = [...NAV];
-    // Slot it back where it used to live: after Profiles.
-    const at = items.findIndex((n) => n.to === '/profiles');
-    items.splice(at + 1, 0, CONFLICTS_NAV);
-    return items;
+    return [...NAV, CONFLICTS_NAV];
   }, [conflictCount, location.pathname]);
 }
 
 function NavLink({ to, icon: Icon, label: source, collapsed }: Nav & { collapsed: boolean }) {
   const t = useT();
   const installed = useApp((s) => s.installed);
+  const profile = useApp(activeProfile);
+  const localMods = useApp((s) => s.localMods);
+  const activeCount = useMemo(
+    () =>
+      to === '/'
+        ? profile.loadOrder.filter((id) => localMods[id] && isEnabledIn(profile, id)).length
+        : 0,
+    [to, profile, localMods],
+  );
+  const activeDescription = t.n(
+    activeCount,
+    '{n} active mod in {profile}',
+    '{n} active mods in {profile}',
+    { profile: profile.name },
+  );
   const outdated = useMemo(() => (to === '/' ? outdatedCount(installed) : 0), [to, installed]);
   const label = t(source);
+  const collapsedLabel = to === '/' ? t('Library · {n} active', { n: activeCount }) : label;
   const updates =
     outdated > 0
       ? t.n(outdated, '{n} mod with an available update', '{n} mods with available updates')
@@ -98,153 +96,211 @@ function NavLink({ to, icon: Icon, label: source, collapsed }: Nav & { collapsed
   return (
     <Link
       to={to}
-      className={collapsed ? 'nav-link-grim group justify-center' : 'nav-link-grim group'}
-      // With the label hidden the icon is the only thing left, and an icon is
-      // not a name: `aria-label` keeps the link readable to a screen reader and
-      // `title` gives everyone else a tooltip for the same text.
-      aria-label={collapsed ? label : undefined}
-      title={collapsed ? label : undefined}
+      className="nav-link-grim sidebar-nav-item group"
+      aria-label={collapsed ? collapsedLabel : undefined}
+      data-sidebar-tooltip={collapsed ? collapsedLabel : undefined}
       activeProps={{ 'data-active': 'true' }}
       inactiveProps={{ 'data-active': 'false' }}
     >
-      <Icon className="nav-icon" />
-      {collapsed ? null : <span className="font-serif-italic text-base">{label}</span>}
-      {updates && !collapsed ? (
-        <span
-          className="ml-auto inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-gilt/20 px-1.5 font-mono text-xs font-semibold text-gilt"
-          title={updates}
+      <Icon className="nav-icon shrink-0" />
+      <span
+        className="sidebar-expanded-content truncate font-serif-italic text-base"
+        aria-hidden={collapsed}
+      >
+        {label}
+      </span>
+      {to === '/' ? (
+        <div
+          className="sidebar-expanded-content ml-auto flex shrink-0 items-center gap-1.5 pr-3"
+          aria-hidden={collapsed}
         >
-          {outdated}
-        </span>
+          <span
+            className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${activeCount > 0 ? 'bg-gilt/15 text-gilt' : 'bg-parchment/5 text-ash'}`}
+            title={activeDescription}
+          >
+            {t('{n} Active', { n: activeCount })}
+          </span>
+          {updates ? (
+            <span
+              className="inline-flex items-center gap-0.5 text-xs tabular-nums text-gilt"
+              title={updates}
+              aria-label={updates}
+            >
+              <ArrowUp className="h-3 w-3" aria-hidden />
+              {outdated}
+            </span>
+          ) : null}
+        </div>
       ) : null}
     </Link>
   );
 }
 
-function StatusStrip() {
+function SidebarSearch({ collapsed }: { collapsed: boolean }) {
+  const t = useT();
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        window.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }),
+        )
+      }
+      aria-label={t('Search mods and commands')}
+      aria-keyshortcuts="Control+K Meta+K"
+      data-sidebar-tooltip={t('Search mods and commands')}
+      data-sidebar-tooltip-shortcut={shortcutLabel('K')}
+      data-sidebar-tooltip-side={collapsed ? 'right' : 'bottom'}
+      className={
+        collapsed
+          ? 'nav-link-grim sidebar-nav-item'
+          : 'flex h-9 w-9 shrink-0 items-center justify-center rounded text-ash transition-colors duration-150 hover:bg-char/40 hover:text-parchment'
+      }
+    >
+      <Search className="h-5 w-5 shrink-0" aria-hidden />
+    </button>
+  );
+}
+
+function SidebarLaunch({ collapsed }: { collapsed: boolean }) {
   const t = useT();
   const { launching, running, launchError, busy, launch, clearError } = useLaunch();
-  const profile = useApp(activeProfile);
-  const installed = useApp((s) => s.installed);
-  const localMods = useApp((s) => s.localMods);
-  const enabled = profile.loadOrder.filter(
-    (id) => localMods[id] && isEnabledIn(profile, id),
-  ).length;
-  const disabled = profile.loadOrder.length - enabled;
-  const conflictCount = useMemo(() => detectConflicts(profile).length, [profile]);
-  const outdated = useMemo(() => outdatedCount(installed), [installed]);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuId = useId();
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const disclosureRef = useRef<HTMLButtonElement>(null);
+  const vanillaRef = useRef<HTMLButtonElement>(null);
+  const label =
+    launching === 'vanilla'
+      ? t('Restoring…')
+      : launching === 'modded'
+        ? t('Applying…')
+        : running
+          ? t('Running…')
+          : t('Launch Modded');
+
+  useEffect(() => {
+    if (!menuOpen || collapsed) return;
+    vanillaRef.current?.focus();
+    const dismiss = (event: MouseEvent) => {
+      if (event.target instanceof Node && !wrapRef.current?.contains(event.target))
+        setMenuOpen(false);
+    };
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setMenuOpen(false);
+      disclosureRef.current?.focus();
+    };
+    document.addEventListener('mousedown', dismiss);
+    document.addEventListener('keydown', keydown);
+    return () => {
+      document.removeEventListener('mousedown', dismiss);
+      document.removeEventListener('keydown', keydown);
+    };
+  }, [menuOpen, collapsed]);
+
+  useEffect(() => {
+    if (busy || collapsed) setMenuOpen(false);
+  }, [busy, collapsed]);
 
   return (
-    // `relative z-30`: `.surface-grain` sets `backdrop-filter`, which makes this
-    // strip a stacking context with `z-index: auto` — so its profile menu, no
-    // matter how high its own z-index, is confined here and painted before the
-    // `.grimoire-card`s below (they are `backdrop-filter` stacking contexts too,
-    // and later in the DOM). An explicit z-index lifts the whole strip instead.
     <div
-      className="surface-grain relative z-30 flex items-center justify-between gap-3 border-b border-border px-3 py-2"
-      data-tauri-drag-region
+      ref={wrapRef}
+      className="relative flex shrink-0 flex-col gap-2 px-3 pb-3"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setMenuOpen(false);
+      }}
     >
-      {/* Tauri checks the element under the pointer, so mark the empty-space
-          containers too. Controls and their children stay unmarked. */}
-      {/* The left half yields space, the right half does not: the launch
-          buttons must never be squeezed, so the profile name truncates first. */}
-      <div className="flex min-w-0 items-center gap-3" data-tauri-drag-region>
-        <div className="min-w-0">
-          <ProfilePopover compact />
-        </div>
-      </div>
-
-      <div className="flex min-w-0 shrink items-center gap-2" data-tauri-drag-region>
-        <div className="flex shrink-0 items-center gap-2 pr-2" data-tauri-drag-region>
-          <Button
+      {launchError ? (
+        <div
+          role="alert"
+          className={`flex items-start gap-2 text-xs text-crimson ${collapsed ? 'grimoire-card grimoire-card--raised absolute bottom-full left-3 z-50 mb-2 w-64 p-3' : 'pb-1'}`}
+        >
+          <span className="min-w-0 flex-1 break-words">{launchError}</span>
+          <CopyButton value={t('Launch error: {error}', { error: launchError })} />
+          <button
             type="button"
-            size="sm"
-            disabled={busy}
-            /* A floor, because the label is not fixed: it swaps to "Restoring…"
-               and "Running…" as a launch proceeds, and a button that resizes
-               mid-launch shoves the one beside it. The floor clears the longest
-               label in every typeface preset, so all three states render at the
-               same width; a preset wide enough to exceed it grows rather than
-               clipping. Shared by both buttons so the pair reads as a pair. */
-            className="min-w-[10rem]"
-            onClick={() => void launch('vanilla')}
+            onClick={clearError}
+            title={t('Dismiss')}
+            aria-label={t('Dismiss the launch error')}
+            className="shrink-0 text-ash transition-colors duration-150 hover:text-parchment"
           >
-            <LaunchIcon className="h-5 w-5 text-parchment" />
-            <span>
-              {launching === 'vanilla'
-                ? t('Restoring…')
-                : running === 'vanilla'
-                  ? t('Running…')
-                  : t('Launch Vanilla')}
-            </span>
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="primary"
-            disabled={busy}
-            className="min-w-[10rem]"
-            onClick={() => void launch('modded')}
-          >
-            <LaunchIcon className="h-5 w-5 text-parchment" />
-            <span>
-              {launching === 'modded'
-                ? t('Applying…')
-                : running === 'modded'
-                  ? t('Running…')
-                  : t('Launch Modded')}
-            </span>
-          </Button>
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
         </div>
-
-        {launchError ? (
-          // `min-w-0` + a proportional cap, not a fixed 300px: this sits
-          // inside the `shrink-0` right cluster, beside two 11rem launch
-          // buttons, so a fixed width made the strip wider than a narrow
-          // window and pushed the window controls off the edge. It gives
-          // ground first now — the full text is a copy button away.
-          <span className="flex min-w-0 items-center gap-2 text-xs text-crimson" role="alert">
-            <span className="min-w-0 flex-1 truncate">{launchError}</span>
-            <CopyButton value={t('Launch error: {error}', { error: launchError })} />
-            {/* A failed launch used to pin its message into the status strip
-                until the next launch attempt: `clearError` existed with no
-                caller anywhere. */}
-            <button
-              type="button"
-              onClick={clearError}
-              title={t('Dismiss')}
-              aria-label={t('Dismiss the launch error')}
-              className="shrink-0 text-ash transition-colors duration-150 hover:text-parchment"
-            >
-              <X className="h-3.5 w-3.5" aria-hidden="true" />
-            </button>
+      ) : null}
+      <div className="flex overflow-hidden rounded border border-crimson bg-crimson">
+        <button
+          type="button"
+          disabled={busy}
+          className="sidebar-launch-action grid min-h-11 min-w-0 flex-1 items-center overflow-hidden py-2 font-semibold text-parchment transition-colors duration-150 hover:bg-parchment/10 disabled:pointer-events-none disabled:opacity-50"
+          aria-label={label}
+          data-sidebar-tooltip={collapsed ? label : undefined}
+          onClick={() => {
+            setMenuOpen(false);
+            void launch('modded');
+          }}
+        >
+          <LaunchIcon className="h-5 w-5 shrink-0" />
+          <span
+            className="sidebar-expanded-content truncate pr-2 text-left"
+            aria-hidden={collapsed}
+          >
+            {label}
           </span>
-        ) : null}
-        {/* Hidden rather than squashed below 1340px. The cluster is `shrink-0`
-            so the launch buttons keep their size, which means something has to
-            give when the window is narrow — and a mod count is the most
-            expendable thing in this row. The cut-off is where the row measurably
-            stops fitting beside the sidebar (it overflowed from `lg`, 1024px, up
-            to 1340px), not a standard breakpoint. */}
-        <div className="hidden items-center gap-2 min-[1340px]:flex" data-tauri-drag-region>
-          <StatPill value={enabled} label={t('enabled')} />
-          <StatPill value={disabled} label={t('disabled')} />
-          {outdated > 0 ? <StatPill value={outdated} label={t('updates')} tone="gilt" /> : null}
-          {conflictCount > 0 ? (
-            <Link to="/conflicts" className="inline-flex items-center gap-1">
-              <AlertTriangle className="h-4 w-4 text-crimson" />
-              <StatPill value={conflictCount} label={t('conflicts')} tone="crimson" />
-            </Link>
-          ) : null}
-          <StatPill label={t('command')} value={shortcutLabel('K')} className="tracking-normal" />
-        </div>
-        <WindowControls />
+        </button>
+        {collapsed ? null : (
+          <button
+            ref={disclosureRef}
+            type="button"
+            disabled={busy}
+            className="flex w-11 shrink-0 items-center justify-center border-l border-parchment/20 text-parchment transition-colors duration-150 hover:bg-parchment/10 disabled:pointer-events-none disabled:opacity-50"
+            aria-label={t('Launch options')}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-controls={menuId}
+            onClick={() => setMenuOpen((open) => !open)}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                event.preventDefault();
+                setMenuOpen(true);
+              }
+            }}
+          >
+            <ChevronDown className="h-4 w-4" aria-hidden />
+          </button>
+        )}
       </div>
+      {menuOpen && !collapsed ? (
+        <div
+          id={menuId}
+          role="menu"
+          aria-label={t('Launch options')}
+          className="grimoire-card grimoire-card--raised absolute bottom-full left-3 z-50 mb-2 w-64 max-w-[calc(100vw-1.5rem)] p-1.5"
+        >
+          <button
+            ref={vanillaRef}
+            type="button"
+            role="menuitem"
+            disabled={busy}
+            className="flex min-h-11 w-full items-center gap-3 rounded px-3 py-2 text-left text-sm text-parchment transition-colors duration-150 hover:bg-char/60 focus-visible:bg-char/60"
+            onClick={() => {
+              setMenuOpen(false);
+              disclosureRef.current?.focus();
+              void launch('vanilla');
+            }}
+          >
+            <LaunchIcon className="h-5 w-5 shrink-0 text-ash" />
+            {t('Launch Vanilla')}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
 
 async function getAppWindow() {
+  if (!inTauri()) return null;
   try {
     const { getCurrentWindow } = await import('@tauri-apps/api/window');
     return getCurrentWindow();
@@ -332,7 +388,10 @@ function WindowControls() {
   if (!available) return null;
 
   return (
-    <div className="window-controls ml-3 flex items-center gap-2" data-tauri-drag-region>
+    <div
+      className="window-controls absolute right-3 top-3 z-40 flex items-center gap-2"
+      data-tauri-drag-region
+    >
       <button
         type="button"
         title={t('Minimize')}
@@ -364,7 +423,6 @@ function WindowControls() {
       >
         <WindowCloseIcon className="h-4 w-4 text-crimson" />
       </button>
-
     </div>
   );
 }
@@ -376,6 +434,7 @@ function RootLayout() {
   const collapsed = useApp((s) => s.settings.sidebarCollapsed);
   const update = useApp((s) => s.updateSettings);
   const mainRef = useRef<HTMLElement | null>(null);
+  const sidebarRef = useRef<HTMLElement | null>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-scroll on navigation
   useEffect(() => {
@@ -399,76 +458,106 @@ function RootLayout() {
         <LaunchProvider>
           <div className="flex h-screen w-screen overflow-hidden">
             <aside
-              className={`surface-grain flex shrink-0 flex-col border-r border-border ${
+              ref={sidebarRef}
+              data-collapsed={collapsed}
+              onClick={(event) => {
+                // The empty rail expands; its links, menus and actions keep their own behavior.
+                if (
+                  collapsed &&
+                  event.target instanceof Element &&
+                  event.currentTarget.contains(event.target) &&
+                  !event.target.closest('button, a, [role="menu"]')
+                ) {
+                  update({ sidebarCollapsed: false });
+                }
+              }}
+              className={`app-sidebar relative z-40 flex shrink-0 flex-col border-r border-border transition-[width] duration-150 ease-grimoire ${
                 collapsed ? 'w-20' : 'w-72'
               }`}
             >
-              <div className={collapsed ? 'px-3 pt-5 pb-4' : 'px-5 pt-5 pb-4'}>
-                <div className="flex items-center justify-center">
-                  <img
-                    src="/logo.png"
-                    alt="Ravenswatch Mod Manager"
-                    className={`shrink-0 rounded-md object-cover ${
-                      collapsed ? 'h-10 w-10' : 'h-14 w-14'
-                    }`}
-                  />
+              <div
+                className={`shrink-0 px-4 pt-4 pb-3 ${collapsed ? 'overflow-hidden' : ''}`}
+                data-tauri-drag-region={collapsed ? undefined : true}
+              >
+                <div
+                  className="flex w-64 items-center gap-2"
+                  data-tauri-drag-region={collapsed ? undefined : true}
+                >
+                  <div className="sidebar-brand relative h-11 w-11 shrink-0">
+                    <img
+                      src="/logo.png"
+                      alt="Ravenswatch Mod Manager"
+                      className="sidebar-logo h-full w-full rounded-md object-cover"
+                    />
+                    {collapsed ? (
+                      <button
+                        type="button"
+                        onClick={() => update({ sidebarCollapsed: false })}
+                        aria-label={t('Expand the sidebar')}
+                        data-sidebar-tooltip={t('Expand the sidebar')}
+                        className="sidebar-expand absolute inset-0 flex items-center justify-center rounded text-ash hover:bg-char/40 hover:text-parchment"
+                      >
+                        <PanelLeftOpen className="h-4 w-4" aria-hidden />
+                      </button>
+                    ) : null}
+                  </div>
+                  {collapsed ? null : <ProfilePopover />}
+                  {collapsed ? null : <SidebarSearch collapsed={false} />}
+                  {collapsed ? null : (
+                    <button
+                      type="button"
+                      onClick={() => update({ sidebarCollapsed: true })}
+                      aria-label={t('Collapse the sidebar to icons')}
+                      title={t('Collapse the sidebar to icons')}
+                      className="shrink-0 rounded border border-transparent p-2 text-ash transition hover:border-border hover:bg-char/40 hover:text-parchment"
+                    >
+                      <PanelLeftClose className="h-4 w-4" aria-hidden />
+                    </button>
+                  )}
                 </div>
               </div>
 
-              <nav className="flex flex-1 flex-col gap-1 px-2 py-2">
+              <nav
+                className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 py-1"
+                data-tauri-drag-region={collapsed ? undefined : true}
+              >
                 {nav.map((n) => (
-                  <NavLink key={n.to} {...n} collapsed={collapsed} />
+                  <Fragment key={n.to}>
+                    <NavLink {...n} collapsed={collapsed} />
+                    {collapsed && n.to === '/' ? <SidebarSearch collapsed /> : null}
+                  </Fragment>
                 ))}
               </nav>
 
-              <div className="border-t border-border/60 px-2 pt-2 pb-1">
+              {collapsed ? null : (
+                <div className="px-4 pb-3 pt-2">
+                  <PromotedBanner vertical />
+                </div>
+              )}
+              <SidebarLaunch collapsed={collapsed} />
+              <div className="shrink-0 px-3 pb-3">
                 <NavLink {...SETTINGS_NAV} collapsed={collapsed} />
               </div>
-
-              <div className={collapsed ? 'px-2 pb-2' : 'px-4 pb-2'}>
-                <button
-                  type="button"
-                  onClick={() => update({ sidebarCollapsed: !collapsed })}
-                  aria-label={
-                    collapsed ? t('Expand the sidebar') : t('Collapse the sidebar to icons')
-                  }
-                  title={collapsed ? t('Expand the sidebar') : t('Collapse the sidebar to icons')}
-                  aria-pressed={collapsed}
-                  className={`flex w-full items-center gap-2 rounded border border-transparent px-2 py-1.5 text-ash hover:border-border hover:text-parchment ${
-                    collapsed ? 'justify-center' : ''
-                  }`}
-                >
-                  {collapsed ? (
-                    <PanelLeftOpen className="h-4 w-4" aria-hidden />
-                  ) : (
-                    <PanelLeftClose className="h-4 w-4" aria-hidden />
-                  )}
-                  {collapsed ? null : (
-                    <span className="font-mono text-xs">{t('Collapse sidebar')}</span>
-                  )}
-                </button>
-              </div>
-
-              {/* Wide controls with nothing meaningful to show at 5rem, so
-                  they step aside rather than being squeezed into an unreadable
-                  version of themselves. */}
-              {collapsed ? null : (
-                <>
-                  <AccountStrip />
-                  <div className="px-4 pb-4">
-                    <PromotedBanner vertical />
-                  </div>
-                </>
-              )}
+              <AccountStrip collapsed={collapsed} />
+              <SidebarTooltip sidebarRef={sidebarRef} />
             </aside>
 
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <StatusStrip />
+            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+              {/* Reserve native dragging space independently of the sidebar.
+                  Keeping it in flow also leaves update banners clickable. */}
+              {inTauri() ? (
+                <div
+                  aria-hidden="true"
+                  data-tauri-drag-region
+                  className="relative z-30 h-12 shrink-0"
+                />
+              ) : null}
+              <WindowControls />
               <UpdaterBanner />
               <ChannelStatusBanner />
               <main
                 ref={mainRef}
-                className="rsmm-main min-h-0 flex-1 overflow-y-auto px-6 py-6 md:px-8"
+                className={`rsmm-main min-h-0 flex-1 overflow-y-auto px-6 pb-6 md:px-8 ${inTauri() ? 'pt-2' : 'pt-6'}`}
               >
                 <div
                   className={`mx-auto w-full animate-page-in ${
