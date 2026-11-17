@@ -1718,7 +1718,8 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             if isinstance(act, dict) and act.get("steps"):
                 # A talent action's kit timeline, on its own action state.
                 from ...engine import talent_add_stat as TA
-                hooks.append({"when": TA.action_state_name(name, na), "steps": act["steps"]})
+                hooks.append({"when": TA.action_state_name(name, na), "steps": act["steps"],
+                              "slot": str(act.get("on", ""))})
         talents.append((name, g, {
             "bank": bank, "name_key": key(f"Skill_{word}_Name", t.get("title", name)),
             "desc_key": key(f"Skill_{word}_Desc", t.get("description", "")),
@@ -1826,7 +1827,8 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         raw = dict(raw)
         word = str(slot).title()
         if raw.get("steps"):
-            hooks.append({"when": f"State {word} Ability", "steps": raw["steps"]})
+            hooks.append({"when": f"State {word} Ability", "steps": raw["steps"],
+                          "slot": str(slot)})
             button_steps[str(slot)] = raw["steps"]
         raw.pop("steps", None)
         if raw.get("add_stats"):
@@ -1942,6 +1944,7 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # (speed, damage, size, explode, knockback, root, burn ...).
     own_projectiles: dict[str, bytes] = {}
     own_ref: dict[str, str] = {}
+    proj_args: dict[str, dict] = {}   # how each projectile of its own was built
     projectiles = frame.get("projectiles") or {}
     if projectiles:
         from ...engine import attack_build as AB
@@ -2004,14 +2007,14 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                            {"fit": "none", "scale": float(spec.get("scale", 1.0))})
             maps = {k: spec[k] for k in ("albedo", "mra", "normal") if spec.get(k)}
             p_mat = p_material(AB.TEMPLATE_MAT, maps, tag, what) if maps else ""
+            proj_args[str(pid)] = {
+                "mesh": p_geo, "material": p_mat, "lifetime": float(spec.get("lifetime", 1.0)),
+                "trail": str(spec.get("trail") or ""), "impact": str(spec.get("impact") or ""),
+                "pierce": bool(spec.get("pierce", True)),
+                "size": float(spec.get("size", PF.SIZE)),
+                "pitch": math.radians(float(spec["pitch"])) if "pitch" in spec else PF.PITCH}
             try:
-                own_projectiles[ref] = PF.build(
-                    read, stem=stem, mesh=p_geo, material=p_mat,
-                    lifetime=float(spec.get("lifetime", 1.0)),
-                    trail=str(spec.get("trail") or ""), impact=str(spec.get("impact") or ""),
-                    pierce=bool(spec.get("pierce", True)),
-                    size=float(spec.get("size", PF.SIZE)),
-                    pitch=math.radians(float(spec["pitch"])) if "pitch" in spec else PF.PITCH)
+                own_projectiles[ref] = PF.build(read, stem=stem, **proj_args[str(pid)])
             except PF.ProjectileError as e:
                 raise ContentError(f"hero {hid}: {e}") from e
             own_ref[str(pid)] = ref
@@ -2064,8 +2067,25 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         extra_targets |= {*([] if spec["from"].startswith("own:") else [src_ref]),
                           *res.resources}
 
-    def own_fire(steps):
-        """``fire = "own:<id>"`` / ``burst = "own:<id>"`` -> that entity of its own."""
+    def typed(pid: str, slot: str) -> str:
+        """Projectile ``pid`` as fired by button ``slot``: a copy whose hits
+        count as that button's damage (projectile_frame's modifier type), so
+        its talents reach them; the base projectile counts as a basic attack."""
+        if pid not in proj_args or slot not in HA.DAMAGE_TYPE or slot == "attack":
+            return own_ref[pid]
+        stem = f"{scope}_{pid}_{slot.title()}"
+        ref = f"{folder}\\{stem}.entity.ot"
+        if ref not in own_projectiles:
+            try:
+                own_projectiles[ref] = PF.build(read, stem=stem, **proj_args[pid],
+                                                modifier_type=HA.DAMAGE_TYPE[slot])
+            except PF.ProjectileError as e:
+                raise ContentError(f"hero {hid}: {e}") from e
+        return ref
+
+    def own_fire(steps, slot: str = ""):
+        """``fire = "own:<id>"`` / ``burst = "own:<id>"`` -> that entity of its
+        own (a projectile: its copy typed as ``slot``'s damage)."""
         out = []
         for st in steps or []:
             st = dict(st)
@@ -2075,12 +2095,13 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
                     if pid not in own_ref:
                         raise ContentError(f"hero {hid}: {key} = {st[key]!r}: no "
                                            f"projectiles.{pid} or entities.{pid}")
-                    st[key] = own_ref[pid]
+                    st[key] = typed(pid, slot)
             if st.get("steps"):
-                st["steps"] = own_fire(st["steps"])
+                st["steps"] = own_fire(st["steps"], slot)
             out.append(st)
         return out
-    hooks = [{**h, "steps": own_fire(h["steps"])} for h in hooks]
+    hooks = [{**{k: v for k, v in h.items() if k != "slot"},
+              "steps": own_fire(h["steps"], h.get("slot", ""))} for h in hooks]
     # Pets of its own (the kit's `pets`: Hero_Pet_Model, so they follow the
     # hero, take its attack orders and go for enemies; a plain `summon` step
     # is an ally with no master and stood idle, Blood Wolf 2026-11-13).
