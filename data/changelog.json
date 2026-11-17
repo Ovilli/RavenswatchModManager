@@ -1,6 +1,15 @@
 {
-  "generated": "2026-11-16",
+  "generated": "2026-11-17",
   "entries": [
+    {
+      "version": "",
+      "date": "2026-11-17",
+      "summary": "Works with the 2026-11-17 game patch: symbols and struct offsets remapped for the new build.",
+      "highlights": [
+        "Works with the 2026-11-17 game patch: symbols and struct offsets remapped for the new build."
+      ],
+      "loader_version": 62
+    },
     {
       "version": "",
       "date": "2026-11-16",
@@ -500,17 +509,6 @@
         "The item editor gets an own-identity checkbox for copies, so a copy is not granted as its base"
       ],
       "cli_version": 5
-    },
-    {
-      "version": "",
-      "date": "2026-10-20",
-      "summary": "Item mods can fix behaviour, not just numbers: new [[content.steps]] graph edits on a copied item. The editor now opens and saves items that use them.",
-      "highlights": [
-        "Item mods take [[content.steps]] (set / link / add_link / remove_link) to rewire a copied item, e.g. turn a permanent on-hit bonus into a timed one",
-        "The item editor opens and saves items with steps instead of refusing them",
-        "Fixed link labels written into entities whose shipped references are stale"
-      ],
-      "cli_version": 4
     }
   ]
 }
