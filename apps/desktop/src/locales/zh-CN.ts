@@ -670,7 +670,6 @@ export const zhCN: Record<string, string> = {
   'Search installed mods': '搜索已安装的模组',
   'Search launcher log...': '搜索启动器日志…',
   'Search mods': '搜索模组',
-  Search: '搜索',
   'Search mods and commands': '搜索模组和命令',
   'Search mods, or type a command — launch, restore, settings…':
     '搜索模组，或输入命令——启动、还原、设置…',

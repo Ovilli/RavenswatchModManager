@@ -414,7 +414,7 @@
     padding: 0.6rem 0.85rem;
     color: hsl(var(--parchment) / 0.88);
     border: 1px solid transparent;
-    border-radius: 0.9rem;
+    border-radius: var(--radius-sm);
     transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms
       cubic-bezier(0.4, 0, 0.2, 1), border-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
   }
@@ -426,7 +426,7 @@
   .nav-link-grim[data-active="true"] {
     color: hsl(var(--parchment));
     border-color: hsl(var(--gilt) / 0.24);
-    background: linear-gradient(110deg, hsl(var(--crimson) / 0.2), hsl(var(--char) / 0.55));
+    background-color: hsl(var(--char) / 0.55);
   }
   /* Stronger nav label for clearer hierarchy */
   .nav-link-grim > span {

@@ -13,6 +13,7 @@ import { BrowseIcon } from '../components/icons/BrowseIcon';
 import { ConflictsIcon } from '../components/icons/ConflictsIcon';
 import { LaunchIcon } from '../components/icons/LaunchIcon';
 import { LibraryIcon } from '../components/icons/LibraryIcon';
+import { SettingsIcon } from '../components/icons/SettingsIcon';
 import { WindowCloseIcon } from '../components/icons/WindowCloseIcon';
 import { WindowMaximizeIcon } from '../components/icons/WindowMaximizeIcon';
 import { WindowMinimizeIcon } from '../components/icons/WindowMinimizeIcon';
@@ -36,7 +37,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 interface Nav {
-  to: '/' | '/browse' | '/conflicts';
+  to: '/' | '/browse' | '/conflicts' | '/settings';
   icon: React.ComponentType<{ className?: string }>;
   label: string;
 }
@@ -45,6 +46,7 @@ interface Nav {
 // `t(label)`): this table is module scope, where there is no active locale and
 // nothing to re-render when it changes.
 const CONFLICTS_NAV: Nav = { to: '/conflicts', icon: ConflictsIcon, label: msg('Conflicts') };
+const SETTINGS_NAV: Nav = { to: '/settings', icon: SettingsIcon, label: msg('Settings') };
 
 const NAV: Nav[] = [
   { to: '/browse', icon: BrowseIcon, label: msg('Browse') },
@@ -148,7 +150,7 @@ function SidebarSearch({ collapsed }: { collapsed: boolean }) {
       }
       aria-label={t('Search mods and commands')}
       aria-keyshortcuts="Control+K Meta+K"
-      data-sidebar-tooltip={t('Search')}
+      data-sidebar-tooltip={t('Search mods and commands')}
       data-sidebar-tooltip-shortcut={shortcutLabel('K')}
       data-sidebar-tooltip-side={collapsed ? 'right' : 'bottom'}
       className={
@@ -553,12 +555,12 @@ function RootLayout() {
                   update({ sidebarCollapsed: false });
                 }
               }}
-              className={`app-sidebar relative z-40 flex shrink-0 flex-col border-r border-border transition-[width] duration-200 ease-out ${
+              className={`app-sidebar relative z-40 flex shrink-0 flex-col border-r border-border transition-[width] duration-150 ease-grimoire ${
                 collapsed ? 'w-20' : 'w-72'
               }`}
             >
               <div
-                className={`px-4 pt-4 pb-3 ${collapsed ? 'overflow-hidden' : ''}`}
+                className={`shrink-0 px-4 pt-4 pb-3 ${collapsed ? 'overflow-hidden' : ''}`}
                 data-tauri-drag-region={collapsed ? undefined : true}
               >
                 <div
@@ -617,17 +619,29 @@ function RootLayout() {
                 </div>
               )}
               <SidebarLaunch collapsed={collapsed} />
+              <div className="shrink-0 px-3 pb-3">
+                <NavLink {...SETTINGS_NAV} collapsed={collapsed} />
+              </div>
               <AccountStrip collapsed={collapsed} />
               <SidebarTooltip sidebarRef={sidebarRef} />
             </aside>
 
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+              {/* Reserve native dragging space independently of the sidebar.
+                  Keeping it in flow also leaves update banners clickable. */}
+              {inTauri() ? (
+                <div
+                  aria-hidden="true"
+                  data-tauri-drag-region
+                  className="relative z-30 h-12 shrink-0"
+                />
+              ) : null}
               <WindowControls />
               <UpdaterBanner />
               <ChannelStatusBanner />
               <main
                 ref={mainRef}
-                className={`rsmm-main min-h-0 flex-1 overflow-y-auto px-6 pb-6 md:px-8 ${inTauri() ? 'pt-14' : 'pt-6'}`}
+                className={`rsmm-main min-h-0 flex-1 overflow-y-auto px-6 pb-6 md:px-8 ${inTauri() ? 'pt-2' : 'pt-6'}`}
               >
                 <div
                   className={`mx-auto w-full animate-page-in ${

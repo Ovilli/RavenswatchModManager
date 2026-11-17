@@ -96,6 +96,9 @@ Sizes are rem, so they follow the UI scale (80–150%). No arbitrary sizes below
 ## Spacing and layout
 
 - **Page frame.** `.rsmm-main` pads the page (`px-6 py-6 md:px-8`) and content sits in `mx-auto max-w-7xl`. Screens don't add their own outer padding.
+- **Native window chrome.** A transparent, non-shrinking `h-12` drag region sits above the main content in both sidebar states, with window controls over its right edge. Main content uses `pt-2` beneath it. Keep this region in flow so update banners stay below it and remain clickable.
+- **Sidebar footer.** Launch Modded, Settings, then Sign in/account. Settings is a direct navigation link; Commands and Log live in the account menu. The collapsed rail keeps a visible launch icon and Settings gear, with names in their hover/focus tooltips. The launch disclosure appears only when expanded; Launch Vanilla is also available through the command palette.
+- **Browse toolbar.** The shared registry search uses a desktop-only override: a `2.125rem` height matching the small buttons, `--radius-sm`, and the `.input-grim` surface. Sort and view controls use the same height; the row wraps when space runs out.
 - **Rhythm.**
   - `space-y-6` between sections.
   - `space-y-3`/`space-y-4` inside a section.
@@ -149,14 +152,17 @@ Registry mods carrying a protected private-only tag use `PrivateGamesOnlyBadge` 
 
 This badge matches the website: sentence-case gilt text, a warning triangle, and a gilt wash. Its translated explanation says the mod **may** give an unfair advantage. Hover, keyboard focus, or tap opens a black, borderless tooltip with a soft drop shadow (a deliberate exception to the usual raised-surface treatment). It is portaled outside scrolling panels, clamped to the viewport, and flips above the badge when needed. Escape, blur, outside press, and resizing dismiss it. Scrolling dismisses hover warnings; a focused badge keeps its warning anchored while visible. Activating the badge does not open the surrounding mod card or row. Text sizes follow the app's UI scale.
 
+Sidebar tooltips use the same dark tooltip treatment with `--radius-sm`. The Search tooltip names both mods and commands and includes the Ctrl+K shortcut; the Browse search field filters the registry only.
+
 ## Layers
 
 Overlay z-index, lowest to highest:
 
 | z | Overlay |
 |---|---|
-| 30 | Top bar |
+| 30 | Native drag region |
 | 40 | Window controls |
+| 45 | Sidebar tooltips |
 | 50 | Command palette |
 | 70 | Dialogs |
 | 75 | Changelog, mod config |

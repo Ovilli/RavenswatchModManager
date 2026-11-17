@@ -5,7 +5,6 @@ import {
   LogIn,
   LogOut,
   ScrollText,
-  Settings,
   Terminal,
   WifiOff,
 } from 'lucide-react';
@@ -179,10 +178,6 @@ export function AccountStrip({ collapsed = false }: { collapsed?: boolean }) {
             </Link>
           )}
           <div role="separator" className="my-1 border-t border-border/60" />
-          <Link to="/settings" onClick={() => setOpen(false)} role="menuitem" className={MENU_ITEM}>
-            <Settings className="h-4 w-4 text-ash" aria-hidden />
-            {t('Settings')}
-          </Link>
           <Link to="/commands" onClick={() => setOpen(false)} role="menuitem" className={MENU_ITEM}>
             <Terminal className="h-4 w-4 text-ash" aria-hidden />
             {t('Commands')}
