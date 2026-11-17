@@ -99,7 +99,7 @@ export const viewport: Viewport = {
   themeColor: '#0a0a0a',
 };
 
-const REPO = 'https://github.com/Ovilli/RavenswatchModManager';
+const REPO = 'https://github.com/Ravenswatch-Modding/RavenswatchModManager';
 
 /**
  * Footer navigation, grouped by what someone is actually looking for.

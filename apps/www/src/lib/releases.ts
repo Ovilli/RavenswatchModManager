@@ -1,4 +1,4 @@
-const REPO = 'Ovilli/RavenswatchModManager';
+const REPO = 'Ravenswatch-Modding/RavenswatchModManager';
 
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 export const LATEST_RELEASE_URL = `${RELEASES_URL}/latest`;

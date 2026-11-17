@@ -4,7 +4,7 @@
 # Env:
 #   DISCORD_WEBHOOK or DISCORD_WEBHOOK_URL — webhook URL (required to send)
 #   TAG — release tag, e.g. v0.3.5 (required)
-#   REPO — owner/name (default: Ovilli/RavenswatchModManager)
+#   REPO — owner/name (default: Ravenswatch-Modding/RavenswatchModManager)
 #   RELEASE_URL, RELEASE_NAME, RELEASE_BODY, PRERELEASE — optional; fetched
 #     via `gh release view` when GH_TOKEN/gh is available and fields are unset
 #
@@ -22,7 +22,7 @@ if [ -z "$WEBHOOK" ]; then
 fi
 
 TAG="${TAG:?TAG is required}"
-REPO="${REPO:-Ovilli/RavenswatchModManager}"
+REPO="${REPO:-Ravenswatch-Modding/RavenswatchModManager}"
 
 if [ -z "${RELEASE_URL:-}" ] && command -v gh >/dev/null 2>&1; then
   if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then

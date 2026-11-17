@@ -42,7 +42,7 @@ async function getAppDownloads(): Promise<number> {
 
   for (let page = 1; page <= 5; page++) {
     const res = await fetch(
-      `https://api.github.com/repos/Ovilli/RavenswatchModManager/releases?per_page=100&page=${page}`,
+      `https://api.github.com/repos/Ravenswatch-Modding/RavenswatchModManager/releases?per_page=100&page=${page}`,
     );
     if (!res.ok) break;
 
@@ -353,7 +353,7 @@ export default async function Home() {
                 Modding guide
               </Link>
               <a
-                href="https://github.com/Ovilli/RavenswatchModManager"
+                href="https://github.com/Ravenswatch-Modding/RavenswatchModManager"
                 className={buttonVariants({ variant: 'outline', size: 'lg' })}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -438,7 +438,7 @@ export default async function Home() {
           </a>{' '}
           goes deeper, or{' '}
           <a
-            href="https://github.com/Ovilli/RavenswatchModManager/issues"
+            href="https://github.com/Ravenswatch-Modding/RavenswatchModManager/issues"
             target="_blank"
             rel="noopener noreferrer"
             className="underline underline-offset-4 hover:text-parchment"

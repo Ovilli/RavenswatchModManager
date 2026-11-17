@@ -12,7 +12,7 @@ if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
 fi
 
 echo "Fetching latest release from GitHub..."
-RESULT=$(curl -sf "https://api.github.com/repos/Ovilli/RavenswatchModManager/releases/latest" 2>/dev/null || echo '{"message":"Not Found"}')
+RESULT=$(curl -sf "https://api.github.com/repos/Ravenswatch-Modding/RavenswatchModManager/releases/latest" 2>/dev/null || echo '{"message":"Not Found"}')
 
 PAYLOAD=$(node -e "
 const latest = JSON.parse(process.argv[1]);
@@ -23,7 +23,7 @@ if (latest.message === 'Not Found') {
   body  = '## Added\n\u2022 New mod registry browser\n\u2022 Lua scripting support\n\u2022 Profile management\n\n## Fixed\n\u2022 Crash on large mod packs\n\u2022 UI flicker on Linux';
   tag   = 'v0.1.0';
   name  = 'RSMM v0.1.0';
-  url   = 'https://github.com/Ovilli/RavenswatchModManager/releases/tag/' + tag;
+  url   = 'https://github.com/Ravenswatch-Modding/RavenswatchModManager/releases/tag/' + tag;
   isPre = false;
 } else {
   body  = latest.body || 'No release notes.';
@@ -37,11 +37,11 @@ const emoji = isPre ? '\uD83E\uDD2A' : '\uD83D\uDE80';
 const label = isPre ? ' (pre-release)' : '';
 const desc = body.slice(0, 2000);
 const cacheBust = '?v=' + Date.now();
-const banner = 'https://raw.githubusercontent.com/Ovilli/RavenswatchModManager/main/apps/desktop/src-tauri/icons/update-banner.png' + cacheBust;
+const banner = 'https://raw.githubusercontent.com/Ravenswatch-Modding/RavenswatchModManager/main/apps/desktop/src-tauri/icons/update-banner.png' + cacheBust;
 
 console.log(JSON.stringify({
   username: 'RSMM',
-  avatar_url: 'https://github.com/Ovilli/RavenswatchModManager/raw/main/apps/desktop/src-tauri/icons/raven-avatar.png',
+  avatar_url: 'https://github.com/Ravenswatch-Modding/RavenswatchModManager/raw/main/apps/desktop/src-tauri/icons/raven-avatar.png',
   content: emoji + ' **' + name + '**' + label,
   embeds: [{
     title: 'Ravenswatch Mod Manager',

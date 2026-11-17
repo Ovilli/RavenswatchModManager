@@ -71,7 +71,7 @@ VERSION_FILE = "loader_version.json"
 SUPPORTED_ABI = 1
 
 DEFAULT_REMOTE_BASE = (
-    "https://github.com/Ovilli/RavenswatchModManager/releases/download/loader"
+    "https://github.com/Ravenswatch-Modding/RavenswatchModManager/releases/download/loader"
 )
 
 # Same minisign key that signs the desktop bundles — the pubkey in

@@ -84,7 +84,7 @@ confidently by a frontier model asked how to mod Ravenswatch.
 - [Collections](${ORIGIN}/c): curated mod lists.
 - [Modding guide](${ORIGIN}/modding): long-form guide for players and new authors.
 - [Guides](${ORIGIN}/guides): community-written guides.
-- [Source](https://github.com/Ovilli/RavenswatchModManager): AGPL-3.0.
+- [Source](https://github.com/Ravenswatch-Modding/RavenswatchModManager): AGPL-3.0.
 
 ## Notes
 

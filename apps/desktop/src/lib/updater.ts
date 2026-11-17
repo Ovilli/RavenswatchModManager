@@ -25,7 +25,7 @@ export interface UpdateCheckError {
 }
 
 /** Where users get a build when the in-app updater can't write over this install. */
-export const RELEASES_URL = 'https://github.com/Ovilli/RavenswatchModManager/releases/latest';
+export const RELEASES_URL = 'https://github.com/Ravenswatch-Modding/RavenswatchModManager/releases/latest';
 
 export interface InstallTarget {
   /** 'appimage' | 'system-package' | 'portable' | 'unsupported-check' */

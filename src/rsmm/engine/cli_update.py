@@ -39,7 +39,7 @@ MANIFEST_NAME = "cli.manifest.json"
 SIGNATURE_NAME = "cli.manifest.json.minisig"
 VERSION_FILE = "cli_version.json"
 STAMP_NAME = "channel.json"
-DEFAULT_REMOTE_BASE = "https://github.com/Ovilli/RavenswatchModManager/releases/download/cli"
+DEFAULT_REMOTE_BASE = "https://github.com/Ravenswatch-Modding/RavenswatchModManager/releases/download/cli"
 _MAX_ARCHIVE_BYTES = 300 * 1024 * 1024
 
 
