@@ -3,12 +3,11 @@ import { Link, Outlet, createRootRouteWithContext, useLocation } from '@tanstack
 import { AlertTriangle } from 'lucide-react';
 import { PanelLeftClose, PanelLeftOpen, ScrollText, Terminal, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import PromotedBanner from '../components/PromotedBanner';
 import { AccountStrip } from '../components/account-strip';
 import { FirstRunDialogs } from '../components/changelog-dialog';
 import { ChannelStatusBanner } from '../components/channel-status-banner';
-import { Button, CopyButton, StatPill, useModalChrome } from '../components/chrome';
+import { Button, CopyButton, StatPill } from '../components/chrome';
 import { CommandPalette } from '../components/command-palette';
 import { BrowseIcon } from '../components/icons/BrowseIcon';
 import { ConflictsIcon } from '../components/icons/ConflictsIcon';
@@ -28,7 +27,6 @@ import { msg } from '../lib/i18n';
 import { useT } from '../lib/i18n-react';
 import { shortcutLabel } from '../lib/platform';
 import { quitApp } from '../lib/quit';
-import { restoreAll } from '../lib/rsmm';
 import { attachSmoothWheel } from '../lib/smooth-scroll';
 import { trackMainWindow } from '../lib/window-state';
 import { activeProfile, detectConflicts, isEnabledIn, outdatedCount, useApp } from '../store';
@@ -257,12 +255,8 @@ async function getAppWindow() {
 
 function WindowControls() {
   const t = useT();
-  const { running } = useLaunch();
   const [maximized, setMaximized] = useState(false);
   const [available, setAvailable] = useState(false);
-  const [quitPromptOpen, setQuitPromptOpen] = useState(false);
-  const [quitError, setQuitError] = useState<string | null>(null);
-  const [quitBusy, setQuitBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -301,67 +295,6 @@ function WindowControls() {
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    let unlistenClose: (() => void) | null = null;
-
-    (async () => {
-      try {
-        const aw = await getAppWindow();
-        if (!aw || cancelled) return;
-        const off = await aw.onCloseRequested(async (event) => {
-          if (running !== 'modded') return;
-          event.preventDefault();
-          setQuitError(null);
-          setQuitPromptOpen(true);
-        });
-        if (cancelled) off();
-        else unlistenClose = off;
-      } catch (err) {
-        console.warn('window close handler setup failed', err);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      unlistenClose?.();
-    };
-  }, [running]);
-
-  const closeAnyway = async () => {
-    if (quitBusy) return;
-    setQuitBusy(true);
-    setQuitError(null);
-    try {
-      await quitApp();
-      setQuitPromptOpen(false);
-    } catch (e) {
-      setQuitError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setQuitBusy(false);
-    }
-  };
-
-  const restoreAndQuit = async () => {
-    if (quitBusy) return;
-    setQuitBusy(true);
-    setQuitError(null);
-    try {
-      const result = await restoreAll();
-      if (!result || !result.ok) {
-        // CLI output is passed through untranslated — it is the sidecar's own
-        // text, and mistranslating a diagnostic is worse than showing it as-is.
-        throw new Error(result?.stderr?.trim() || result?.stdout?.trim() || t('restore failed'));
-      }
-      await quitApp();
-      setQuitPromptOpen(false);
-    } catch (e) {
-      setQuitError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setQuitBusy(false);
-    }
-  };
-
   const withWindow = async (
     action: (aw: NonNullable<Awaited<ReturnType<typeof getAppWindow>>>) => Promise<void>,
     label: string,
@@ -382,14 +315,7 @@ function WindowControls() {
 
   const doMinimize = () => withWindow((aw) => aw.minimize(), 'minimize');
   const doClose = () => {
-    void (async () => {
-      if (running === 'modded') {
-        setQuitError(null);
-        setQuitPromptOpen(true);
-        return;
-      }
-      await quitApp();
-    })();
+    void quitApp();
   };
   const doToggleMax = () =>
     withWindow(async (aw) => {
@@ -439,15 +365,6 @@ function WindowControls() {
         <WindowCloseIcon className="h-4 w-4 text-crimson" />
       </button>
 
-      {quitPromptOpen ? (
-        <QuitPrompt
-          busy={quitBusy}
-          error={quitError}
-          onCancel={() => setQuitPromptOpen(false)}
-          onRestoreAndQuit={() => void restoreAndQuit()}
-          onQuitAnyway={() => void closeAnyway()}
-        />
-      ) : null}
     </div>
   );
 }
@@ -570,78 +487,5 @@ function RootLayout() {
         </LaunchProvider>
       </DialogProvider>
     </ToastProvider>
-  );
-}
-
-/**
- * Quit while modded files are still applied.
- *
- * Its own component so `useModalChrome`'s focus move runs when the PROMPT
- * mounts, not when the window-controls strip does. Portalled to the body,
- * which is why the focus move matters: the overlay comes after the whole app
- * in DOM order, so without it the first tab stop is the sidebar.
- */
-function QuitPrompt({
-  busy,
-  error,
-  onCancel,
-  onRestoreAndQuit,
-  onQuitAnyway,
-}: {
-  busy: boolean;
-  error: string | null;
-  onCancel: () => void;
-  onRestoreAndQuit: () => void;
-  onQuitAnyway: () => void;
-}) {
-  const t = useT();
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  // Escape means "do not quit" — the safe answer, and the one the backdrop
-  // click already gave. It is ignored mid-restore, where cancelling would
-  // leave the install half-restored.
-  const onKeyDown = useModalChrome(cancelRef, busy ? undefined : onCancel);
-
-  return createPortal(
-    <dialog
-      open
-      aria-labelledby="quit-prompt-title"
-      className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in"
-      onKeyDown={onKeyDown}
-    >
-      <div className="absolute inset-0 bg-pitch/80" onClick={() => !busy && onCancel()} />
-      <div className="grimoire-card grimoire-card--raised relative w-[min(520px,92vw)] p-5">
-        <h3 id="quit-prompt-title" className="font-fraktur text-xl text-parchment">
-          {t('Quit with active overrides?')}
-        </h3>
-        <p className="font-serif-italic mt-2 text-ash">
-          {t(
-            'Ravenswatch is still running with modded files applied. Quitting now leaves those overrides in place until you restore them.',
-          )}
-        </p>
-        <div className="mt-4 flex flex-nowrap justify-end gap-2">
-          <Button type="button" size="sm" ref={cancelRef} onClick={onCancel} disabled={busy}>
-            {t('Cancel')}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="gilt"
-            onClick={onRestoreAndQuit}
-            disabled={busy}
-          >
-            {t('Restore & quit')}
-          </Button>
-          <Button type="button" size="sm" variant="danger" onClick={onQuitAnyway} disabled={busy}>
-            {t('Quit anyway')}
-          </Button>
-        </div>
-        {error ? (
-          <p className="mt-3 text-sm text-crimson" role="alert">
-            {error}
-          </p>
-        ) : null}
-      </div>
-    </dialog>,
-    document.body,
   );
 }

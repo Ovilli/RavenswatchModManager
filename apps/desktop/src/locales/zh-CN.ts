@@ -146,7 +146,6 @@ export const zhCN: Record<string, string> = {
   'Applying…': '正在应用…',
   Audio: '音频',
   Author: '作者',
-  'Automatic restore failed: {error}': '自动还原失败：{error}',
   Backup: '备份',
   'Backup code': '备份代码',
   'Backup code copied to clipboard.': '备份代码已复制到剪贴板。',
@@ -568,8 +567,6 @@ export const zhCN: Record<string, string> = {
   'Quality of life': '体验优化',
   'Quick actions': '快捷操作',
   'Quit Ravenswatch completely, then press Play.': '完全退出 Ravenswatch，然后点击开始游戏。',
-  'Quit anyway': '仍然退出',
-  'Quit with active overrides?': '覆盖文件仍在生效，确定退出？',
   'RSMM checks for new releases automatically. Checking manually covers the launcher itself, its CLI, and the game loader & Lua SDK planted in your Ravenswatch folder.':
     'RSMM 会自动检查新版本。手动检查会涵盖启动器本身、它的 CLI，以及植入 Ravenswatch 文件夹里的游戏加载器与 Lua SDK。',
   'RSMM draws through your GPU like any browser window. If your machine crashes, freezes or blue-screens while RSMM is open — especially with a display-driver bug check such as {code} — switch this on to render in software instead. Update your GPU driver as well; that is the real fix.':
@@ -577,8 +574,6 @@ export const zhCN: Record<string, string> = {
   'RSMM updated to {version}.': 'RSMM 已更新到 {version}。',
   'Rate limited — try again in {seconds}s': '请求过于频繁——请在 {seconds} 秒后重试',
   Rating: '评分',
-  'Ravenswatch is still running with modded files applied. Quitting now leaves those overrides in place until you restore them.':
-    'Ravenswatch 仍在运行，模组文件也仍处于应用状态。现在退出会保留这些覆盖文件，直到你手动还原为止。',
   'Ravenswatch launched.': 'Ravenswatch 已启动。',
   'Ravenswatch restarted.': 'Ravenswatch 已重启。',
   'Ravenswatch ships no modding API, so every capability here was reverse-engineered from the shipped game with Ghidra, disassembly and pattern-mining tools, plus a great deal of in-game testing. An AI coding assistant (Claude) was one instrument in that toolchain, used for reading decompiler output, drafting analysis tooling and writing application code. It is not the author of the result.':
@@ -634,7 +629,6 @@ export const zhCN: Record<string, string> = {
   'Restart v{version}': '重启到 v{version}',
   'Restarting…': '正在重启…',
   Restore: '还原',
-  'Restore & quit': '还原并退出',
   'Restore failed: {error}': '还原失败：{error}',
   'Restore first, then hand off to Ravenswatch through Steam.':
     '先还原，然后通过 Steam 启动 Ravenswatch。',
