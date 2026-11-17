@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   alternates: { canonical: '/contact' },
 };
 
-const REPO = 'https://github.com/Ovilli/RavenswatchModManager';
+const REPO = 'https://github.com/Ravenswatch-Modding/RavenswatchModManager';
 
 export default function ContactPage() {
   return (

@@ -285,7 +285,7 @@ see [Two override strategies](/guides/modding/#two-override-strategies).
 
 ## Still stuck?
 
-Open an issue on [GitHub](https://github.com/Ovilli/RavenswatchModManager/issues)
+Open an issue on [GitHub](https://github.com/Ravenswatch-Modding/RavenswatchModManager/issues)
 and include:
 
 - your operating system,

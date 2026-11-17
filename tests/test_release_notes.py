@@ -33,7 +33,7 @@ needs_tags = pytest.mark.skipif(not (_has("v5.9.30") and _has("v5.9.29")),
 def test_a_release_lists_its_note_prs_commits_and_authors():
     rn = _mod()
     assert rn.previous_tag("v5.9.30") == "v5.9.29"
-    body = rn.render("v5.9.30", "Ovilli/RavenswatchModManager")
+    body = rn.render("v5.9.30", "Ravenswatch-Modding/RavenswatchModManager")
     assert body.startswith("Mute any in-game sound")            # the feed's summary
     assert "## Pull requests" in body and "(#78, " in body          # a PR, by number
     assert "## Commits" in body and "by Ovilli" in body             # direct commits, authors

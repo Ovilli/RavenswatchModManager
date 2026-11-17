@@ -29,7 +29,7 @@ classifiers = [
 dev = ["pytest>=7", "pytest-xdist>=3", "ruff>=0.4"]
 
 [project.urls]
-Homepage = "https://github.com/Ovilli/RavenswatchModManager"
+Homepage = "https://github.com/Ravenswatch-Modding/RavenswatchModManager"
 
 [project.scripts]
 rsmm = "rsmm.cli._dispatch:main"

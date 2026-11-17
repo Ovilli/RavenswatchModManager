@@ -30,10 +30,10 @@ domain for v1 and use the `*.vercel.app` URLs.
 1. Push the monorepo to GitHub if you haven't already:
    ```sh
    git remote -v
-   # if no origin: gh repo create Ovilli/RavenswatchModManager --source=. --public --push
+   # if no origin: gh repo create Ravenswatch-Modding/RavenswatchModManager --source=. --public --push
    git push -u origin main
    ```
-2. Open **github.com/Ovilli/RavenswatchModManager → Settings → Secrets and variables → Actions**.
+2. Open **github.com/Ravenswatch-Modding/RavenswatchModManager → Settings → Secrets and variables → Actions**.
 3. You'll come back to add secrets here in later steps. Leave this tab open.
 
 The release workflow (`.github/workflows/release.yml`) already runs on
@@ -330,7 +330,7 @@ GitHub Actions builds installers for Windows / Linux and posts them as
 a **draft** GitHub Release. Visit the release page, edit the notes,
 click **Publish**.
 
-Users download from `github.com/Ovilli/RavenswatchModManager/releases`.
+Users download from `github.com/Ravenswatch-Modding/RavenswatchModManager/releases`.
 
 For code signing (Windows SmartScreen), you'll need a paid cert
 (~$200/yr). Skip it until the project has users.

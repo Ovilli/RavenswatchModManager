@@ -4,7 +4,7 @@
 
 Please **don't** open a public issue. Report it privately instead:
 
-- [Open a private security advisory](https://github.com/Ovilli/RavenswatchModManager/security/advisories/new), or
+- [Open a private security advisory](https://github.com/Ravenswatch-Modding/RavenswatchModManager/security/advisories/new), or
 - email [contact@rsmm.me](mailto:contact@rsmm.me) with "security" in the subject.
 
 Include what you found, how to reproduce it and which part is affected (desktop app,

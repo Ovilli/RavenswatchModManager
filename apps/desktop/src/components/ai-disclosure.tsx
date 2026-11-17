@@ -14,7 +14,7 @@ import { Button, useModalChrome } from './chrome';
 export const DISCLOSURE_REVISION = '1';
 
 /** External links used in the disclosure. Opened through the OS browser. */
-const REPO_URL = 'https://github.com/Ovilli/RavenswatchModManager';
+const REPO_URL = 'https://github.com/Ravenswatch-Modding/RavenswatchModManager';
 
 async function openExternal(url: string): Promise<void> {
   try {
