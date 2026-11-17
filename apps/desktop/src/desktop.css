@@ -10,6 +10,23 @@
   color: hsl(var(--text-title));
 }
 
+/* Reuse the update prompt's raster grain over the sidebar's dark surface. */
+.app-sidebar {
+  isolation: isolate;
+  background-color: hsl(var(--surface-1));
+}
+.app-sidebar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: url("./assets/update-grain.png");
+  background-size: 128px 128px;
+  mix-blend-mode: soft-light;
+  opacity: 0.18;
+  pointer-events: none;
+}
+
 /* The whole collapsed rail advertises expansion, while controls remain clicks. */
 .app-sidebar[data-collapsed="true"] {
   cursor: e-resize;

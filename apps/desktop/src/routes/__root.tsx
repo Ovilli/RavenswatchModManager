@@ -553,7 +553,7 @@ function RootLayout() {
                   update({ sidebarCollapsed: false });
                 }
               }}
-              className={`app-sidebar surface-grain relative z-40 flex shrink-0 flex-col border-r border-border transition-[width] duration-200 ease-out ${
+              className={`app-sidebar relative z-40 flex shrink-0 flex-col border-r border-border transition-[width] duration-200 ease-out ${
                 collapsed ? 'w-20' : 'w-72'
               }`}
             >

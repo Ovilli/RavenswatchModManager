@@ -44,7 +44,7 @@ How the desktop app looks, and the rules screens follow to stay that way. The sy
 | Card, panel, rail | `Panel` (`.grimoire-card`) | `--surface-1` |
 | Raised: modal, popover, menu | `Panel variant="raised"` | `--surface-2` |
 | Inset: log body, output, wells | `Panel variant="inset"` | pitch / 0.5 |
-| Sidebar, top bar | `.surface-grain` | `--surface-1` + grain |
+| Sidebar | `.app-sidebar` | `--surface-1` + the update prompt's raster grain |
 | Conflict / warning strip | `.ember-banner` | crimson wash |
 
 - A container that needs its own background and border uses one of these, not a hand-composed `bg-pitch/60 border border-border`.
