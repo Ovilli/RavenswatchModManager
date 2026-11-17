@@ -784,3 +784,32 @@ def test_an_attack_hit_reaches_a_cone_ahead_not_all_round():
                  if f.name == "value")
     assert float(angle.split()[-1]) == pytest.approx(math.radians(90), abs=1e-4)
     assert shape("Attack Ability Step 2 Hit 1")[1] == "oCEntityGpnAroundPositionTraverserSettings"
+
+
+@needs_corpus
+def test_a_hit_shows_an_impact_on_each_enemy_it_hits():
+    """Every hit's damage links an impact event (ref_32): an Fx on the enemy
+    hit, placed by reads of the hit's OWN damage (both re-pointed), the shared
+    impact look by default, Character_Common's light shake, no donor sound."""
+    import struct
+
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import hero_ability as HA
+    clip = "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_BasicAttack01.fbx"
+    ab = HA.Ability.parse("power", {"clip": clip, "duration": 1.0,
+                                    "hits": [{"at": 0.3, "radius": 3}]})
+    ef = _hero("Hero_T")
+    HA.build(ef, HF.common(_read), ab, seed="t")
+    ef.to_bytes()
+    pre = "Power Ability Hit 1"
+    dmg = next(f.text for f in EF.fields(ef.component(f"{pre} Damage")) if f.name == "ref_32")
+    assert dmg.endswith(f"Event {pre} Character Impact")
+    acts = next(f.text for f in EF.fields(ef.component(f"Event {pre} Character Impact"))
+                if f.name == "activates")
+    assert "FMod" not in acts and "Camera Shake" in acts
+    fx = ef.component(f"{pre} Fx Character Impact")
+    oid = struct.unpack_from("<I", fx.body, next(
+        x for x in EF.fields(fx) if x.name == "bytes_1").offset + 4)[0]
+    setup = bytes(ef.objects[oid])
+    assert b"Hero_Geppetto" not in setup and setup.count(f"{pre} Damage".encode()) == 2
+    assert HA.IMPACT_FX.encode() in setup

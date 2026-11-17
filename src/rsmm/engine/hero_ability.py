@@ -133,6 +133,7 @@ class Hit:
     shake: str = "none"       # camera shake: none, light, medium, heavy
     sound: str = ""           # "<entity ref> | <FMod event part>" played on the hit
     arc: float = 0.0          # degrees of a cone ahead of the hero; 0 = all round
+    impact: str = ""          # .vfx.ot played ON each enemy hit (default IMPACT_FX)
 
 
 #: A range indicator: Kintaro's ultimate target ring (a ground decal, the
@@ -386,6 +387,7 @@ def hits(ef: EntityFile, hero_common: EntityFile, w: P.PartWriter, todo: list[Hi
         ef.set_value(f"{pre} Radius", "value", hit.radius)
         if hit.arc:
             _cone(ef, pre, group, seed=f"{seed}:hit{i}:cone", degrees=hit.arc)
+        _impact(ef, pre, group, seed=f"{seed}:hit{i}:impact", vfx=hit.impact or IMPACT_FX)
         ef.set_value(f"{pre} Damage", "value_28", hit.damage / 100.0)
         if kind in DAMAGE_TYPE:
             ef.set_value(f"{pre} Damage", _TYPE_FIELD, DAMAGE_TYPE[kind])
@@ -401,7 +403,18 @@ def hits(ef: EntityFile, hero_common: EntityFile, w: P.PartWriter, todo: list[Hi
     return timers
 
 
-_HIT_KEYS = {"at", "radius", "damage", "status", "fx", "shake", "sound", "arc", *HIT_FIELDS}
+_HIT_KEYS = {"at", "radius", "damage", "status", "fx", "shake", "sound", "arc", "impact",
+             *HIT_FIELDS}
+#: What every hit plays on each enemy it hits: 53 of 62 shipped ability damage
+#: records link ``ref_32`` to an "Event On ... Character Impact" (an Fx on the
+#: enemy + a light camera shake + a sound); a hit copied from the explosion
+#: linked none, so enemies showed nothing when hit (audit 2026-11-16). Layout:
+#: Geppetto's basic-attack impact, its two damage reads re-pointed at the hit's
+#: own damage; the look a shared Common_FX impact unless the hit names one.
+IMPACT_DONOR = ("Event On Basic Ability Character Impact", "Basic Ability Fx Character Impact",
+                "Basic Ability Damage", "Basic Ability FMod Event Character Impact")
+IMPACT_FX = "Settings\\FX\\Common_FX\\Basic_Impact_01.vfx.ot"
+_DONOR_IMPACT_FX = "Settings\\Heroes\\Hero_Geppetto_FX\\Geppetto_Impact_01.vfx.ot"
 #: A hit with an ``arc`` reaches only a cone ahead of the hero: the shape of
 #: Geppetto's basic attack (his traverser's InCone sub-object, which owns
 #: nothing), its range and angle reads re-pointed at the hit's own parts. Every
@@ -549,12 +562,16 @@ def parse_hits(raw, what: str, *, arc: float = 0.0) -> list[Hit]:
         if sound and "|" not in sound:
             raise AbilityError(f"{what}: hits[{n}].sound = {sound!r}: \"<entity ref> | "
                                "<FMod event part>\"")
+        impact = str(h.get("impact", ""))
+        if impact and not impact.endswith(".vfx.ot"):
+            raise AbilityError(f"{what}: hits[{n}].impact = {impact!r}: an effect "
+                               "(Settings\\...\\<name>.vfx.ot)")
         a = float(h.get("arc", arc))
         if not 0.0 <= a < 360.0:
             raise AbilityError(f"{what}: hits[{n}].arc = {a}: degrees 0..359 (0 = all round)")
         out.append(Hit(float(h["at"]), float(h.get("radius", 3.0)),
                        float(h.get("damage", 100.0)), status=status, fx=fx, shake=shake,
-                       sound=sound, arc=a, **extra))
+                       sound=sound, arc=a, impact=impact, **extra))
     return out
 
 
@@ -697,6 +714,24 @@ def _cone(ef: EntityFile, pre: str, group: str, *, seed: str, degrees: float) ->
     ef.replace_subobject(f"{pre} Traverser", "bytes_3", 0, donor, shape,
                          refs={donor.component(rng).guid: f"{pre} Radius",
                                a.guid: f"{pre} Angle"})
+
+
+def _impact(ef: EntityFile, pre: str, group: str, *, seed: str, vfx: str) -> None:
+    """Hit ``pre`` plays ``vfx`` on each enemy it hits (IMPACT_DONOR)."""
+    event, fx, damage, sound = IMPACT_DONOR
+    donor = _cone_donor()
+    e, f = donor.component(event), donor.component(fx)
+    ef.clone([e.path, f.path], rename={event: f"Event {pre} Character Impact",
+                                       fx: f"{pre} Fx Character Impact"},
+             group={e.group: group}, seed=seed, source=donor)
+    _drop_ref(ef, f"Event {pre} Character Impact", "activates", sound)
+    # the setup (where and how the spark plays) reads the hit's own damage
+    setup = struct.unpack_from("<I", f.body, next(
+        x for x in EF.fields(f) if x.name == "bytes_1").offset + 4)[0]
+    ef.replace_subobject(f"{pre} Fx Character Impact", "bytes_1", 0, donor, setup,
+                         refs={donor.component(damage).guid: f"{pre} Damage"})
+    set_fx(ef, f"{pre} Fx Character Impact", vfx, old=_DONOR_IMPACT_FX)
+    ef.set_ref(f"{pre} Damage", "ref_32", f"Event {pre} Character Impact")
 
 
 def _drop_ref(ef: EntityFile, comp: str, field: str, target: str) -> None:
