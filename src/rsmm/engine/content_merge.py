@@ -93,6 +93,58 @@ def _merge_text_bank(enc: str, srcs: list[Path],
     return out_path
 
 
+def repoint_moved_text_rows(collected: dict, wanted: dict) -> list[str]:
+    """After text banks are merged, point each mod's cooked text references at
+    the rows its keys REALLY take. Returns one line per file re-pointed.
+
+    A cooked text reference caches its key's row in the bank, and the hero book
+    and HUD read that row, not the key (2026-09-26). A mod builds its refs
+    against vanilla + its own tail; the merge stacks every mod's tail in mod-id
+    order, so a second mod appending to the same bank (two scratch heroes, an
+    item mod and a hero) moved the later mod's keys and its book and HUD showed
+    another mod's strings. A key whose index differs between the mod's own
+    keys file and the merged one moved; only those are re-pointed (vanilla
+    keys keep their index). ``collected``: encoded -> [(src, mod_id, decoded)];
+    ``wanted``: encoded -> (path, mod_id), updated in place."""
+    from rsmm.engine import text_patches as TP
+    notes: list[str] = []
+    for enc, writers in collected.items():
+        decoded = writers[0][2]
+        if len(writers) < 2 or not is_text_bank(decoded) or ".Lang" in decoded:
+            continue                    # only the KEYS file of a merged bank
+        try:
+            merged = TP.parse_text_file(wanted[enc][0]).entries
+        except Exception:  # noqa: BLE001 — not merged / not a bank
+            continue
+        where: dict[str, int] = {}
+        for i, k in enumerate(merged):
+            where.setdefault(k, i)
+        bank = decoded.replace("\\", "/").rsplit("/", 1)[-1].removesuffix(".LocalText.gen")
+        for src, mod_id, _dec in writers:
+            try:
+                own = TP.parse_text_file(src).entries
+            except Exception:  # noqa: BLE001
+                continue
+            moved = {k: where[k] for i, k in enumerate(own) if where.get(k, i) != i}
+            if not moved:
+                continue
+            for enc2, (path, owner) in list(wanted.items()):
+                if owner != mod_id or is_text_bank(collected.get(enc2, [(0, 0, "")])[0][2]):
+                    continue
+                blob = Path(path).read_bytes()
+                out = TP.repoint_text_rows(blob, bank, moved)
+                if out == blob:
+                    continue
+                staged = _text_merge_dir() / ("rows__" + enc2.replace("\\", "__")
+                                              .replace("/", "__"))
+                staged.parent.mkdir(parents=True, exist_ok=True)
+                staged.write_bytes(out)
+                wanted[enc2] = (staged, owner)
+                notes.append(f"{mod_id}: {len(moved)} text row(s) of {bank} re-pointed in "
+                             f"{collected[enc2][0][2] if enc2 in collected else enc2}")
+    return notes
+
+
 def is_app_settings(decoded: str) -> bool:
     """True for `_root/DarkTalesResources/ApplicationSettings.ot`, which every
     custom-hero mod extends with an alias (and `ot` patches edit)."""
