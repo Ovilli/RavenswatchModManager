@@ -813,3 +813,37 @@ def test_a_hit_shows_an_impact_on_each_enemy_it_hits():
     setup = bytes(ef.objects[oid])
     assert b"Hero_Geppetto" not in setup and setup.count(f"{pre} Damage".encode()) == 2
     assert HA.IMPACT_FX.encode() in setup
+
+
+@needs_corpus
+def test_a_locator_rebinds_to_a_bone_the_skeleton_has():
+    """``bone`` re-binds a shared locator (the torso's DEF.SpineMiddle is not
+    in Kintaro's bone set; Juliet re-binds hers to DEF.Chest); a non-locator
+    slot refuses it."""
+    import re
+
+    from rsmm.engine.entity_graph_edit import EntityFile
+    ef = _hero("Hero_T")
+    cc = EntityFile(_read("Character_Common\\Character_Common.entity.ot"), "Character_Common")
+    HF.fill_slot(ef, cc, "Locator Torso", bone="DEF.Chest")
+    c = ef.component("Locator Torso")
+    assert c.override is not None
+    assert re.findall(rb"DEF\.[A-Za-z0-9_.]+", bytes(ef.objects[c.index - 1])) == [b"DEF.Chest"]
+    with pytest.raises(HF.FrameError):
+        HF.fill_slot(ef, HF.common(_read), "Preview Camera Distance", bone="DEF.Chest")
+
+
+@needs_corpus
+def test_level_up_plays_the_shared_flash_and_the_heros_own():
+    """The level-up Fx overrides the shared (empty) slot with the shared flash
+    and the hero's own effect in place of the donor's (empty by default)."""
+    import re
+
+    from rsmm.engine import vfx_writer as VW
+    ef = _hero("Hero_T")
+    HF._level_up_fx(ef, _read, "", seed="t")
+    c = ef.component("Level Up Fx")
+    assert c.override is not None and c.override.path.endswith("Hero_Common\\Base\\Level Up Fx")
+    vfx = {m.group(0).decode() for o in ef.subtree({c.index - 1})
+           for m in re.finditer(rb"[ -~]+\.vfx\.ot", bytes(ef.objects[o]))}
+    assert vfx == {"Settings\\FX\\Common_FX\\Heroes_Level_Up_Base.vfx.ot", VW.NO_EFFECT}

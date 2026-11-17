@@ -122,12 +122,16 @@ def common(read, scope: str = "Hero_Common") -> EntityFile:
 def fill_slot(ef: EntityFile, base: EntityFile, slot: str, *,
               clip: str | list[str] | None = None,
               duration: float | None = None, value=None,
-              texture: tuple[str, str] | None = None, seed: str = "") -> str:
+              texture: tuple[str, str] | None = None, bone: str | None = None,
+              seed: str = "") -> str:
     """Override ``base``'s part ``slot`` in ``ef``: the base's own part copied
     in, marked as its override, with ``clip`` (and its ``duration`` in seconds)
     for an animation slot (a list for the movement slot: walk, run), ``value``
     (a number or vector) or ``texture`` (``(root, path)``, e.g. ``("Ui",
-    "Heroes\\Jack\\Portrait.png")``) for a Value slot. Returns its name."""
+    "Heroes\\Jack\\Portrait.png")``) for a Value slot, or ``bone`` for a
+    locator (where torso / head effects and markers hang): Character_Common's
+    torso locator names DEF.SpineMiddle, a bone Kintaro's rig does not have,
+    so heroes on that bone set re-bind it (Juliet: DEF.Chest). Returns its name."""
     try:
         c = base.component(slot)
     except EntityEditError as e:
@@ -154,6 +158,8 @@ def fill_slot(ef: EntityFile, base: EntityFile, slot: str, *,
                 # shipped hero's override of every shared animation is 1 (a
                 # dash at 0 plays in place: Blood Wolf, playtest 2026-11-13).
                 ef.set_value(slot, ROOT_MOTION, 1.0)
+        if bone is not None:
+            _set_bone(ef, slot, c, str(bone))
         if value is not None or texture is not None:
             if c.cls != _VALUE:
                 raise FrameError(f"slot {slot!r} is a {c.cls}, not a value")
@@ -167,6 +173,53 @@ def fill_slot(ef: EntityFile, base: EntityFile, slot: str, *,
 
 
 _FMOD = "oCEntityCpntFModEventSettings"
+#: The level-up flash every shipped hero overrides (11 of 13; the shared slot
+#: plays nothing): two setups on Character_Common's torso locator, the shared
+#: Common_FX "Heroes_Level_Up_Base" and one of the hero's own. Geppetto's
+#: override lends the layout; its own effect is swapped for the hero's
+#: ``level_up`` (default: an effect of nothing).
+LEVEL_UP_DONOR = ("Heroes\\Hero_Geppetto\\Hero_Geppetto.entity.ot", "Hero_Geppetto",
+                  "Level Up Fx",
+                  "Settings\\Heroes\\Hero_Geppetto_FX\\Heroes_Level_Up_Geppetto.vfx.ot")
+
+
+def _level_up_fx(ef: EntityFile, read, vfx: str, *, seed: str) -> None:
+    from . import hero_ability as HA
+    from . import vfx_writer as VW
+    ref, scope, part, donor_vfx = LEVEL_UP_DONOR
+    raw = read(ref)
+    if raw is None:
+        raise FrameError(f"level up: {ref} is not readable")
+    donor = EntityFile(raw, scope)
+    c = donor.component(part)
+    if c.override is None:
+        raise FrameError(f"level up: {scope}'s {part!r} no longer overrides the shared slot")
+    try:
+        # the copy keeps the donor's override header: it REPLACES the shared slot
+        ef.clone([c.path], seed=f"{seed}:level-up", source=donor)
+        HA.set_fx(ef, part, vfx or VW.NO_EFFECT, old=donor_vfx)
+    except (EntityEditError, HA.AbilityError) as e:
+        raise FrameError(f"level up: {e}") from e
+_NODE = "oCEntityCpnt3dNodeSettings"
+
+
+def _set_bone(ef: EntityFile, slot: str, base_part, bone: str) -> None:
+    """Slot ``slot`` (a copy of ``base_part``, a locator) hangs on ``bone``:
+    its length-prefixed bone name rewritten whole."""
+    if base_part.cls != _NODE:
+        raise FrameError(f"slot {slot!r} is a {base_part.cls}, not a locator")
+    m = re.search(rb"(?<=....)DEF\.[A-Za-z0-9_.]+", base_part.body)
+    if m is None:
+        raise FrameError(f"slot {slot!r} names no bone to re-bind")
+    old = m.group(0)
+    if struct.unpack_from("<I", base_part.body, m.start() - 4)[0] != len(old):
+        raise FrameError(f"slot {slot!r}: its bone name is not where expected")
+    p = ef.objects[ef.component(slot).index - 1]
+    at = bytes(p).find(struct.pack("<I", len(old)) + old)
+    if at < 0:
+        raise FrameError(f"slot {slot!r}: its copy has no bone {old.decode()!r}")
+    new = bone.encode("latin-1")
+    p[at:at + 4 + len(old)] = struct.pack("<I", len(new)) + new
 
 
 def fill_sound(ef: EntityFile, base: EntityFile, slot: str, donor: EntityFile,
@@ -941,7 +994,7 @@ def build_hero(read, *, scope: str, fx_ref: str, common_alias: bytes, mesh: str,
                effects: dict[str, dict] | None = None,
                indicators: bool = True, ultimates: list[tuple[str, dict]] | None = None,
                weapon: tuple | None = None,
-               sounds: dict[str, str] | None = None,
+               sounds: dict[str, str] | None = None, level_up: str = "",
                rig: str | None = None, bones: int = 0) -> tuple[bytes, bytes, list[tuple]]:
     """A hero written from scratch: ``(main entity, FX entity, skin values)``.
 
@@ -969,6 +1022,7 @@ def build_hero(read, *, scope: str, fx_ref: str, common_alias: bytes, mesh: str,
     TW.TalentWriter(ef, f"{seed}:kit-event", "Kit").state(KIT_EVENT, flags=TW.EVENT)
     if rig and bones:
         lend_layers(ef, read, rig, bones, seed=seed)
+    _level_up_fx(ef, read, level_up, seed=seed)
     # Sound slots (``fill_sound``): slot -> "<entity ref> | <FMod event part>".
     donors: dict[str, EntityFile] = {}
     for slot, spec in sorted((sounds or {}).items()):
