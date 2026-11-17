@@ -135,7 +135,7 @@ export function ProfilePopover({ compact = false }: { compact?: boolean } = {}) 
           className={
             compact
               ? 'grimoire-card grimoire-card--raised animate-fade-in absolute left-0 top-full z-40 mt-1 w-72'
-              : 'grimoire-card grimoire-card--raised animate-fade-in absolute left-0 right-0 top-full z-40 mt-1'
+              : 'grimoire-card grimoire-card--raised animate-fade-in absolute bottom-full left-0 right-0 z-40 mb-1'
           }
         >
           <ul className="max-h-72 overflow-y-auto py-1">

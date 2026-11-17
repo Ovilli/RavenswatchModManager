@@ -48,8 +48,8 @@ interface Nav {
 const CONFLICTS_NAV: Nav = { to: '/conflicts', icon: ConflictsIcon, label: msg('Conflicts') };
 
 const NAV: Nav[] = [
-  { to: '/', icon: LibraryIcon, label: msg('Library') },
   { to: '/browse', icon: BrowseIcon, label: msg('Browse') },
+  { to: '/', icon: LibraryIcon, label: msg('Library') },
   { to: '/profiles', icon: ProfilesIcon, label: msg('Profiles') },
   // /author (the cooked-asset inspector) has no sidebar entry — it is a dev
   // tool, not a destination. The route still resolves by direct URL.
@@ -108,7 +108,7 @@ function NavLink({ to, icon: Icon, label: source, collapsed }: Nav & { collapsed
       activeProps={{ 'data-active': 'true' }}
       inactiveProps={{ 'data-active': 'false' }}
     >
-      <Icon className="nav-icon" />
+      <Icon className="nav-icon shrink-0" />
       {collapsed ? null : <span className="font-serif-italic text-base">{label}</span>}
       {updates && !collapsed ? (
         <span
@@ -229,7 +229,6 @@ function StatusStrip() {
               <StatPill value={conflictCount} label={t('conflicts')} tone="crimson" />
             </Link>
           ) : null}
-          <StatPill label={t('command')} value={shortcutLabel('K')} className="tracking-normal" />
         </div>
         <WindowControls />
       </div>
@@ -473,21 +472,30 @@ function RootLayout() {
         <LaunchProvider>
           <div className="flex h-screen w-screen overflow-hidden">
             <aside
-              className={`surface-grain flex shrink-0 flex-col border-r border-border ${
+              className={`surface-grain flex shrink-0 flex-col border-r border-border transition-[width] duration-200 ease-out ${
                 collapsed ? 'w-20' : 'w-72'
               }`}
             >
-              <div className={collapsed ? 'px-3 pt-4 pb-3' : 'px-4 pt-4 pb-3'}>
-                <div
-                  className={`flex items-center ${collapsed ? 'justify-center' : 'justify-between'}`}
-                >
-                  <img
-                    src="/logo.png"
-                    alt="Ravenswatch Mod Manager"
-                    className={`shrink-0 rounded-md object-cover ${
-                      collapsed ? 'h-10 w-10' : 'h-11 w-11'
-                    }`}
-                  />
+              <div className="px-4 pt-4 pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="group relative h-11 w-11 shrink-0">
+                    <img
+                      src="/logo.png"
+                      alt="Ravenswatch Mod Manager"
+                      className="h-full w-full rounded-md object-cover"
+                    />
+                    {collapsed ? (
+                      <button
+                        type="button"
+                        onClick={() => update({ sidebarCollapsed: false })}
+                        aria-label={t('Expand the sidebar')}
+                        title={t('Expand the sidebar')}
+                        className="absolute inset-0 flex items-center justify-center rounded-md border border-transparent bg-pitch/20 text-ash opacity-0 transition hover:border-border hover:bg-char/80 hover:text-parchment focus-visible:opacity-100 group-hover:opacity-100"
+                      >
+                        <PanelLeftOpen className="h-4 w-4" aria-hidden />
+                      </button>
+                    ) : null}
+                  </div>
                   {collapsed ? null : (
                     <button
                       type="button"
@@ -502,7 +510,7 @@ function RootLayout() {
                 </div>
               </div>
 
-              <div className={collapsed ? 'px-2 pb-2' : 'px-4 pb-3'}>
+              <div className="px-4 pb-3">
                 <button
                   type="button"
                   onClick={() =>
@@ -512,8 +520,8 @@ function RootLayout() {
                   }
                   aria-label={t('Search mods and commands')}
                   title={t('Search mods and commands')}
-                  className={`flex w-full items-center gap-3 rounded-xl border border-border bg-char/50 px-3 py-2.5 text-ash shadow-inner transition hover:border-gilt/40 hover:text-parchment ${
-                    collapsed ? 'justify-center px-0' : ''
+                  className={`flex min-h-11 w-full items-center gap-3 rounded-xl border border-border bg-char/50 px-3 py-2.5 text-ash shadow-inner transition hover:border-gilt/40 hover:text-parchment ${
+                    collapsed ? 'justify-center' : ''
                   }`}
                 >
                   <Search className="h-4 w-4 shrink-0" aria-hidden />
@@ -543,25 +551,12 @@ function RootLayout() {
                   </>
                 )}
               </div>
-              {collapsed ? null : <AccountStrip />}
               {collapsed ? null : (
                 <div className="px-4 pb-3 pt-2">
                   <PromotedBanner vertical />
                 </div>
               )}
-              {collapsed ? (
-                <div className="px-2 pb-2">
-                  <button
-                    type="button"
-                    onClick={() => update({ sidebarCollapsed: false })}
-                    aria-label={t('Expand the sidebar')}
-                    title={t('Expand the sidebar')}
-                    className="flex w-full justify-center rounded-lg border border-transparent p-2 text-ash transition hover:border-border hover:bg-char/40 hover:text-parchment"
-                  >
-                    <PanelLeftOpen className="h-4 w-4" aria-hidden />
-                  </button>
-                </div>
-              ) : null}
+              {collapsed ? null : <AccountStrip />}
             </aside>
 
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
