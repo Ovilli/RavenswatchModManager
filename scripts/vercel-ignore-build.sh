@@ -4,8 +4,8 @@
 #   sh scripts/vercel-ignore-build.sh www|docs|api
 #
 # Exit 0 = skip this deploy, anything else = build. Skips only when every file
-# changed since the project's last successful deploy lies in a path that site
-# never reads. Every push used to redeploy both sites, and a new deployment
+# changed since the project's last successful deploy lies outside the paths
+# that site reads. Every push used to redeploy both sites, and a new deployment
 # starts with an empty ISR cache, so API-only or Python-only commits made the
 # website re-render every page from scratch (Fluid Active CPU). An API deploy
 # also replaces every warm instance, so each push cost a round of cold starts
@@ -22,21 +22,27 @@
 # redeploy from its dashboard.
 #
 # Fails toward building: a missing or unfetched base commit (Vercel clones
-# shallow) makes git diff exit 128, which builds. When adding a new input to a
-# site (e.g. www starts reading data/), remove that path from its list here.
+# shallow) makes git diff exit 128, which builds.
+#
+# Each site lists the paths it reads; a change anywhere else skips it. A list of
+# what to leave out let every new root file (README.md, CLAUDE.md, .gitignore)
+# deploy all three. When a site starts reading a new path (e.g. www reads
+# data/), add it to that site's list here.
 set -u
 
-common=':(top,exclude)apps/desktop :(top,exclude)tests
-:(top,exclude)data :(top,exclude)docs :(top,exclude)scripts :(top,exclude)tools
-:(top,exclude)services :(top,exclude).github :(top,exclude).claude'
+# What every project's install reads (pnpm install --frozen-lockfile, and the
+# upload filter).
+install=':(top)package.json :(top)pnpm-lock.yaml :(top)pnpm-workspace.yaml :(top).vercelignore'
 
 case "${1:-}" in
-  # www reads apps/www + packages/* (+ root config, lockfile).
-  www) excludes="$common :(top,exclude)apps/api :(top,exclude)apps/docs :(top,exclude)src" ;;
-  # docs reads apps/docs + src/rsmm (packed into /editor/rsmm.bundle).
-  docs) excludes="$common :(top,exclude)apps/api :(top,exclude)apps/www :(top,exclude)packages :(top,exclude)src/loader" ;;
-  # api reads apps/api + packages/* (db schema, shared schemas).
-  api) excludes="$common :(top,exclude)apps/www :(top,exclude)apps/docs :(top,exclude)src" ;;
+  # www: apps/www + packages/* (api-client, schemas, ui, tsconfig) + the root
+  # vercel.json, which is www's project config.
+  www) inputs="$install :(top)apps/www :(top)packages :(top)vercel.json" ;;
+  # docs: apps/docs + src/rsmm (packed into /editor/rsmm.bundle).
+  docs) inputs="$install :(top)apps/docs :(top)src/rsmm" ;;
+  # api: apps/api (its vercel.json included) + packages/* (db schema, shared
+  # schemas).
+  api) inputs="$install :(top)apps/api :(top)packages" ;;
   *) echo "usage: $0 www|docs|api" >&2; exit 1 ;;
 esac
 
@@ -62,7 +68,7 @@ if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
   fi
 fi
 # shellcheck disable=SC2086 # word-splitting the pathspec list is intended
-git diff --quiet "$base" "$head" -- ':/' $excludes
+git diff --quiet "$base" "$head" -- $inputs
 status=$?
 if [ "$status" -eq 0 ]; then
   echo "No $1 inputs changed since $base; skipping build."
