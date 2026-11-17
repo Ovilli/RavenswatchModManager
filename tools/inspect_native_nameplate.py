@@ -10,23 +10,82 @@ from ctypes import wintypes as W
 import json
 from pathlib import Path
 import re
+import struct
+
+
+def widget_tree(root, read, info, *, max_nodes=256, max_depth=16):
+    """Read a bounded native widget tree; candidate b9c3 fields, no calls/writes.
+
+    Child list is anchored to draw routine 0x1405500c0 and recursive lookup
+    0x1405506e0: first +0x2a8, next +8, sentinel -1. Parent is +0x298.
+    The +0x310 vector belongs to a different window path, not this tree.
+    This is an observation
+    tool, not a lifetime guarantee or permission to mutate a widget.
+    """
+    rows, seen, pending = [], set(), [(root, None, 0)]
+    issues = []
+
+    def number(p, size=8):
+        data = read(p, size)
+        return int.from_bytes(data, "little") if data is not None else None
+
+    while pending and len(rows) < max_nodes:
+        p, parent, depth = pending.pop()
+        if p in seen:
+            issues.append("repeated widget"); continue
+        seen.add(p)
+        obj = info(p)
+        if not obj or obj["class"] not in {
+            ".?AVoCUILayoutWindow@@", ".?AVoCUIPicture@@", ".?AVoCUILabel@@"
+        }:
+            issues.append("unknown widget type"); continue
+        actual_parent = number(p + 0x298)
+        if parent is not None and actual_parent != parent:
+            issues.append("parent changed or child is not owned"); continue
+        row = dict(obj, depth=depth, parent=hex(actual_parent or 0))
+        name_ptr, name_len = number(p + 0x280), number(p + 0x288, 4)
+        name_len = (name_len & 0x7fffffff) if name_len is not None else 257
+        raw = read(name_ptr, name_len) if name_ptr and 0 < name_len <= 256 else None
+        row["name"] = raw.decode("utf-8", "replace") if raw else None
+        row["flags_234"] = number(p + 0x234, 1)
+        raw_size = read(p + 0x2d0, 8)
+        row["size"] = list(struct.unpack("<ii", raw_size)) if raw_size else None
+        rows.append(row)
+        children, siblings = [], set()
+        child = number(p + 0x2a8)
+        while child != 0xffffffffffffffff:
+            if not child or child in siblings or len(children) >= max_nodes:
+                issues.append("invalid or cyclic child list"); break
+            siblings.add(child)
+            children.append(child)
+            child = number(child + 8)
+        row["child_count"] = len(children)
+        if children and depth >= max_depth:
+            issues.append("depth budget reached"); continue
+        pending.extend((child, p, depth + 1) for child in reversed(children))
+    if pending:
+        issues.append("node budget reached")
+    return {"widgets": rows, "issues": sorted(set(issues)), "complete": not issues}
 
 EXPECTED_EXE = "b9c3642884a8f3a463782f36c9a3a62bc14c88105315220c733fe6c2229ba904"
-k = C.WinDLL("kernel32", use_last_error=True)
-k.OpenProcess.argtypes = [W.DWORD, W.BOOL, W.DWORD]
-k.OpenProcess.restype = W.HANDLE
-k.ReadProcessMemory.argtypes = [W.HANDLE, C.c_void_p, C.c_void_p, C.c_size_t, C.POINTER(C.c_size_t)]
-k.ReadProcessMemory.restype = W.BOOL
-k.CloseHandle.argtypes = [W.HANDLE]
-k.QueryFullProcessImageNameW.argtypes = [W.HANDLE, W.DWORD, W.LPWSTR, C.POINTER(W.DWORD)]
-k.QueryFullProcessImageNameW.restype = W.BOOL
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--game-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--widget-tree", action="store_true", help="inspect native life-bar widget children")
     args = parser.parse_args()
+    if not hasattr(C, "WinDLL"):
+        raise SystemExit("This process-inspection tool requires Windows.")
+    k = C.WinDLL("kernel32", use_last_error=True)
+    k.OpenProcess.argtypes = [W.DWORD, W.BOOL, W.DWORD]
+    k.OpenProcess.restype = W.HANDLE
+    k.ReadProcessMemory.argtypes = [W.HANDLE, C.c_void_p, C.c_void_p, C.c_size_t, C.POINTER(C.c_size_t)]
+    k.ReadProcessMemory.restype = W.BOOL
+    k.CloseHandle.argtypes = [W.HANDLE]
+    k.QueryFullProcessImageNameW.argtypes = [W.HANDLE, W.DWORD, W.LPWSTR, C.POINTER(W.DWORD)]
+    k.QueryFullProcessImageNameW.restype = W.BOOL
     game = args.game_dir.resolve()
     if args.output.exists():
         raise SystemExit("Output already exists; choose a new capture filename.")
@@ -88,6 +147,12 @@ def main():
                 continue
             component["name"] = text(num(num(p + 0x10) + 0xe8))
             name = (component["name"] or "").lower()
+            if args.widget_tree and name == "life bar game ui":
+                tree = widget_tree(num(p + 0x88), read, info)
+                result["widget_tree"] = tree
+                for widget in tree["widgets"]:
+                    print("widget", widget["name"], widget["ptr"], "flags", widget["flags_234"], "size", widget["size"])
+                print("Widget tree issues:", tree["issues"])
             if "GameUi@@" in component["class"] or "top bar" in name or "username" in name:
                 component["links"] = []
                 for off in range(0x68, 0x240, 8):

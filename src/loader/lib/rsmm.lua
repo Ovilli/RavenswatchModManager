@@ -6444,6 +6444,9 @@ end)()
 
 R._internal = I
 
+-- Native nameplate API; opt-in, with fresh identity/ownership checks per call.
+_submodule_fn("nameplate", { R = R, I = I })
+
 -- Read-only native nameplate inspection; inert until explicitly called.
 _submodule_fn("nameplate_debug", { R = R, I = I })
 

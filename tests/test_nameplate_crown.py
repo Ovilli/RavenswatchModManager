@@ -42,6 +42,9 @@ def test_appends_owned_picture_preserving_existing_objects(ui_resources):
     picture = after.sections[-2].payload
     assert N._header(picture)[2] == N.WIDGET
     assert b"BookMenu\\LeaderPins.png" in picture
+    life = before.sections[N._find(before, N._class(before, "oC2dElementDesc", 14), "Life_Frame")].payload
+    assert struct.unpack_from("<ff", picture, 6) == pytest.approx((-N.DASH_GUTTER, struct.unpack_from("<f", life, 10)[0]))
+    assert struct.unpack_from("<ff", picture, 27) == (1.0, 0.5)
     original = cooked.parse(source)
     src = original.sections[N._find(original, N._class(original, "oC2dPictureDesc", 6), "Host_Picture")].payload
     assert picture[35:45] == src[35:45]  # flags and layer untouched
@@ -54,7 +57,7 @@ def test_repeat_requires_pristine_resource(ui_resources):
         N.add_crown(once, source, preview=True)
 
 
-@pytest.mark.parametrize("field,value", [("width", float("nan")), ("width", 100), ("y", 1), ("preview", "false")])
+@pytest.mark.parametrize("field,value", [("width", float("nan")), ("width", 100), ("y", 2), ("preview", "false")])
 def test_rejects_invalid_geometry(ui_resources, field, value):
     target, source = ui_resources
     with pytest.raises(ValueError):

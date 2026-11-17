@@ -2,8 +2,8 @@
 
 The live 2026-11-11 capture confirmed Life Bar Spawner +0x88 -> the overhead
 entity and its GameUi/Top Bar label widgets. The cooked entity embeds its
-native widget descriptions. Append a stock picture description to the name
-frame's child vector so the game's existing builder creates/owns/draws it.
+native widget descriptions. Append a stock picture description to the main
+HP UI frame's child vector so the game's existing builder creates/owns/draws it.
 No overlay, replacement text, executable patches, or bundled game artwork.
 
 The geometry codec below is specific to oC2dElementDesc v1.14 and
@@ -22,7 +22,9 @@ from .entity_append import validate_layout
 TARGET = "EntitySettings/GameUis/Common_Ui/Life_Bar_Hero_Common.entity.ot.EntitySettingsResource.gen"
 SOURCE = "EntitySettings/GameUis/All_Book_Pages/Hero_Display.entity.ot.EntitySettingsResource.gen"
 WIDGET = "RSMM_Host_Crown"
-FRAME = "Top_Bar_Text_Frame"
+FRAME = "Game_UI_Main_Frame"
+# A small gutter proportional to the common HP frame width.
+DASH_GUTTER = 0.04
 
 
 def _u32(blob: bytes, offset: int) -> int:
@@ -73,8 +75,8 @@ def _find(cf: cooked.CookedFile, cls: int, name: str) -> int:
 
 
 def add_crown(target: bytes, source: bytes, *, preview: bool = False,
-              width: float = 0.20, y: float = -0.12) -> bytes:
-    """Append the game's crown to the overhead name frame.
+              width: float = 0.20, y: float = 0.0) -> bytes:
+    """Append a crown at the left edge of the overhead HP frame.
 
     Default is a no-op. `preview=True` displays it on EVERY applicable nameplate
     for a solo geometry test. It must never be described as host detection.
@@ -86,7 +88,7 @@ def add_crown(target: bytes, source: bytes, *, preview: bool = False,
         return target
     if not all(type(v) in (int, float) and math.isfinite(v) for v in (width, y)):
         raise ValueError("geometry must be finite numbers")
-    if not 0.05 <= width <= 0.5 or not -1 <= y <= 0:
+    if not 0.05 <= width <= 0.5 or not -1 <= y <= 1:
         raise ValueError("crown geometry outside the supported range")
     dst, src = cooked.parse(target), cooked.parse(source)
     count = validate_layout(dst)
@@ -99,6 +101,15 @@ def add_crown(target: bytes, source: bytes, *, preview: bool = False,
         if _u32(sec.payload, 0) == picture and _header(sec.payload)[2] == WIDGET:
             raise ValueError("nameplate already contains the crown; start from pristine bytes")
     frame_index = _find(dst, element, FRAME)
+    dash_index = _find(dst, element, "Dash")
+    life_index = _find(dst, element, "Life_Frame")
+    frame = dst.sections[frame_index].payload
+    child_count = _header(frame)[0]
+    children = struct.unpack_from(f"<{child_count}I", frame, 49)
+    if dash_index - 1 not in children or life_index - 1 not in children:
+        raise ValueError("HP bar and dash must share the main UI frame")
+    dash_x = struct.unpack_from("<f", dst.sections[dash_index].payload, 6)[0]
+    life_y = struct.unpack_from("<f", dst.sections[life_index].payload, 10)[0]
     source_index = _find(src, source_picture, "Host_Picture")
     blob = src.sections[source_index].payload
     children, name_offset, _, end = _header(blob)
@@ -107,15 +118,13 @@ def add_crown(target: bytes, source: bytes, *, preview: bool = False,
     new_name = WIDGET.encode("ascii")
     clone = bytearray(blob[:name_offset] + struct.pack("<I", len(new_name)) + new_name + blob[end:])
     struct.pack_into("<I", clone, 0, picture)
-    struct.pack_into("<ff", clone, 6, 0.5, y)
+    struct.pack_into("<ff", clone, 6, 1.0 - dash_x - DASH_GUTTER, life_y + y)
     # Stock picture's zero height and preserved aspect flags derive its height
-    # from width and the texture ratio. Center/bottom pivot puts it above name.
+    # from width and the texture ratio. Right/center pivot faces the bar.
     struct.pack_into("<ff", clone, 17, width, 0.0)
-    struct.pack_into("<ff", clone, 27, 0.5, 1.0)
+    struct.pack_into("<ff", clone, 27, 1.0, 0.5)
     # Preserve all stock visibility/aspect/style flags. Host-controlled
     # visibility is a separate capability, not a guessed descriptor bit.
-    frame = dst.sections[frame_index].payload
-    child_count = _header(frame)[0]
     child_end = 49 + 4 * child_count
     dst.sections[frame_index].payload = (
         frame[:45] + struct.pack("<I", child_count + 1) + frame[49:child_end]

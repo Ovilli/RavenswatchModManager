@@ -515,6 +515,7 @@
             "then": {
               "properties": {
                 "id": {},
+                "include_peers": {},
                 "kind": {},
                 "preview": {},
                 "schema_version": {},

@@ -950,6 +950,12 @@ inline UiButton_PressCommit_fn UiButton_PressCommit() {
     return reinterpret_cast<UiButton_PressCommit_fn>(rsmm::fn_resolve(Sym::UiButton_PressCommit_Pattern));
 }
 
+// UiElement_SetVisible  (UiElement_SetVisible)
+using UiElement_SetVisible_fn = void(*)(void*, int, int);
+inline UiElement_SetVisible_fn UiElement_SetVisible() {
+    return reinterpret_cast<UiElement_SetVisible_fn>(rsmm::fn_resolve(Sym::UiElement_SetVisible_Pattern));
+}
+
 // Vector_Grow  (Vector_Grow)
 //   void(void* vec, void* /*dead RDX*/, uint32_t new_cap /*R8*/)
 using Vector_Grow_fn = void(*)(void*, uint64_t, uint32_t);

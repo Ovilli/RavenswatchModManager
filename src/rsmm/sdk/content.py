@@ -37,7 +37,7 @@ KINDS = ("item", "enemy", "boss", "map", "hero", "talent", "ability", "skill", "
 #: enforces this. Keep this table honest — it is the single source of
 #: truth consumed by the SDK, the linter, and ``https://docs.rsmm.me/guides/modding/``.
 KIND_CONFIDENCE: dict[str, str] = {
-    "nameplate_crown": "experimental",  # overhead placement only; host filtering not implemented
+    "nameplate_crown": "experimental",  # co-op visibility still needs playtesting
     "item": "confirmed",      # mode="clone" verified in compendium + drops (2026-06-02).
                               # mode="ban" (dropping vanilla entries from the same
                               # LiveOps MO vector) is the exact inverse of that proven

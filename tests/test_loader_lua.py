@@ -42,6 +42,18 @@ def test_nameplate_debug_spec():
     assert "10 passed, 0 failed" in proc.stdout
 
 
+def test_nameplate_spec():
+    lua = _lua_bin()
+    if lua is None:
+        pytest.skip("no standalone Lua interpreter")
+    proc = subprocess.run(
+        [lua, str(REPO / "tests/lua/nameplate_spec.lua")],
+        capture_output=True, text=True, cwd=str(REPO),
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "12 passed, 0 failed" in proc.stdout
+
+
 def test_rsmm_lua_spec():
     lua = _lua_bin()
     if lua is None:

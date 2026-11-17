@@ -1,0 +1,22 @@
+[mod]
+id = "host-crown"
+name = "Host Crown"
+version = "0.0.1"
+author = "Arch"
+license = "MIT"
+summary = "Marks the co-op host beside their HP bar."
+description = "Standalone preview of the host crown at the left of the HP bar. Requires the RSMM native-nameplate SDK and matching symbol data."
+sdk_version = ">=3.0,<4"
+enabled = true
+experimental = true
+multiplayer_scope = "deterministic-shared"
+loader_flags = ["RSMM_ENABLE_HERO_CAPTURE"]
+tags = ["ui", "coop"]
+
+[[content]]
+kind = "nameplate_crown"
+id = "overhead_crown"
+preview = true
+include_peers = true
+width = 0.20
+y = 0.0

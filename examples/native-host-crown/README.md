@@ -1,9 +1,31 @@
 # Native nameplate modding checkpoint
 
 This is a reproducible development path for adding native UI to Ravenswatch.
-The immediate target is a gold crown **above the session host's name over their
-character**, inside the game's own nameplate. This checkpoint provides reusable
+The immediate target is a gold crown **at the left of the session host's HP bar**, inside the game's own nameplate. This checkpoint provides reusable
 inspection and asset-building code, not a finished host-indicator release.
+
+## HP-bar placement
+
+The current builder anchors the crown to the main HUD frame, at the HP bar's
+center height and on the opposite edge from Dash. The gutter is proportional to
+the frame width. Compare the gap to the dash icon in a live run, including on peer
+nameplates and at different UI scales.
+
+## November 16 visibility update
+
+The solo run confirmed native hide and show on the crown. The
+[private co-op example](host-crown/) adds the badge to both the local
+and peer layouts and enables the SDK host filter. Use it in place of the
+solo preview, with this checkout's Lua SDK and a pattern database containing
+the `UiElement_SetVisible` alias. Developers can generate the alias with
+`scripts/sync_symbol_patterns.py` against a local pattern database for the
+installed executable. The original checkpoint details below describe the
+earlier preview.
+
+In private co-op, check both clients for exactly one crown, over the host.
+Repeat after changing host and entering a new chapter. The preview layouts
+start visible until the gameplay scheduler runs, and peer lookup and network
+identity still need live co-op verification.
 
 ## What is reusable now
 
@@ -143,7 +165,7 @@ kind = "nameplate_crown"
 id = "overhead_crown"
 preview = true
 width = 0.20
-y = -0.12
+y = 0.0
 ```
 
 Or build to an output directory from Python:
@@ -153,7 +175,7 @@ from pathlib import Path
 from rsmm.sdk.content import ContentRegistry
 
 registry = ContentRegistry("my-ui-test", experimental=True)
-registry.register("nameplate_crown", id="crown", preview=True, width=0.20, y=-0.12)
+registry.register("nameplate_crown", id="crown", preview=True, width=0.20, y=0.0)
 written = registry.emit(Path("build/my-ui-test/assets"))
 ```
 

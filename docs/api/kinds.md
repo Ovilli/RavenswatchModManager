@@ -31,7 +31,7 @@ Do not edit by hand, and do not restate a rating in prose — link here. Run `rs
 | `challenge` | ❓ guess | `rsmm.sdk.kinds.challenges` | Custom **challenge** content builder — a new entry on the challenge screen. |
 | `scenery` | ⚠️ experimental | `rsmm.sdk.kinds.scenery` | Chapter scenery content builder. |
 | `skin` | ✅ confirmed | `rsmm.sdk.kinds.skins` | ``kind = "skin"`` — NEW skins for a shipped hero, in the hero's own skin list. |
-| `nameplate_crown` | ⚠️ experimental | `rsmm.sdk.kinds.nameplate_crowns` | Experimental native crown layout; runtime host selection is not implemented. |
+| `nameplate_crown` | ⚠️ experimental | `rsmm.sdk.kinds.nameplate_crowns` | Experimental native crown layouts for solo and co-op development. |
 
 A block that sets one of these fields is rated as the field, whatever its kind's rating (`FIELD_CONFIDENCE`):
 

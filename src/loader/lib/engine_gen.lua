@@ -147,6 +147,7 @@ return {
   ["TileSpawner_Spawn"] = { pattern = "TileSpawner_Spawn", offset = 0x0, sig = "vp" },
   ["UiButton_InputPoll"] = { pattern = "UiButton_InputPoll", offset = 0x0, sig = "vp" },
   ["UiButton_PressCommit"] = { pattern = "UiButton_PressCommit", offset = 0x0, sig = "vp" },
+  ["UiElement_SetVisible"] = { pattern = "UiElement_SetVisible", offset = 0x0, sig = "vpii" },
   ["Vector_Grow"] = { pattern = "Vector_Grow", offset = 0x0, sig = "vplu" },
   ["Vector_InsertRange"] = { pattern = "Vector_InsertRange", offset = 0x0, sig = "ppuu" },
   ["XpComponent_GetMaxLevel"] = { pattern = "XpComponent_GetMaxLevel", offset = 0x0, sig = "up" },
