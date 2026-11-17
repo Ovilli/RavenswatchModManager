@@ -210,3 +210,74 @@ def test_every_layer_kind_writes_back_in_place():
     lay = back.layers["Base Terrain Vertex Color"]
     i = int(v * lay.size) * lay.size + int(u * lay.size)
     assert tuple(lay.cells[i * 4:i * 4 + 3]) == (0x10, 0x20, 0x30)
+
+
+def test_a_single_non_square_box_is_a_tile_terrain_box():
+    # a tile's own terrain (the Gold Room: 80 x 100 m) is not square
+    p = b"\x00\x07" + struct.pack("<6f", -40.0, -50.0, -50.0, 40.0, 50.0, 50.0) + b"\x05"
+    assert TR._box(p) == ((-40.0, -50.0, -50.0), (40.0, 50.0, 50.0))
+
+
+_GOLD_ROOM = "DarkHills\\Tiles\\DarkHill_Thieves_Stashes_Gold_Room_Underground_01.level.ot"
+
+
+def _gold_room() -> bytes:
+    from rsmm.engine import corpus, prop_cook
+    raw = corpus.read(prop_cook.level_cooked_path(_GOLD_ROOM))
+    if raw is None:
+        pytest.skip("Gold Room level not readable (no mirror or install)")
+    return raw
+
+
+def test_room_terrain_resizes_with_its_tiles_and_water_is_a_constant():
+    from rsmm.engine import level_placements as LP
+    lv = _gold_room()
+    t = TR.read(lv)
+    assert (t.box_min[0], t.box_max[0], t.box_min[2], t.box_max[2]) == (-40, 40, -50, 50)
+    assert t.layers["Water Height"].kind == "const"
+    out = TR.resize(lv, 128.0, 128.0)
+    assert len(out) == len(lv) and len(LP.objects(out)) == len(LP.objects(lv))
+    t2 = TR.read(out)
+    assert (t2.box_min[0], t2.box_max[0], t2.box_min[2], t2.box_max[2]) == (-64, 64, -64, 64)
+    # every mesh/physics tile box moved with it: each one now lies in the new box
+    _cf, _sec, inner = LP._inner(out)
+    g = LP._graph(inner)
+    classes = TR._class_names(g)
+    tiles = [p for _b, _e, p in g.objects
+             if classes[struct.unpack_from("<I", p, 0)[0]] in TR.TILE_CLASSES]
+    assert tiles
+    for p in tiles:
+        TR._sub_box_at(p, t2.box_min, t2.box_max, "tile")
+        with pytest.raises(TR.TerrainError):          # no longer fits the old box
+            TR._sub_box_at(p, t.box_min, t.box_max, "tile")
+    TR.apply_strokes(t2, [{"op": "set", "layer": "Water Height", "x": 0, "z": 0,
+                           "radius": 1, "amount": 0.3}])
+    back = TR.read(TR.write(out, t2))
+    assert back.layers["Water Height"].cells[0] == pytest.approx(0.503, abs=1e-6)
+
+
+def test_a_constant_layer_takes_only_set():
+    t = TR.read(_gold_room())
+    with pytest.raises(TR.TerrainError, match="constant"):
+        TR.apply_strokes(t, [{"op": "raise", "layer": "Water Height", "x": 0, "z": 0,
+                              "radius": 1, "amount": 1.0}])
+
+
+def test_level_value_overrides_are_set_by_name_in_place():
+    from rsmm.engine import level_placements as LP
+    lv = _gold_room()
+    out = LP.set_values(lv, {"Render Settings Zone Scale Value": 88.0})
+    assert len(out) == len(lv) and len(LP.objects(out)) == len(LP.objects(lv))
+    i = out.find(b"Render Settings Zone Scale Value\"")
+    j = out.find(LP._VALUE_TAIL, i)
+    assert struct.unpack("<f", out[j - 4:j])[0] == 88.0
+    with pytest.raises(LP.LevelPlacementError, match="no value named"):
+        LP.set_values(lv, {"No Such Value": 1.0})
+
+
+def test_render_zone_ambient_is_set_in_place():
+    from rsmm.engine import level_placements as LP
+    lv = _gold_room()
+    out = LP.set_ambient(lv, (0.4, 0.38, 0.42))
+    assert len(out) == len(lv) and len(LP.objects(out)) == len(LP.objects(lv))
+    assert struct.pack("<3f", 0.4, 0.38, 0.42) in out

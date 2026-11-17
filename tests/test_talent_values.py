@@ -303,3 +303,37 @@ def test_patching_by_explicit_label_reaches_a_value_the_listing_hides():
     got = {v.label: v for v in list_talent_values(out, extra_labels=("Orbit Lifetime",))}
     assert got["Orbit Lifetime"].value == pytest.approx(9.5)
     assert is_label_overridden(raw, "Orbit Lifetime") is False
+
+
+def _lstrings_reference(data: bytes) -> list[tuple[int, str]]:
+    """The per-offset scanner `_iter_lstrings` replaced: try every offset."""
+    out, i, n = [], 0, len(data)
+    while i + 4 <= n:
+        ln = struct.unpack_from("<I", data, i)[0]
+        if 4 <= ln <= 80 and i + 4 + ln <= n:
+            chunk = data[i + 4:i + 4 + ln]
+            if all(0x20 <= b < 0x7F for b in chunk):
+                out.append((i, chunk.decode("ascii")))
+                i += 4 + ln
+                continue
+        i += 1
+    return out
+
+
+def test_run_lstring_scanner_matches_the_per_offset_reference():
+    import random
+
+    from rsmm.engine import corpus
+    from rsmm.engine import talent_values as TV0
+    rng = random.Random(11)
+    alphabet = [0, 0, 0, 4, 5, 6, 80, 81, 0x20, 0x41, 0x7E, 0x7F, 0xFF]
+    for _ in range(4000):
+        data = bytes(rng.choice(alphabet) if rng.random() < 0.9 else rng.randrange(256)
+                     for _ in range(rng.randint(0, 120)))
+        assert list(TV0._iter_lstrings(data)) == _lstrings_reference(data), data.hex()
+    # Shipped hero entities, where the scanner actually runs.
+    rels = [r for r in corpus.rels("EntitySettings/", ".EntitySettingsResource.gen")
+            if "Hero" in r][:6]
+    for rel in rels:
+        data = corpus.read(rel)
+        assert list(TV0._iter_lstrings(data)) == _lstrings_reference(data), rel

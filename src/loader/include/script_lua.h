@@ -24,6 +24,9 @@ namespace rsmm {
 // Event handlers receive one argument: a payload table (empty for events
 // with no payload). Lifecycle order: "setup" -> "ready" -> "tick"*.
 
+// The loader-owned Lua state (id "_rsmm"): runs `require "rsmm"` so core
+// features written in Lua (the Mods page) exist with or without any mod.
+bool script_run_builtin_init();
 bool script_run_mod_init(const std::string& mod_id,
                          const std::filesystem::path& mod_root);
 // Emit an event to every mod. The no-payload form passes an empty table;

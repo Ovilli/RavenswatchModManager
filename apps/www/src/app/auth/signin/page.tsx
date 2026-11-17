@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { type FormEvent, Suspense, useState } from 'react';
 import { signIn } from '../../../lib/auth-client';
-import { GoogleIcon, authConfigQueryKey, fetchAuthConfig } from '../../../lib/auth-ui';
+import { DiscordIcon, GoogleIcon, authConfigQueryKey, fetchAuthConfig } from '../../../lib/auth-ui';
 
 export default function SignInPage() {
   return (
@@ -48,7 +48,7 @@ function SignInInner() {
     else router.push(callbackURL as Route);
   }
 
-  async function social(provider: 'google' | 'github') {
+  async function social(provider: 'google' | 'discord' | 'github') {
     setError(null);
     setBusy(true);
     const res = await signIn.social({ provider, callbackURL: resolveCallbackURL() });
@@ -58,7 +58,11 @@ function SignInInner() {
     }
   }
 
-  const hasSocial = !!(config.data?.providers.google || config.data?.providers.github);
+  const hasSocial = !!(
+    config.data?.providers.google ||
+    config.data?.providers.discord ||
+    config.data?.providers.github
+  );
 
   return (
     <main className="container mx-auto flex min-h-[80vh] items-center justify-center px-6 animate-page-in">
@@ -79,6 +83,17 @@ function SignInInner() {
                   onClick={() => social('google')}
                 >
                   <GoogleIcon /> Continue with Google
+                </Button>
+              ) : null}
+              {config.data?.providers.discord ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  disabled={busy}
+                  onClick={() => social('discord')}
+                >
+                  <DiscordIcon /> Continue with Discord
                 </Button>
               ) : null}
               {config.data?.providers.github ? (

@@ -7,7 +7,10 @@
 //
 // A chapter is generated from tiles, so an object stands inside a TILE and
 // appears wherever that tile spawns. What the author adds is saved as a poi
-// def in replace_base mode with `places` (see rsmm.engine.tile_editor).
+// def in replace_base mode with `places` (see rsmm.engine.tile_editor). In
+// OWN-COPY mode it is an own_level clone instead, and the game's objects in it
+// can be removed (`clear`) and moved (`move`); one is named by entity + where
+// it stands (`at`), so a game object's `pos` is never changed: `to` is.
 const TileMode = (() => {
   const $ = (id) => document.getElementById(id);
   const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
@@ -18,7 +21,8 @@ const TileMode = (() => {
   };
   const DRAFT = "rsmm.tiles.draft.";
   // tile: path; data: the engine's objects JSON; added: what the author places.
-  const S = { active: false, tiles: null, tile: null, data: null, added: [], sel: null, props: null, mods: [], showGame: true, onClose: null };
+  const S = { active: false, tiles: null, tile: null, data: null, added: [], sel: null, props: null, mods: [], showGame: true, onClose: null,
+    own: false, copies: 1, clear: false };
   let nextId = 1;
 
   // The engine is left-handed (Y up, +Z away) and WebGL right-handed: objects
@@ -110,10 +114,18 @@ const TileMode = (() => {
     $("t3-load").textContent = busy ? `Loading models ${G.loaded}/${G.loading}…` : ""; $("t3-load").hidden = !busy;
     G.dirty = true;
   }
+  // A game object in own-copy mode: what `clear` keeps, whether it is gone, and
+  // whether it can be edited at all.
+  const kept = (o) => (S.data?.clear_keep || []).some((k) => o.entity.toLowerCase().includes(k.toLowerCase()));
+  const gone = (o) => o.kind === "game" && S.own && (o.removed || (S.clear && !kept(o)));
+  const editable = (o) => o.kind === "added" || (S.own && o.kind === "game" && !gone(o));
+  const posOf = (o) => (o.kind === "game" ? ((S.own && o.to) || o.pos) : o.pos);
+  // `clear all` keeps these and the saved def has no way to drop one of them too.
+  const removable = (o) => editable(o) && !(o.kind === "game" && S.clear && kept(o));
   const yawQuat = (deg) => { const h = deg * Math.PI / 360; return new THREE.Quaternion(0, Math.sin(h), 0, Math.cos(h)); };
   function placeMatrix(o) {
     return o.kind === "game"
-      ? new THREE.Matrix4().compose(new THREE.Vector3(...o.pos), new THREE.Quaternion(...o.quat), new THREE.Vector3(...o.scale))
+      ? new THREE.Matrix4().compose(new THREE.Vector3(...posOf(o)), new THREE.Quaternion(...o.quat), new THREE.Vector3(...o.scale))
       : new THREE.Matrix4().compose(new THREE.Vector3(...o.pos), yawQuat(o.yaw), new THREE.Vector3(o.scale, o.scale, o.scale));
   }
   // The node goes into the scene at once (empty) and fills in when its model arrives.
@@ -127,11 +139,12 @@ const TileMode = (() => {
     });
     return node;
   }
-  function syncNode(o) { if (o.node) { o.node.matrix.copy(placeMatrix(o)); o.node.matrixWorldNeedsUpdate = true; } if (S.sel === o) select(o); G.dirty = true; }
+  function syncNode(o) { if (o.node) { o.node.matrix.copy(placeMatrix(o)); o.node.matrixWorldNeedsUpdate = true; o.node.visible = !gone(o); } if (S.sel === o) select(o); G.dirty = true; }
+  const syncGame = () => { for (const o of S.data?.objects || []) syncNode(o); };
   function drawTile() {
     G.groups.game.clear(); G.groups.added.clear();
     if (!S.data) return;
-    for (const o of S.data.objects) objectNode(o, G.groups.game);
+    for (const o of S.data.objects) { objectNode(o, G.groups.game); o.node.visible = !gone(o); }
     for (const o of S.added) objectNode(o, G.groups.added);
   }
 
@@ -145,7 +158,7 @@ const TileMode = (() => {
     const roots = [G.groups.added, ...(S.showGame ? [G.groups.game] : [])];
     for (const hit of pointerRay(ev).intersectObjects(roots, true)) {
       let n = hit.object; while (n && !n.userData.obj) n = n.parent;
-      if (n) return n.userData.obj;
+      if (n && !gone(n.userData.obj)) return n.userData.obj;
     }
     return null;
   }
@@ -164,24 +177,29 @@ const TileMode = (() => {
       if (e.button === 2 || e.button === 1) { looking = true; return; }
       downAt = { x: e.clientX, y: e.clientY };
       const o = pick(e);
-      if (o && o.kind === "added" && o === S.sel) drag = { o, start: o.pos.slice(), sy: e.clientY };
+      if (o && editable(o) && o === S.sel) drag = { o, p: null, sy: e.clientY };
     });
     cv.addEventListener("pointermove", (e) => {
       const dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
       if (looking) { G.cam.yaw -= dx * 0.004; G.cam.pitch = Math.max(-1.5, Math.min(1.5, G.cam.pitch - dy * 0.004)); G.dirty = true; return; }
       if (!drag) return;
+      if (!drag.p) {                                      // the first real move
+        if (drag.o.kind === "game" && !drag.o.to) drag.o.to = drag.o.pos.slice();   // keep the anchor
+        drag.p = posOf(drag.o); drag.start = drag.p.slice();
+      }
+      const dp = drag.p;
       if (e.altKey) {                                     // Alt: up and down
-        drag.o.pos[1] = +(drag.start[1] + (drag.sy - e.clientY) * 0.03).toFixed(3);
+        dp[1] = +(drag.start[1] + (drag.sy - e.clientY) * 0.03).toFixed(3);
       } else {
-        const p = onPlane(pointerRay(e), drag.o.pos[1]); if (!p) return;
-        if (!drag.off) drag.off = [drag.o.pos[0] - p.x, drag.o.pos[2] - p.z];
-        drag.o.pos[0] = +(p.x + drag.off[0]).toFixed(3); drag.o.pos[2] = +(p.z + drag.off[1]).toFixed(3);
+        const p = onPlane(pointerRay(e), dp[1]); if (!p) return;
+        if (!drag.off) drag.off = [dp[0] - p.x, dp[2] - p.z];
+        dp[0] = +(p.x + drag.off[0]).toFixed(3); dp[2] = +(p.z + drag.off[1]).toFixed(3);
       }
       syncNode(drag.o); changed(false);
     });
     cv.addEventListener("pointerup", (e) => {
       if (looking) { looking = false; return; }
-      if (drag) { drag = null; changed(); inspector(); return; }
+      if (drag) { const moved = !!drag.p; drag = null; if (moved) { changed(); inspector(); return; } }
       if (downAt && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < 5) select(pick(e));
       downAt = null;
     });
@@ -201,7 +219,7 @@ const TileMode = (() => {
         else if (e.code === "Minus" || e.code === "NumpadSubtract") { o.scale = clampScale(o.scale / 1.1); syncNode(o); changed(); inspector(); }
         else if (e.code === "Delete" || e.code === "Backspace") { e.preventDefault(); remove(o); }
         else if (e.code === "KeyD" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); duplicate(o); }
-      }
+      } else if (o && editable(o) && (e.code === "Delete" || e.code === "Backspace")) { e.preventDefault(); removeGame(o, true); }
     });
     window.addEventListener("keyup", (e) => G.keys.delete(e.code));
     window.addEventListener("blur", () => G.keys.clear());
@@ -209,8 +227,8 @@ const TileMode = (() => {
   const norm = (deg) => +(((deg % 360) + 540) % 360 - 180).toFixed(3);
   const clampScale = (v) => +Math.max(0.05, Math.min(20, v)).toFixed(4);
   function focus(o) {
-    const b = new THREE.Box3().setFromObject(o.node || new THREE.Object3D());
-    const c = b.isEmpty() ? G.world.localToWorld(new THREE.Vector3(...o.pos)) : b.getCenter(new THREE.Vector3());
+    const b = new THREE.Box3().setFromObject(o.node && o.node.visible ? o.node : new THREE.Object3D());
+    const c = b.isEmpty() ? G.world.localToWorld(new THREE.Vector3(...posOf(o))) : b.getCenter(new THREE.Vector3());
     const r = b.isEmpty() ? 2 : Math.max(1.5, b.getSize(new THREE.Vector3()).length() / 2);
     G.cam.pos.copy(c).addScaledVector(viewDir(), -r * 2.6); G.dirty = true;
   }
@@ -218,9 +236,9 @@ const TileMode = (() => {
   // ---- editing -------------------------------------------------------------------
   function select(o) {
     S.sel = o || null;
-    if (o && o.node) {
+    if (o && o.node && o.node.visible) {
       const b = new THREE.Box3().setFromObject(o.node);
-      if (b.isEmpty()) b.setFromCenterAndSize(G.world.localToWorld(new THREE.Vector3(...o.pos)), new THREE.Vector3(0.8, 0.8, 0.8));
+      if (b.isEmpty()) b.setFromCenterAndSize(G.world.localToWorld(new THREE.Vector3(...posOf(o))), new THREE.Vector3(0.8, 0.8, 0.8));
       G.box.box.copy(b.applyMatrix4(G.world.matrixWorld.clone().invert())); G.box.visible = true;
     } else G.box.visible = false;
     G.dirty = true; outliner(); inspector();
@@ -243,17 +261,41 @@ const TileMode = (() => {
     if (o.node) G.groups.added.remove(o.node);
     changed(); select(null);
   }
+  // Remove (or bring back) one of the game's objects in the own copy.
+  function removeGame(o, on) {
+    if (on && !removable(o)) { status("Clear all keeps this one; untick clear all to remove it.", "st-bad"); return; }
+    o.removed = on; if (on) o.to = null;
+    syncNode(o); changed(); if (on) select(null); else inspector();
+  }
   const placeOf = (o) => ({ entity: o.entity, pos: o.pos, yaw: o.yaw, scale: o.scale });
+  // The whole edit, as the server's tile_editor.clean_edit takes it.
+  function edit() {
+    const game = S.data ? S.data.objects : [];
+    const e = { places: S.added.map(placeOf), own: S.own };
+    if (S.own) Object.assign(e, { copies: S.copies, clear: S.clear,
+      remove: S.clear ? [] : game.filter((o) => o.removed).map((o) => ({ entity: o.entity, at: o.pos })),
+      move: game.filter((o) => o.to && !gone(o)).map((o) => ({ entity: o.entity, at: o.pos, pos: o.to })) });
+    return e;
+  }
+  const hasEdit = (e) => e.places.length || e.clear || e.remove?.length || e.move?.length;
+  function modeUi() {
+    $("t3-own").checked = S.own; $("t3-copies").value = S.copies; $("t3-copies").disabled = !S.own;
+    $("t3-clear").checked = S.clear; $("t3-clear").disabled = !S.own;
+    $("t3-addhint").textContent = S.own
+      ? "Click a prop to place it where the view is pointing. Own copy: the game's tile is untouched and still spawns; your copy gets its own pool entries."
+      : "Click a prop to place it where the view is pointing. Anything added here stands in every spawn of this tile.";
+  }
   function changed(save = true) {
     G.dirty = true;
-    if (save && S.tile) store.set(DRAFT + S.tile, S.added.map(placeOf));
+    if (save && S.tile) store.set(DRAFT + S.tile, edit());
     $("t3-check").disabled = $("t3-save").disabled = !S.tile;
     if (save) outliner();
   }
 
   // ---- panels --------------------------------------------------------------------
   function outliner() {
-    const row = (o) => el("li", { className: o.kind + (S.sel === o ? " sel" : ""), title: o.entity, onclick: () => select(o), ondblclick: () => focus(o) },
+    const cls = (o) => [o.kind, S.sel === o && "sel", o.kind === "game" && !S.own && "locked", gone(o) && "gone", o.kind === "game" && S.own && o.to && "moved"].filter(Boolean).join(" ");
+    const row = (o) => el("li", { className: cls(o), title: o.entity, onclick: () => select(o), ondblclick: () => focus(o) },
       el("span", { textContent: o.name }));
     $("t3-added").replaceChildren(...S.added.map(row));
     $("t3-addedn").textContent = S.added.length ? `(${S.added.length})` : "";
@@ -264,14 +306,16 @@ const TileMode = (() => {
   function inspector() {
     const o = S.sel, box = $("t3-insp");
     if (!o) { box.replaceChildren(el("h2", { textContent: "Selection" }), el("p", { className: "hint", textContent: "Click an object in the view or the list." })); return; }
-    const editable = o.kind === "added";
-    const num = (v, on, step = "0.1") => el("input", { type: "number", step, value: v, disabled: !editable,
+    const canEdit = editable(o), isAdded = o.kind === "added";
+    const num = (v, on, step = "0.1") => el("input", { type: "number", step, value: v, disabled: !canEdit,
       oninput: (e) => { const x = parseFloat(e.target.value); if (Number.isFinite(x)) { on(x); syncNode(o); changed(false); } },
       onchange: () => changed() });
-    const kids = [el("h2", { textContent: editable ? "Added object" : "The game's object (locked)" }),
+    const title = isAdded ? "Added object" : !S.own ? "The game's object (locked)" : gone(o) ? "The game's object (removed)" : "The game's object";
+    const setPos = (k, x) => { if (isAdded) o.pos[k] = x; else { if (!o.to) o.to = o.pos.slice(); o.to[k] = x; } };
+    const kids = [el("h2", { textContent: title }),
       el("div", { className: "name", textContent: o.name }), el("div", { className: "path", textContent: o.entity }),
-      el("label", {}, "Position", el("div", { className: "xyz" }, ...[0, 1, 2].map((k) => num(o.pos[k], (x) => { o.pos[k] = x; }))))];
-    if (editable) {
+      el("label", {}, "Position", el("div", { className: "xyz" }, ...[0, 1, 2].map((k) => num(posOf(o)[k], (x) => setPos(k, x)))))];
+    if (isAdded) {
       kids.push(el("label", {}, "Yaw °", num(o.yaw, (x) => { o.yaw = norm(x); }, "5")),
         el("label", {}, "Scale", num(o.scale, (x) => { o.scale = clampScale(x); }, "0.05")),
         el("div", { className: "row" },
@@ -283,8 +327,17 @@ const TileMode = (() => {
       const q = o.quat, tilt = Math.acos(Math.max(-1, Math.min(1, 1 - 2 * (q[0] * q[0] + q[2] * q[2])))) * 180 / Math.PI;
       kids.push(el("label", {}, "Yaw °", num(+(2 * Math.atan2(q[1], q[3]) * 180 / Math.PI).toFixed(1), () => {})),
         el("label", {}, "Scale", num(o.scale.map((v) => +v.toFixed(3)).join(" × "), () => {})),
-        el("p", { className: "hint", textContent: (tilt > 1 ? `Tilted ${tilt.toFixed(0)}°. ` : "") + "Moving or removing the game's own objects is not supported yet; add objects around them." }),
-        el("div", { className: "row" }, el("button", { className: "btn", textContent: "Focus (F)", onclick: () => focus(o) })));
+        el("p", { className: "hint", textContent: (tilt > 1 ? `Tilted ${tilt.toFixed(0)}°. ` : "") + (!S.own
+          ? "Turn on Own copy to move or remove the game's objects; otherwise add objects around them."
+          : gone(o) ? (o.removed ? "Removed from your copy." : "Cleared by Clear all (it keeps spawners, the reward and terrain shapes).")
+          : "Drag it in the view to move it in your copy; Alt raises or lowers. Del removes it.") }));
+      const btns = [el("button", { className: "btn", textContent: "Focus (F)", onclick: () => focus(o) })];
+      if (S.own && o.removed) btns.push(el("button", { className: "btn", textContent: "Bring back", onclick: () => removeGame(o, false) }));
+      else if (canEdit) {
+        if (removable(o)) btns.push(el("button", { className: "btn", textContent: "Remove", onclick: () => removeGame(o, true) }));
+        if (o.to) btns.push(el("button", { className: "btn", textContent: "Reset position", onclick: () => { o.to = null; syncNode(o); changed(); inspector(); } }));
+      }
+      kids.push(el("div", { className: "row" }, ...btns));
     }
     box.replaceChildren(...kids);
   }
@@ -300,7 +353,7 @@ const TileMode = (() => {
   }
 
   // ---- tiles, mods, saving -------------------------------------------------------
-  async function load(path, places) {
+  async function load(path, saved) {
     S.tile = path; S.data = null; S.added = []; select(null);
     $("t3-title").textContent = path.split("\\").pop().replace(".tiledef.ot", "").replace(/_/g, " ");
     $("t3-empty").hidden = false; $("t3-empty").textContent = "Loading the tile…";
@@ -309,8 +362,16 @@ const TileMode = (() => {
     catch (e) { if (S.tile === path) $("t3-empty").textContent = e.message; return; }
     if (S.tile !== path) return;
     for (const o of S.data.objects) o.kind = "game";
-    const draft = places || store.get(DRAFT + path) || [];
-    S.added = draft.map((p) => ({ kind: "added", id: nextId++, entity: p.entity, name: p.entity.split("\\").pop().replace(".entity.ot", ""),
+    let draft = saved || store.get(DRAFT + path) || {};
+    if (Array.isArray(draft)) draft = { places: draft };            // drafts from before own copies
+    S.own = !!draft.own; S.copies = draft.copies || 1; S.clear = !!draft.clear;
+    const tol = S.data.at_tolerance ?? 0.05;
+    const near = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) <= tol;
+    const find = (r) => S.data.objects.find((o) => o.entity.toLowerCase() === r.entity.toLowerCase() && near(o.pos, r.at));
+    for (const r of draft.remove || []) { const o = find(r); if (o) o.removed = true; }
+    for (const m of draft.move || []) { const o = find(m); if (o) o.to = m.pos.slice(); }
+    modeUi();
+    S.added = (draft.places || []).map((p) => ({ kind: "added", id: nextId++, entity: p.entity, name: p.entity.split("\\").pop().replace(".entity.ot", ""),
       pos: p.pos.slice(), yaw: p.yaw || 0, scale: p.scale || 1 }));
     $("t3-empty").hidden = true;
     G.cam.pos.set(18, 16, -18); G.cam.yaw = Math.PI * 0.75; G.cam.pitch = -0.55;
@@ -318,9 +379,9 @@ const TileMode = (() => {
     status(S.data.chapters.length ? `Drawn by ${S.data.chapters.join(", ").replace(/_/g, " ")}.`
       : "No chapter this editor can extend draws this tile; it can be viewed, not saved.", S.data.chapters.length ? "" : "st-bad");
   }
-  const body = () => ({ tile: S.tile, places: S.added.map(placeOf), mod_id: $("t3-modid").value.trim().toLowerCase(), name: $("t3-modname").value.trim() });
+  const body = () => ({ tile: S.tile, ...edit(), mod_id: $("t3-modid").value.trim().toLowerCase(), name: $("t3-modname").value.trim() });
   async function check() {
-    if (!S.added.length) { status("Add an object first.", "st-bad"); return; }
+    if (!hasEdit(edit())) { status(S.own ? "Add, remove or move an object first." : "Add an object first.", "st-bad"); return; }
     status("Checking…");
     try { const r = await api("api/t3/check", body()); status(`OK: the mod would write ${r.files.length} file(s).`, "st-ok"); }
     catch (e) { status(e.message, "st-bad"); }
@@ -345,13 +406,20 @@ const TileMode = (() => {
     $("t3-check").onclick = check; $("t3-save").onclick = save;
     $("t3-showgame").onchange = () => { S.showGame = $("t3-showgame").checked; G.groups.game.visible = S.showGame; G.dirty = true; };
     $("t3-propq").oninput = renderProps;
+    $("t3-own").onchange = () => { S.own = $("t3-own").checked; modeUi(); syncGame(); changed(); inspector(); };
+    $("t3-copies").onchange = () => { S.copies = Math.max(1, Math.min(16, Math.round(+$("t3-copies").value) || 1)); modeUi(); changed(); };
+    $("t3-clear").onchange = () => {
+      S.clear = $("t3-clear").checked;
+      if (S.clear) for (const o of S.data?.objects || []) if (kept(o)) o.removed = false;   // clear keeps these
+      syncGame(); changed(); inspector();
+    };
     $("t3-modpick").onchange = async () => {
       const id = $("t3-modpick").value; if (!id) { $("t3-modid").value = ""; $("t3-modname").value = ""; return; }
       try {
         const m = await api("api/t3/mod?id=" + encodeURIComponent(id));
         $("t3-modid").value = m.id; $("t3-modname").value = m.name || "";
-        const places = m.tiles[S.tile];
-        if (places) await load(S.tile, places);
+        const saved = m.tiles[S.tile];
+        if (saved) await load(S.tile, saved);
         else {
           const [tile, saved] = Object.entries(m.tiles)[0] || [];
           if (tile) await load(tile, saved);

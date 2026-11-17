@@ -1,13 +1,15 @@
 import { ScrollText } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import pkg from '../../package.json';
 import { type ChangelogEntry, loadChangelog, pendingEntries } from '../lib/changelog';
 import { changelogSeen, hasRunBefore, markChangelogSeen } from '../lib/first-run';
 import { TParts, useT } from '../lib/i18n-react';
+import { inTauri } from '../lib/platform';
 import { getAppVersion } from '../lib/updater';
 import { AiDisclosureDialog } from './ai-disclosure';
 import { Button, MonoTag, useModalChrome } from './chrome';
+import { CliUpdateDialog } from './cli-update-dialog';
 
 /** One release's notes. Shared by the dialog and the About page. */
 export function ChangelogSection({ entry }: { entry: ChangelogEntry }) {
@@ -51,7 +53,10 @@ export function ChangelogSection({ entry }: { entry: ChangelogEntry }) {
  * that is killed mid-read (or crashes on a bad mod during startup) should show
  * the notes again rather than swallow them.
  */
-export function ChangelogDialog({ enabled }: { enabled: boolean }) {
+export function ChangelogDialog({
+  enabled,
+  onComplete,
+}: { enabled: boolean; onComplete: () => void }) {
   const [entries, setEntries] = useState<ChangelogEntry[]>([]);
   const [current, setCurrent] = useState<string>(pkg.version ?? '0.0.0');
 
@@ -87,6 +92,7 @@ export function ChangelogDialog({ enabled }: { enabled: boolean }) {
         // stay unmarked forever and re-enter the "upgrading with no mark" path
         // on every future release.
         markChangelogSeen(version);
+        onComplete();
         return;
       }
       setEntries(pending);
@@ -94,7 +100,7 @@ export function ChangelogDialog({ enabled }: { enabled: boolean }) {
     return () => {
       alive = false;
     };
-  }, [enabled]);
+  }, [enabled, onComplete]);
 
   if (entries.length === 0) return null;
 
@@ -105,6 +111,7 @@ export function ChangelogDialog({ enabled }: { enabled: boolean }) {
       onDismiss={() => {
         markChangelogSeen(current);
         setEntries([]);
+        onComplete();
       }}
     />
   );
@@ -196,11 +203,23 @@ function ChangelogCard({
  * would get both.
  */
 export function FirstRunDialogs() {
-  const [disclosureDone, setDisclosureDone] = useState(false);
+  // Explicit browser-only preview; production builds never simulate an update.
+  const preview =
+    import.meta.env.DEV &&
+    !inTauri() &&
+    new URLSearchParams(window.location.search).get('preview') === 'cli-update';
+  const [disclosureDone, setDisclosureDone] = useState(preview);
+  const [changelogDone, setChangelogDone] = useState(preview);
+  const completeChangelog = useCallback(() => setChangelogDone(true), []);
   return (
     <>
-      <AiDisclosureDialog onAcknowledged={() => setDisclosureDone(true)} />
-      <ChangelogDialog enabled={disclosureDone} />
+      {preview ? null : (
+        <>
+          <AiDisclosureDialog onAcknowledged={() => setDisclosureDone(true)} />
+          <ChangelogDialog enabled={disclosureDone} onComplete={completeChangelog} />
+        </>
+      )}
+      <CliUpdateDialog enabled={disclosureDone && changelogDone} preview={preview} />
     </>
   );
 }

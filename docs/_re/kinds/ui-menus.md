@@ -398,3 +398,31 @@ commit for listenerless widgets and only emits `ui:press`.
   book's 5 physical tabs) tolerates a page swap on one of its 7 path-string
   page refs — likely yes since refs are plain paths; would give the mod page
   a whole tab without touching the 5-slot array.
+
+## The book's page chain (2026-11-14, build b9c3642884a8)
+
+Static RE for `R.ui.menus`, which opens its own pages through the game's chain. Addresses are this build's.
+
+**Three layers.**
+
+1. `oCDtEntityCpntBookMenuUiController` (BM, vftable `0x140f35588`) instantiates seven page controllers from path descriptors in its settings: five tab pages (runtime `BM+0x1b8..0x1d8`, descriptors `+0x2d8` stride `0xd8`), Score (`+0x1e8`) and End_Credits (`+0x1f0`). The tab count of five is an immediate in every loop.
+2. A page controller implements `oIDtEntityCpntBookPageUiController` (vftable `0x140f1d998`, 39 slots). Each page holds `+0x68` its GameUi, `+0xd0` the owning BM and `+0xd8` its **child page**, with `+0xe0` the child's spawn handle.
+3. `oCDtEntityCpnt3DBookController` (vftable `0x140f25388`) is the 3D book. It subscribes to BM's events and calls no pages.
+
+**Child chain.** `FUN_1403dc650(parent, desc)` opens a child: it spawns the descriptor's entity into `parent+0xd8`, fires the page flip, deactivates the parent and activates the child. `FUN_1403dc580` closes the leaf: it fires the backward flip, releases the handle and re-activates the parent. The chain is the navigation stack, and Back pops exactly one level. Pause-menu Settings (BookMenu mode 1) does not pop through the chain: `FUN_1403dbcd0` leaves the book instead.
+
+**BM event lists.** `BM+0x2b0` page flip (argument = forward), `BM+0x2c8` tab flip (argument = forward), `BM+0x2f8` back pressed (argument = not consumed). One fire through `FUN_1402af150(list, bool)` is one page-turn animation; no call takes a page count.
+
+**Type-byte dispatch.** The Settings page keeps a tab-entry vector (pointer at `ctrl+0x208`, stride `0x48`, type byte at `+0x18`, read through the pointer). `FUN_1403f6010` (select category) dispatches on it: type 10 opens a child page (`FUN_1403dc650(ctrl, settings+0x740)`, Credits), types 11 and 12 fire the EULA and Privacy modal events, other types only show and hide panels. The five vanilla builders add the tabs; `FUN_1403f0620` then appends types 10, 11 and 12 itself.
+
+**TutoCompendium layout.** Credits and the Tutorial tab share `oe::dt::TutoCompendiumPageEntityCpnt` (vftable `0x140f1c4a0`). Page selector at `+0x218` (current child `+0x310`), sub-page windows at `+0x1f0`, Next/Prev at `+0x208`/`+0x210`, auto-turn countdown at `+0x1a8` (0 never starts it). Every Next or Prev is one page flip. The sub-page count is cooked data and fixed per instance.
+
+**Spawner reads the resource pointer, not the path.** `FUN_1406eb300(desc, handle, scope, ...)` reads only the resolved resource pointer at `desc+0x38` (returns 0 when it is null, then reads `+0x98` through it) and never a path string. A copied descriptor with a swapped path therefore spawns the original entity. `R.ui.menus` opens its page by passing `FUN_1403dc650` an unchanged copy of BM's System-page descriptor, so the child is a second `System_Book_Page` instance and nothing is cooked. The descriptor is `BM settings + 0x2d8 + 2*0xd8` (`0xd8` bytes), one loader-owned buffer reused across opens: `FUN_1403dc650` writes `desc+0x70..+0x80` and clears its callback before returning, the spawner sets and re-zeroes `desc+0xd0`, and the spawn callbacks store no pointer to it.
+
+**Skipping the vanilla builders (proven in game 2026-11-15).** On our page all five tab builders are skipped, not hidden: Graphics `FUN_1403f2440` and Audio `FUN_1403f38a0` by detours, Keyboard `FUN_1403f42a0` and Controller `FUN_1403f4870` by a gate at the top of the keybinds hooks, and Misc `FUN_1403f4e30` (BuildLastCategory) by a gate in the settings-menu hook. Only the inline Credits/EULA/Privacy entries (types 10/11/12) are still built; they are hidden.
+
+**Teardown with a skipped Graphics builder.** The Graphics builder creates the Graphics tab's Apply element at `ctrl+0x268` and registers two listeners on it (handles at `ctrl+0x1f8` / `+0x200`, on the element's lists at `+0xf0` / `+0xd8`). The BookOptions teardown `FUN_1403f0ff0` (vftable `0x140f32268` slot `+0x40`) unregisters them with no null check. With the builder skipped, closing the page read address `0xf8` and crashed (AV at `Ravenswatch.exe+0x1c1850` in `FUN_1401c1840`, called from `0x1403f10d8`). Pointing `ctrl+0x268` at a zeroed block (empty lists) for the duration of the call fixes it: the teardown only clears `+0x1f8` / `+0x200` and nulls `+0x268` itself. The page-close check (slot `+0x130`) and slot `+0x110` are stubs (`xor al,al; ret` at `0x1400be5f0`).
+
+**Pooled widgets stay hidden.** Category buttons and rows are entities spawned from templates (`FUN_14026fc80` -> `FUN_1406eb300` -> `FUN_1406f4540`). `EntityPool_AllocNode(settings+0x18)` reuses an entity from the template's free list with no construction or reset; release (`FUN_14068fab0`) puts entities on that list (template `+0x28` count, `+0x30` / `+0x38` head / tail). On reuse, `oCEntityCpntGameUi` activate (slot `+0xe0`, `FUN_1407d69a0`) calls `FUN_140550d40(root window cpnt+0x88, 1, 0)` for the root only. A hidden child window (tab button: entry `+0x10`, the window at `elem+0x28` -> `+0x318`; row arrows `row+0x50` / `row+0x58`) keeps its visible bit (`window+0x234 & 0x10`) across reuse, so a window hidden once stays hidden on later pages. Anything hidden must be shown again before the page is released.
+
+**Page heading label.** The heading ("Settings") is the page root's only direct child of class `oCUILabel`: the root window is `GameUi+0x88` (`ctrl+0x68` -> `+0x88`), its first child is at `+0x2a8` and siblings follow at `+0x08`; the class is read from the MSVC RTTI name `.?AVoCUILabel@@`. The label's displayed text is the oCString at `+0x1e8` (data pointer, length at `+0x1f0`, top bit masked). `SetText(label, const oCString*)` is vtable slot `+0x60`: it assigns the string at `+0x1e8`, then refreshes through slot `+0x38`. `R.ui.menus` calls it at page open with the page title. The page entity is pooled per template, so vanilla Settings reuses it: the original text is saved at open and restored through `SetText` in `OptionsMenu_Teardown`.

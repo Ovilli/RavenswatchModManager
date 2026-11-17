@@ -21,6 +21,7 @@ struct Mod {
     std::string name;
     std::string version;
     std::string author;
+    std::string description;
     std::filesystem::path root;
     std::vector<ModFile> files;
     bool enabled = false;
@@ -91,6 +92,10 @@ public:
     // crashed the loader this way on 2026-07-10). Pattern-resolved function
     // symbols are unaffected; they re-scan the binary by bytes.
     bool va_globals_trusted() const { return va_trusted_; }
+    // sha256 (hex) of <game>/Ravenswatch.exe, hashed once at init ('' if it
+    // could not be read). The SDK compares it with engine_gen.lua's own build
+    // stamp, since the Lua VA table ships apart from this DLL.
+    const std::string& game_exe_sha256() const { return exe_sha_; }
 
     const std::filesystem::path& game_dir() const { return game_dir_; }
     const std::filesystem::path& mods_dir() const { return mods_dir_; }
@@ -133,6 +138,7 @@ private:
     // tag lines and to decide whether this process rotates the log on init.
     std::string log_host_;
     bool va_trusted_ = true;
+    std::string exe_sha_;
 
     // Menu detection.
     std::atomic<int64_t> last_menu_read_ms_{0};

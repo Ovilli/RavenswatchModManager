@@ -4,8 +4,9 @@
 //! * `staged/`  — written by `rsmm json update-cli`, never run from;
 //! * `current/` — what the app runs, when it beats the bundled sidecar.
 //!
-//! `staged` becomes `current` here, at startup, before the frontend can spawn a
-//! CLI: Windows cannot replace a directory a running process holds files in.
+//! `staged` becomes `current` when the main window closes, after its sidecars
+//! stop. Startup retries before the frontend can spawn a CLI: Windows cannot
+//! replace a directory a running process holds files in.
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};

@@ -1,5 +1,5 @@
 import { ProgressBar } from '@rsmm/ui';
-import { AlertTriangle, Check, RefreshCw } from 'lucide-react';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { useEffect, useSyncExternalStore } from 'react';
 import {
   type ChannelName,
@@ -13,14 +13,13 @@ import { installChannelTriggers } from '../lib/channel-triggers';
 import { useT } from '../lib/i18n-react';
 import { inTauri } from '../lib/platform';
 import { getSkippedMods, setSkippedMods, subscribeSkippedMods } from '../lib/skipped-mods';
-import { relaunchApp } from '../lib/updater';
 
 const NAMES: ChannelName[] = ['loader', 'cli'];
 
 /**
- * One slim row per CLI / loader channel update that is not idle: checking,
- * downloading (with a bar), installed, or failed with the reason. Sits under the
- * launcher's own update banner so a background download is never silent.
+ * One slim row per CLI / loader update that is checking, downloading, or failed.
+ * Successful updates stay quiet here; their status and restart controls live
+ * in Settings. Channel triggers stay mounted regardless of which rows are shown.
  */
 export function ChannelStatusBanner() {
   const t = useT();
@@ -30,7 +29,7 @@ export function ChannelStatusBanner() {
   const hold = useSyncExternalStore(subscribeChannelPhases, getLaunchHold);
   const skipped = useSyncExternalStore(subscribeSkippedMods, getSkippedMods);
   const rows = NAMES.map((name) => ({ name, phase: phases[name] })).filter(
-    (r) => r.phase.kind !== 'idle',
+    (r) => r.phase.kind !== 'idle' && r.phase.kind !== 'installed',
   );
   if (rows.length === 0 && !hold && skipped.length === 0) return null;
   return (
@@ -77,8 +76,6 @@ export function ChannelStatusBanner() {
           >
             {failed ? (
               <AlertTriangle className="h-4 w-4 shrink-0 text-crimson" />
-            ) : phase.kind === 'installed' ? (
-              <Check className="h-4 w-4 shrink-0 text-gilt" />
             ) : (
               <RefreshCw className="h-4 w-4 shrink-0 animate-spin text-gilt" />
             )}
@@ -96,23 +93,7 @@ export function ChannelStatusBanner() {
                 />
               </div>
             ) : null}
-            {name === 'cli' && phase.kind === 'installed' ? (
-              <button
-                type="button"
-                onClick={() => {
-                  relaunchApp().catch((e) =>
-                    setChannelPhase('cli', {
-                      kind: 'failed',
-                      reason: e instanceof Error ? e.message : String(e),
-                    }),
-                  );
-                }}
-                className="font-mono text-xs text-parchment underline-offset-2 hover:underline"
-              >
-                {t('Restart now')}
-              </button>
-            ) : null}
-            {failed || phase.kind === 'installed' ? (
+            {failed ? (
               <button
                 type="button"
                 onClick={() => setChannelPhase(name, { kind: 'idle' })}

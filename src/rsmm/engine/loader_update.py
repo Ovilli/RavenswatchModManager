@@ -788,8 +788,14 @@ def prebuilt_version(dll: Path) -> int | None:
         return None
 
 
+def _release_build() -> bool:
+    """The frozen sidecar every end user runs, as opposed to a source checkout."""
+    return bool(getattr(sys, "frozen", False))
+
+
 def replant_cached(game_dir: Path) -> dict | None:
-    """Re-plant a cached bundle that is newer than this build's bundled one.
+    """Re-plant a cached bundle that is newer than this build's bundled one,
+    or the same version when this is a release build (see below).
 
     Called by `install-loader` after the platform script has planted the
     bundled loader, so a `restore --all` / `install-loader` cycle does not
@@ -811,7 +817,12 @@ def replant_cached(game_dir: Path) -> dict | None:
     except (MinisignError, ValueError, LoaderUpdateError) as e:
         raise LoaderUpdateError(f"cached loader bundle rejected: {e}") from e
 
-    if int(manifest["loader_version"]) <= bundled_version():
+    cached, bundled = int(manifest["loader_version"]), bundled_version()
+    # At the same version a release build replants too. Its bundled DLL is a
+    # separate compile of the same source, so its sha never matches the
+    # channel manifest and the loader logs "dev"/"unstamped" over a v<N>
+    # install. A source checkout keeps its own DLL: it may carry local edits.
+    if cached < bundled or (cached == bundled and not _release_build()):
         return None
 
     for f in manifest["files"]:
@@ -835,4 +846,5 @@ def replant_cached(game_dir: Path) -> dict | None:
     with _update_lock(game_dir):
         planted = _plant_payload(game_dir, manifest, payload)
         shutil.copyfile(raw_path, planted_manifest_path(game_dir))
-    return {"loader_version": int(manifest["loader_version"]), "planted": planted}
+    return {"loader_version": cached, "planted": planted,
+            "same_version": cached == bundled}

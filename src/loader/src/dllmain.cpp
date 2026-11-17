@@ -33,6 +33,7 @@
 #include "hook_ui.h"
 #include "hook_ui_state.h"
 #include "hook_settings_menu.h"
+#include "hook_book_pages.h"
 #include "hook_items.h"
 #include "hook_rewards.h"
 #include "hook_resource.h"
@@ -137,6 +138,7 @@ static void loader_thread_cxx() {
             }
         }
 
+        rsmm::script_run_builtin_init();
         for (const auto& m : L.mods()) {
             // One line per mod, written after load_state() so it reports what
             // actually happens (saved in-game toggles included), not manifest
@@ -173,6 +175,7 @@ static void loader_thread_cxx() {
         install_guarded("ui",      rsmm::install_ui_hooks);
         install_guarded("ui-state", rsmm::install_ui_state_hooks);
         install_guarded("native-menu", rsmm::install_settings_menu_hooks);
+        install_guarded("ui-menus", rsmm::install_book_page_hooks);
         install_guarded("items",   rsmm::install_item_hooks);
         install_guarded("rewards", rsmm::install_reward_hooks);
         install_guarded("rsc-trace", rsmm::install_resource_hooks);

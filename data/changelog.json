@@ -1,6 +1,42 @@
 {
-  "generated": "2026-11-14",
+  "generated": "2026-11-16",
   "entries": [
+    {
+      "version": "",
+      "date": "2026-11-16",
+      "summary": "The loader version stamp reads v<N> after a restore instead of dev or unstamped.",
+      "highlights": [
+        "The loader version stamp reads v<N> after a restore instead of dev or unstamped."
+      ],
+      "cli_version": 36
+    },
+    {
+      "version": "",
+      "date": "2026-11-16",
+      "summary": "R.ui and the Mods menu in the book, lint flags mod Lua that reads R without require \"rsmm\", custom hero engine updates (#149, #150), POI collision and tile editor fixes (#143-#145)",
+      "highlights": [
+        "R.ui and the Mods menu in the book, lint flags mod Lua that reads R without require \"rsmm\", custom hero engine updates (#149, #150), POI collision and tile editor fixes (#143-#145)"
+      ],
+      "cli_version": 35
+    },
+    {
+      "version": "",
+      "date": "2026-11-16",
+      "summary": "Settings > Mods is a page in the book now, one category per mod. Mods can see which book and page is open (R.ui) and add their own pages to the Settings book (R.ui.menus).",
+      "highlights": [
+        "Settings > Mods is a page in the book now, one category per mod. Mods can see which book and page is open (R.ui) and add their own pages to the Settings book (R.ui.menus)."
+      ],
+      "loader_version": 61
+    },
+    {
+      "version": "",
+      "date": "2026-11-15",
+      "summary": "Loader va-gate checks the exe build its own addresses were made for (no stale globals after a game patch); R.net.on_repl_setup resolves again on the current build.",
+      "highlights": [
+        "Loader va-gate checks the exe build its own addresses were made for (no stale globals after a game patch); R.net.on_repl_setup resolves again on the current build."
+      ],
+      "loader_version": 60
+    },
     {
       "version": "",
       "date": "2026-11-14",
@@ -475,53 +511,6 @@
         "Fixed link labels written into entities whose shipped references are stale"
       ],
       "cli_version": 4
-    },
-    {
-      "version": "",
-      "date": "2026-10-18",
-      "summary": "Item copies can change rarity, the book fits added items, and the map editor edits scenery.",
-      "highlights": [
-        "A copied item now really takes the rarity you pick in the editor or manifest; before, it kept its base item's tier in game.",
-        "The book's Objects tab widens each tier's grid when mods add items, so new items no longer spill over the next row.",
-        "Map editor: move, remove and add a chapter's own scenery objects, plus a 3D tile mode.",
-        "The editors answer faster: newest request first, and game data is kept between visits."
-      ],
-      "cli_version": 3
-    },
-    {
-      "version": "5.9.25",
-      "date": "2026-10-18",
-      "summary": "Chapter editor, CLI updates without an app release, and a restore fix that protects game files",
-      "highlights": [
-        "The map editor is now a chapter editor: add, move and remove spots, pin tiles, and paint terrain shape, surface and tint",
-        "The CLI now updates on its own between app releases; Settings > Updates and the version footer show which CLI build is running",
-        "Fixed: after a game update, restoring could delete the game's hero files and leave only Random on hero select",
-        "Fixed: the Update 5 backport's hero table was undone on the next apply"
-      ],
-      "loader_version": 46
-    },
-    {
-      "version": "",
-      "date": "2026-10-18",
-      "summary": "Restore no longer deletes game files when the asset map is from an older game build; the values backport now stays applied",
-      "highlights": [
-        "Fixed: after a game update, restoring could delete the game's hero files and leave only Random on hero select. The asset map is now rebuilt before apply and restore.",
-        "Fixed: the Update 5 backport's hero table was undone on the next apply, so the old values never reached the game."
-      ],
-      "cli_version": 2
-    },
-    {
-      "version": "5.9.24",
-      "loader_version": 46,
-      "date": "2026-10-17",
-      "summary": "The app opens links, feels faster, and can get CLI fixes without a new release.",
-      "highlights": [
-        "Links in the app (Discord, Ko-fi, GitHub, docs) open in your browser again.",
-        "Screens load much faster: the CLI stays warm between calls instead of restarting each time.",
-        "Linux AppImage: built on a newer base, so it no longer runs sluggishly. It needs glibc 2.39 (Ubuntu 24.04, Debian 13, Fedora 40 or newer); older systems should use the .deb.",
-        "CLI fixes can now arrive between app releases; Settings, About shows which CLI build is running.",
-        "Release notes for loader updates show a proper heading."
-      ]
     }
   ]
 }

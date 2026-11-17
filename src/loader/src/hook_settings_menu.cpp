@@ -1,34 +1,31 @@
-// Native mod menu — see hook_settings_menu.h for the why.
+// Native mod menu model + the Settings hooks — see hook_settings_menu.h for the why.
 //
-// Every engine call below mirrors what the vanilla builder FUN_1403f4870 does
-// for one of its multi-choice rows, in the same order (RE notes on each symbol
-// in data/symbols.json, category "ui"):
-//   cat  = OptionsMenu_AddCategory(ctrl, page, parent, &title, type)
-//   row  = OptionsMenu_SpawnMultiChoice(ctrl+0x228, settings+0x3a8, cat+0x08)
-//   OptionsMenu_AppendRow(&ctrl, cat, row)
-//   row+0x98 = &value; labels -> row+0xa0; row+0xb0 = null (not locked)
-//   OptionsMenuElement_SetTitle(row, &text)   // re-reads row+0x98
-// Strings are passed with the 0x80000000 "literal" bit, which the engine
-// aliases instead of copying, so every string lives for the whole session.
-//
-// The tab holds, per installed mod, an Off/On row and
-// one row per bool / enum / int / float field of its config_schema.toml. The
-// game writes the chosen index straight into our memory on the main thread; a
-// watcher thread notices and persists it:
-//   * On/Off -> <game>/mods/_menu_requests.json, which `rsmm apply` carries
-//     into the library manifest before the next launch (the loader cannot see
-//     the library);
-//   * a field -> the mod's config.toml, whose mtime the Lua side already polls
-//     to fire R.config.on_change.
-// The page is built once at boot, so the rows are too.
+// The Mods page itself is drawn by the book-page machinery (hook_book_pages.cpp)
+// from a page registered in Lua (rsmm/mods_menu.lua, in the loader-owned state).
+// This file keeps what only the loader can do:
+//   * the model: every installed mod's Off/On state plus one row per
+//     config_schema.toml field, handed to Lua as JSON (mods_menu_model_json);
+//   * mods_menu_set: Lua reports a change, the model is updated under a lock
+//     (no file IO: it can run on the game thread);
+//   * persistence, on a watcher thread that notices dirty state every 200 ms:
+//       - On/Off -> <game>/mods/_menu_requests.json, which `rsmm apply` carries
+//         into the library manifest before the next launch (the loader cannot
+//         see the library);
+//       - a field -> the mod's config.toml, whose mtime the Lua side already
+//         polls to fire R.config.on_change;
+//   * the OptionsMenu_BuildLastCategory detour that lets the book pages add
+//     their entries and build their categories after the vanilla builder;
+//   * the pause menu's Mods button, which opens the page.
+// The model is read from disk at first use; mods_menu_refresh re-reads each
+// config.toml when the page is built, and every set made this session stays.
 
 #include <windows.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
-#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -40,37 +37,19 @@
 #include "toml.hpp"   // single-header toml++ (vendored)
 
 #include "loader.h"
-#include "mem_safe.h"
 #include "fn_resolver.h"
 #include "hook_util.h"
 #include "symbols.gen.h"
-#include "symbols_api.gen.h"
 #include "hook_settings_menu.h"
+#include "hook_book_pages.h"
 
 namespace rsmm {
+
 namespace {
 
 namespace fs = std::filesystem;
 
-struct OcStr {           // oCString: {char*, u32 len | 0x80000000 literal, u32 cap}
-    const char* p;
-    std::uint32_t len;
-    std::uint32_t cap;
-};
-constexpr std::uint32_t kLiteral = 0x80000000u;
-OcStr lit(const std::string& s) { return {s.c_str(), std::uint32_t(s.size()) | kLiteral, 0}; }
-
-// Offsets read from the Settings build (b9c3), see the symbol notes.
-constexpr std::uintptr_t kCtrlSettings   = 0x10;   // controller -> settings object
-constexpr std::uintptr_t kCtrlFactory    = 0x228;  // controller -> element factory
-constexpr std::uintptr_t kSetStringItem  = 0x3a8;  // settings: Option_StringItem template
-constexpr std::uintptr_t kCatRowParent   = 0x08;
-constexpr std::uintptr_t kRowValue       = 0x98;
-constexpr std::uintptr_t kRowLabels      = 0xa0;
-constexpr std::uintptr_t kRowLocked      = 0xb0;
-constexpr std::uint32_t  kCategoryType   = 5;      // what the plain multi-choice tab uses
-constexpr std::size_t    kMaxTitle       = 32;     // longer runs into the row's arrows
-constexpr int            kSteps          = 20;     // number fields: steps between min and max
+constexpr int         kSteps = 20;     // number fields: steps between min and max
 
 const char* kMenuRequests = "_menu_requests.json";  // read by rsmm.cli.cmd_mods
 
@@ -90,31 +69,33 @@ struct Value {
     }
 };
 
+struct Field {
+    std::string id, label;
+    bool readonly = false;
+    std::vector<Value> options;            // value per choice
+    std::vector<std::string> texts;        // label per choice
+    std::size_t value = 0;                 // 0-based
+    std::size_t def = 0;
+    Value def_value;                       // the schema default (or the first value seen)
+};
+
 struct ModInfo {
-    std::string id, name;
+    std::string id, name, version, author, description;
     fs::path root;
     bool enabled = false;    // what this launch runs with
     bool wanted = false;     // what the menu asks for next launch
     std::map<std::string, Value> values;   // config.toml [config]
+    std::vector<Field> fields;
+    std::map<std::string, Value> pending;  // menu edits not confirmed on disk yet
+    bool pending_dirty = false;            // pending has something the watcher has not taken
 };
 
-struct Row {
-    bool toggle = false;
-    std::size_t mod = 0;
-    std::string key;                       // config field (not a toggle)
-    std::string title;
-    std::vector<std::string> texts;        // label storage
-    std::vector<OcStr> labels;
-    std::vector<Value> options;            // value per label (not a toggle)
-    std::uint32_t value = 0;               // the game writes this
-    std::uint32_t seen = 0;
-};
-
+std::mutex g_mu;                 // guards g_mods, g_requests_dirty, g_pending_logs
 std::vector<ModInfo> g_mods;
-std::deque<Row> g_rows;      // deque: rows never move, the game holds &value
+bool g_requests_dirty = false;
+std::vector<std::string> g_pending_logs;
 std::once_flag g_model_once;
-
-const std::string kTabTitle = "Mods";
+std::atomic<bool> g_off{false};  // the native menu failed to install
 
 Value from_node(const toml::node& n) {
     Value v;
@@ -125,27 +106,27 @@ Value from_node(const toml::node& n) {
     return v;
 }
 
-std::string clip(std::string s) {
-    if (s.size() > kMaxTitle) s = s.substr(0, kMaxTitle - 2) + "..";
-    return s;
-}
-
-void load_values(ModInfo& m) {
-    const fs::path p = m.root / "config.toml";
+// config.toml's values; false when the file exists but cannot be parsed.
+bool read_values(const std::string& id, const fs::path& root, std::map<std::string, Value>& out) {
+    const fs::path p = root / "config.toml";
     std::error_code ec;
-    if (!fs::exists(p, ec)) return;
+    if (!fs::exists(p, ec)) return true;
     try {
         toml::table doc = toml::parse_file(p.string());
         const toml::table* section = doc["config"].as_table();
         if (!section) section = &doc;
         for (auto&& [key, node] : *section) {
             const Value v = from_node(node);
-            if (v.kind != Value::None) m.values[std::string(key.str())] = v;
+            if (v.kind != Value::None) out[std::string(key.str())] = v;
         }
+        return true;
     } catch (const std::exception& e) {
-        Loader::get().log_warn("[native-menu] " + m.id + ": config.toml unreadable: " + e.what());
+        Loader::get().log_warn("[native-menu] " + id + ": config.toml unreadable: " + e.what());
+        return false;
     }
 }
+
+void load_values(ModInfo& m) { read_values(m.id, m.root, m.values); }
 
 // The choices a field offers, as values. Numbers step from min to max (every
 // integer when the span is small); the current value is kept as a choice so
@@ -200,13 +181,25 @@ std::string label_of(const Value& v) {
     return "?";
 }
 
-void finish_labels(Row& r) {
-    r.labels.clear();
-    for (const auto& s : r.texts) r.labels.push_back(lit(s));
+// A numeric value that is not one of the stepped choices is kept as one, in
+// sorted position, so opening the menu never changes it.
+void ensure_choice(std::vector<Value>& opts, const Value& v) {
+    if (v.kind != Value::Int && v.kind != Value::Float) return;
+    for (const auto& o : opts) if (o.same(v)) return;
+    auto at = std::find_if(opts.begin(), opts.end(),
+                           [&](const Value& o) { return o.num() > v.num(); });
+    opts.insert(at, v);
 }
 
-void add_setting_rows(std::size_t mi) {
-    ModInfo& m = g_mods[mi];
+// Index of `v` in `opts`, or 0 when it is not a choice.
+std::size_t find_choice(const std::vector<Value>& opts, const Value& v) {
+    for (std::size_t k = 0; k < opts.size(); ++k) {
+        if (opts[k].same(v)) return k;
+    }
+    return 0;
+}
+
+void add_setting_rows(ModInfo& m) {
     const fs::path p = m.root / "config_schema.toml";
     std::error_code ec;
     if (!fs::exists(p, ec)) return;
@@ -229,30 +222,29 @@ void add_setting_rows(std::size_t mi) {
     for (const auto& [line, key] : order) {
         const toml::table& t = *fields->get(key)->as_table();
         const std::string type = t["type"].value_or(std::string("string"));
+        Field f;
+        f.id = key;
+        f.label = t["label"].value_or(key);
         std::vector<Value> opts = options_for(t, type);
-        if (opts.empty()) continue;   // string / multiselect / item-grid: the desktop app's job
-        Value cur;
+        if (opts.empty()) {   // string / multiselect / item-grid: the desktop app's job
+            f.readonly = true;
+            m.fields.push_back(std::move(f));
+            continue;
+        }
+        Value cur, def;
+        bool has_def = false;
+        if (const toml::node* d = t.get("default")) { def = from_node(*d); has_def = true; }
         if (auto it = m.values.find(key); it != m.values.end()) cur = it->second;
-        else if (const toml::node* d = t.get("default")) cur = from_node(*d);
-        std::uint32_t idx = 0;
-        bool found = false;
-        for (std::uint32_t k = 0; k < opts.size(); ++k) {
-            if (opts[k].same(cur)) { idx = k; found = true; break; }
-        }
-        if (!found && (cur.kind == Value::Int || cur.kind == Value::Float)) {
-            auto at = std::find_if(opts.begin(), opts.end(),
-                                   [&](const Value& o) { return o.num() > cur.num(); });
-            idx = std::uint32_t(at - opts.begin());
-            opts.insert(at, cur);
-        }
-        Row& r = g_rows.emplace_back();
-        r.mod = mi;
-        r.key = key;
-        r.title = clip("- " + t["label"].value_or(key));
-        r.options = std::move(opts);
-        for (const auto& o : r.options) r.texts.push_back(label_of(o));
-        finish_labels(r);
-        r.value = r.seen = idx;
+        else if (has_def) cur = def;
+        if (!has_def) def = cur;
+        ensure_choice(opts, cur);
+        ensure_choice(opts, def);
+        f.value = find_choice(opts, cur);
+        f.def = find_choice(opts, def);
+        f.def_value = def;
+        f.options = std::move(opts);
+        for (const auto& o : f.options) f.texts.push_back(label_of(o));
+        m.fields.push_back(std::move(f));
     }
 }
 
@@ -270,41 +262,39 @@ void build_model() {
         }
     } catch (const std::exception&) {
     }
+    std::vector<ModInfo> mods;
     for (const auto& src : Loader::get().mods()) {
         ModInfo m;
         m.id = src.id;
         m.name = src.name.empty() ? src.id : src.name;
+        m.version = src.version;
+        m.author = src.author;
+        m.description = src.description;
         m.root = src.root;
         m.enabled = src.enabled;
         auto it = requested.find(m.id);
         m.wanted = it != requested.end() ? it->second : m.enabled;
         load_values(m);
-        g_mods.push_back(std::move(m));
+        add_setting_rows(m);   // a disabled mod's config still applies once it is on
+        mods.push_back(std::move(m));
     }
-    std::sort(g_mods.begin(), g_mods.end(),
+    std::sort(mods.begin(), mods.end(),
               [](const ModInfo& a, const ModInfo& b) { return a.name < b.name; });
-    for (std::size_t i = 0; i < g_mods.size(); ++i) {
-        Row& r = g_rows.emplace_back();
-        r.toggle = true;
-        r.mod = i;
-        r.title = clip(g_mods[i].name);
-        r.texts = {"Off", "On"};
-        // The state that is NOT running now says so, so On/Off never claims a
-        // change took effect before the restart that applies it.
-        r.texts[g_mods[i].enabled ? 0 : 1] += " (next launch)";
-        finish_labels(r);
-        r.value = r.seen = g_mods[i].wanted ? 1 : 0;
-        add_setting_rows(i);   // a disabled mod's config still applies once it is on
-    }
-    Loader::get().log("[native-menu] " + std::to_string(g_mods.size()) + " mod(s), "
-                      + std::to_string(g_rows.size()) + " row(s)");
+    std::size_t rows = 0;
+    for (const auto& m : mods) rows += m.fields.size() + 1;
+    Loader::get().log("[native-menu] " + std::to_string(mods.size()) + " mod(s), "
+                      + std::to_string(rows) + " row(s)");
+    std::lock_guard<std::mutex> lk(g_mu);
+    g_mods = std::move(mods);
 }
 
 // --- persistence (watcher thread) ---------------------------------------------
 
-void write_requests() {
+struct RequestRow { std::string id; bool enabled, wanted; };
+
+void write_requests(const std::vector<RequestRow>& rows) {
     nlohmann::json enable = nlohmann::json::object();
-    for (const auto& m : g_mods) {
+    for (const auto& m : rows) {
         if (m.wanted != m.enabled) enable[m.id] = m.wanted;
     }
     const fs::path dst = Loader::get().mods_dir() / kMenuRequests;
@@ -320,9 +310,16 @@ void write_requests() {
     if (ec) fs::remove(tmp, ec);
 }
 
+struct ValuesCopy {
+    std::string id;
+    fs::path root;
+    std::map<std::string, Value> values;
+};
+
 // Same shape the loader's config_write_file produces: a `[config]` table,
-// temp file + rename. Keys the menu does not know are kept.
-void write_values(const ModInfo& m) {
+// temp file + rename. Keys the menu does not know are kept; `values` is only
+// the delta the menu set, so a mod's own writes to other keys survive.
+bool write_values(const ValuesCopy& m) {
     const fs::path dst = m.root / "config.toml";
     const fs::path tmp = m.root / "config.toml.tmp";
     toml::table doc;
@@ -351,39 +348,62 @@ void write_values(const ModInfo& m) {
     out.insert("config", std::move(section));
     {
         std::ofstream f(tmp, std::ios::trunc);
-        if (!f) return;
+        if (!f) return false;
         f << out << "\n";
     }
     fs::rename(tmp, dst, ec);
     if (ec) {
         fs::remove(tmp, ec);
         Loader::get().log_warn("[native-menu] " + m.id + ": could not write config.toml");
+        return false;
+    }
+    return true;
+}
+
+// ponytail: polling, because mods_menu_set must not do file IO (it can run on
+// the game thread); 200 ms is below what a click can notice.
+DWORD WINAPI watch_dirty(LPVOID) {
+    for (;;) {
+        Sleep(200);
+        std::vector<RequestRow> requests;
+        bool write_req = false;
+        std::vector<ValuesCopy> values;
+        std::vector<std::string> logs;
+        {
+            std::lock_guard<std::mutex> lk(g_mu);
+            if (g_requests_dirty) {
+                g_requests_dirty = false;
+                write_req = true;
+                for (const auto& m : g_mods) requests.push_back({m.id, m.enabled, m.wanted});
+            }
+            for (auto& m : g_mods) {
+                if (!m.pending_dirty) continue;
+                m.pending_dirty = false;
+                values.push_back({m.id, m.root, m.pending});
+            }
+            logs.swap(g_pending_logs);
+        }
+        if (write_req) write_requests(requests);
+        for (const auto& v : values) {
+            if (!write_values(v)) continue;   // failed: stays pending
+            std::lock_guard<std::mutex> lk(g_mu);
+            for (auto& m : g_mods) {
+                if (m.id != v.id) continue;
+                for (const auto& [key, written] : v.values) {
+                    auto it = m.pending.find(key);   // a newer edit stays pending
+                    if (it != m.pending.end() && it->second.same(written)) m.pending.erase(it);
+                }
+            }
+        }
+        for (const auto& l : logs) Loader::get().log(l);
     }
 }
 
-// ponytail: polling, because the row writes our uint32_t directly and calls
-// nothing we could hook cheaply; 200 ms is below what a click can notice.
-DWORD WINAPI watch_rows(LPVOID) {
-    for (;;) {
-        Sleep(200);
-        for (Row& r : g_rows) {
-            const std::uint32_t now = *static_cast<volatile std::uint32_t*>(&r.value);
-            if (now == r.seen) continue;
-            r.seen = now;
-            ModInfo& m = g_mods[r.mod];
-            if (r.toggle) {
-                m.wanted = now != 0;
-                write_requests();
-                Loader::get().log("[native-menu] " + m.id + " -> "
-                                  + (m.wanted ? "on" : "off") + " next launch");
-            } else if (now < r.options.size()) {
-                m.values[r.key] = r.options[now];
-                write_values(m);
-                Loader::get().log("[native-menu] " + m.id + "." + r.key + " = "
-                                  + r.texts[now]);
-            }
-        }
-    }
+void ensure_model() {
+    std::call_once(g_model_once, [] {
+        build_model();
+        if (HANDLE t = CreateThread(nullptr, 0, watch_dirty, nullptr, 0, nullptr)) CloseHandle(t);
+    });
 }
 
 // --- engine side ----------------------------------------------------------------
@@ -391,88 +411,13 @@ DWORD WINAPI watch_rows(LPVOID) {
 using build_fn = void (*)(void*, void*, void*);
 build_fn g_real_build = nullptr;
 
-engine::OptionsMenu_AddCategory_fn      g_add_category = nullptr;
-engine::OptionsMenu_SpawnMultiChoice_fn g_spawn_row    = nullptr;
-engine::OptionsMenu_AppendRow_fn        g_append_row   = nullptr;
-engine::OptionsMenuElement_SetTitle_fn  g_set_title    = nullptr;
-engine::StringVector_AssignFromArray_fn g_set_labels   = nullptr;
-engine::OptionsMenu_SelectCategory_fn   g_select_tab   = nullptr;
-
-// Where our tab lives, for the pause menu's Mods button. An index, not the
-// entry: the build adds more tabs after ours, which can move the vector.
-constexpr std::uintptr_t kCtrlTabs     = 0x208;   // tab entries, stride 0x48
-constexpr std::uintptr_t kCtrlTabCount = 0x210;
-constexpr std::uintptr_t kTabStride    = 0x48;
-constexpr std::uintptr_t kTabButton    = 0x10;
-void* g_ctrl = nullptr;
-std::uint32_t g_tab_index = UINT32_MAX;
-
-void select_mods_tab() {
-    auto& L = Loader::get();
-    const auto c = reinterpret_cast<std::uintptr_t>(g_ctrl);
-    std::uintptr_t tabs = 0;
-    std::uint32_t count = 0;
-    void* button = nullptr;
-    if (!g_ctrl || !g_select_tab || !mem_load(c + kCtrlTabs, &tabs)
-        || !mem_load(c + kCtrlTabCount, &count) || g_tab_index >= count
-        || !mem_load(tabs + g_tab_index * kTabStride + kTabButton, &button) || !button) {
-        L.log_warn("[native-menu] Mods tab not found; Settings opened on its first tab");
-        return;
-    }
-    g_select_tab(g_ctrl, button);
-}
-
-void add_mods_tab(void* ctrl, void* page, void* parent) {
-    auto& L = Loader::get();
-    const auto c = reinterpret_cast<std::uintptr_t>(ctrl);
-    void* settings = nullptr;
-    void* factory = nullptr;
-    if (!mem_load(c + kCtrlSettings, &settings) || !mem_load(c + kCtrlFactory, &factory)
-        || !settings || !factory
-        || !mem_readable(reinterpret_cast<std::uint8_t*>(settings) + kSetStringItem, 8)) {
-        L.log_err("[native-menu] controller layout not as expected; no Mods tab");
-        return;
-    }
-    std::call_once(g_model_once, [] {
-        build_model();
-        if (HANDLE t = CreateThread(nullptr, 0, watch_rows, nullptr, 0, nullptr)) CloseHandle(t);
-    });
-    if (g_rows.empty()) return;
-    std::uint32_t index = 0;
-    if (mem_load(c + kCtrlTabCount, &index)) {
-        g_ctrl = ctrl;
-        g_tab_index = index;    // AddCategory stamps this on the tab's button
-    }
-    OcStr tab = lit(kTabTitle);
-    void* cat = g_add_category(ctrl, page, parent, &tab, kCategoryType);
-    void* row_parent = nullptr;
-    if (!cat || !mem_load(reinterpret_cast<std::uintptr_t>(cat) + kCatRowParent, &row_parent)
-        || !row_parent) {
-        L.log_err("[native-menu] add category returned nothing; no rows");
-        return;
-    }
-    void* ctx = ctrl;
-    for (Row& r : g_rows) {
-        void* row = g_spawn_row(factory, reinterpret_cast<std::uint8_t*>(settings) + kSetStringItem,
-                                row_parent);
-        if (!row || !mem_writable(reinterpret_cast<std::uint8_t*>(row) + kRowValue, 0x20)) {
-            L.log_err("[native-menu] row spawn failed at '" + r.title + "'");
-            return;
-        }
-        g_append_row(&ctx, cat, row);
-        auto* p = reinterpret_cast<std::uint8_t*>(row);
-        *reinterpret_cast<std::uint32_t**>(p + kRowValue) = &r.value;
-        g_set_labels(p + kRowLabels, r.labels.data(), std::uint32_t(r.labels.size()));
-        *reinterpret_cast<void**>(p + kRowLocked) = nullptr;
-        OcStr title = lit(r.title);   // the label aliases r.title, which g_rows keeps alive
-        g_set_title(row, &title);
-    }
-    L.log("[native-menu] Mods tab built with " + std::to_string(g_rows.size()) + " row(s)");
-}
-
 void hook_build(void* ctrl, void* page, void* parent) {
     g_real_build(ctrl, page, parent);
-    add_mods_tab(ctrl, page, parent);
+    if (book_pages_building(ctrl)) {   // one of our pages
+        book_pages_build(ctrl, page, parent);
+        return;
+    }
+    book_pages_add_entries(ctrl, page, parent);
 }
 
 // --- the pause menu's Mods button ----------------------------------------------
@@ -480,7 +425,7 @@ void hook_build(void* ctrl, void* page, void* parent) {
 // rsmm.engine.escape_menu adds a pause menu item naming the pause controller
 // and kModsAction. The controller's action lookup (vtable slot 19) only knows
 // its six keys, so we answer ours: the Settings callback, its thunk swapped
-// for one that runs it and then selects the Mods tab. A callback is
+// for one that runs it and then opens the Mods page. A callback is
 // {this, 0, thunk}; the game calls thunk(arg, &callback).
 
 constexpr std::uint32_t kModsAction     = 0x52534D4D;   // = escape_menu.MODS_ACTION
@@ -491,7 +436,10 @@ thunk_fn g_settings_thunk = nullptr;
 
 void mods_thunk(void* arg, void* callback) {
     if (g_settings_thunk) g_settings_thunk(arg, callback);
-    select_mods_tab();
+    std::string why;
+    if (!book_pages_open(kModsPageId, nullptr, &why, false)) {
+        Loader::get().log_warn("[native-menu] Mods page not opened: " + why);
+    }
 }
 
 using get_callback_fn = void* (*)(void*, void**, std::uint64_t, void*);
@@ -509,12 +457,134 @@ void* hook_get_callback(void* self, void** out, std::uint64_t key, void* extra) 
     return r;
 }
 
-template <typename F>
-bool need(const char* what, const char* pattern, F* out) {
-    return resolve_checked("native-menu", what, pattern, reinterpret_cast<void**>(out));
-}
+std::atomic<bool> g_build_hooked{false};
 
 } // anonymous namespace
+
+bool settings_build_hooked() { return g_build_hooked.load(std::memory_order_acquire); }
+
+// --- Lua-facing model ------------------------------------------------------------
+
+bool mods_menu_model_json(std::string* out, std::string* why) {
+    if (flag_enabled("RSMM_DISABLE_NATIVE_MENU") || g_off.load()) {
+        if (why) *why = "native menu is off";
+        return false;
+    }
+    ensure_model();
+    nlohmann::json mods = nlohmann::json::array();
+    {
+        std::lock_guard<std::mutex> lk(g_mu);
+        for (const auto& m : g_mods) {
+            nlohmann::json rows = nlohmann::json::array();
+            // The state that is NOT running now says so, so On/Off never claims a
+            // change took effect before the restart that applies it.
+            rows.push_back({{"id", "@enabled"}, {"label", "Enabled"},
+                            {"choices", nlohmann::json::array({
+                                std::string("Off") + (m.enabled ? " (next launch)" : ""),
+                                std::string("On") + (m.enabled ? "" : " (next launch)")})},
+                            {"value", m.wanted ? 2 : 1}, {"default", m.wanted ? 2 : 1}});
+            for (const auto& f : m.fields) {
+                if (f.readonly) {
+                    rows.push_back({{"id", f.id}, {"label", f.label}, {"readonly", true}});
+                } else {
+                    rows.push_back({{"id", f.id}, {"label", f.label}, {"choices", f.texts},
+                                    {"value", f.value + 1}, {"default", f.def + 1}});
+                }
+            }
+            mods.push_back({{"id", m.id}, {"name", m.name}, {"version", m.version},
+                            {"author", m.author}, {"description", m.description},
+                            {"enabled", m.enabled}, {"wanted", m.wanted}, {"rows", rows}});
+        }
+    }
+    if (out) {
+        *out = nlohmann::json{{"mods", mods}}.dump(
+            -1, ' ', false, nlohmann::json::error_handler_t::replace);
+    }
+    return true;
+}
+
+void mods_menu_refresh() {
+    if (flag_enabled("RSMM_DISABLE_NATIVE_MENU") || g_off.load()) return;
+    ensure_model();
+    try {
+        std::vector<std::pair<std::string, fs::path>> roots;
+        {
+            std::lock_guard<std::mutex> lk(g_mu);
+            for (const auto& m : g_mods) roots.emplace_back(m.id, m.root);
+        }
+        std::map<std::string, std::map<std::string, Value>> disk;
+        for (const auto& [id, root] : roots) {
+            std::map<std::string, Value> vals;
+            if (read_values(id, root, vals)) disk[id] = std::move(vals);   // unreadable: keep old
+        }
+        std::lock_guard<std::mutex> lk(g_mu);
+        for (auto& m : g_mods) {
+            auto it = disk.find(m.id);
+            if (it == disk.end()) continue;
+            m.values = std::move(it->second);
+            for (const auto& [key, v] : m.pending) m.values[key] = v;
+            for (auto& f : m.fields) {
+                if (f.readonly) continue;
+                Value cur = f.def_value;
+                if (auto vit = m.values.find(f.id); vit != m.values.end()) cur = vit->second;
+                const std::size_t before = f.options.size();
+                ensure_choice(f.options, cur);
+                ensure_choice(f.options, f.def_value);
+                if (f.options.size() != before) {
+                    f.texts.clear();
+                    for (const auto& o : f.options) f.texts.push_back(label_of(o));
+                }
+                f.value = find_choice(f.options, cur);
+                f.def = find_choice(f.options, f.def_value);
+            }
+        }
+    } catch (const std::exception& e) {
+        Loader::get().log_warn(std::string("[native-menu] refresh failed: ") + e.what());
+    }
+}
+
+bool mods_menu_set(const std::string& mod_id, const std::string& row_id, int index1,
+                   std::string* why) {
+    if (flag_enabled("RSMM_DISABLE_NATIVE_MENU") || g_off.load()) {
+        if (why) *why = "native menu is off";
+        return false;
+    }
+    ensure_model();
+    std::lock_guard<std::mutex> lk(g_mu);
+    auto mit = std::find_if(g_mods.begin(), g_mods.end(),
+                            [&](const ModInfo& m) { return m.id == mod_id; });
+    if (mit == g_mods.end()) { if (why) *why = "unknown mod '" + mod_id + "'"; return false; }
+    ModInfo& m = *mit;
+    if (row_id == "@enabled") {
+        if (index1 < 1 || index1 > 2) { if (why) *why = "index out of range"; return false; }
+        const bool want = index1 == 2;
+        if (want != m.wanted) {
+            m.wanted = want;
+            g_requests_dirty = true;
+            g_pending_logs.push_back("[native-menu] " + m.id + " -> " + (want ? "on" : "off")
+                                     + " next launch");
+        }
+        return true;
+    }
+    auto fit = std::find_if(m.fields.begin(), m.fields.end(),
+                            [&](const Field& f) { return f.id == row_id; });
+    if (fit == m.fields.end()) { if (why) *why = "unknown row '" + row_id + "'"; return false; }
+    Field& f = *fit;
+    if (f.readonly) { if (why) *why = "row '" + row_id + "' is read-only"; return false; }
+    if (index1 < 1 || std::size_t(index1) > f.options.size()) {
+        if (why) *why = "index out of range";
+        return false;
+    }
+    const std::size_t k = std::size_t(index1 - 1);
+    if (k != f.value) {
+        f.value = k;
+        m.values[f.id] = f.options[k];
+        m.pending[f.id] = f.options[k];
+        m.pending_dirty = true;
+        g_pending_logs.push_back("[native-menu] " + m.id + "." + f.id + " = " + f.texts[k]);
+    }
+    return true;
+}
 
 bool install_settings_menu_hooks() {
     if (flag_enabled("RSMM_DISABLE_NATIVE_MENU")) {
@@ -523,30 +593,25 @@ bool install_settings_menu_hooks() {
     }
     if (!fn_resolver_init()) {
         Loader::get().log_err("[native-menu] fn_resolver_init failed");
-        return false;
-    }
-    if (!need("add category", Sym::OptionsMenu_AddCategory_Pattern, &g_add_category)
-        || !need("spawn row", Sym::OptionsMenu_SpawnMultiChoice_Pattern, &g_spawn_row)
-        || !need("append row", Sym::OptionsMenu_AppendRow_Pattern, &g_append_row)
-        || !need("set title", Sym::OptionsMenuElement_SetTitle_Pattern, &g_set_title)
-        || !need("set labels", Sym::StringVector_AssignFromArray_Pattern, &g_set_labels)) {
+        g_off.store(true);
         return false;
     }
     if (!hook_install("native-menu", "last Settings tab builder",
                       Sym::OptionsMenu_BuildLastCategory_Pattern,
                       reinterpret_cast<void*>(&hook_build),
                       reinterpret_cast<void**>(&g_real_build))) {
+        g_off.store(true);
         return false;
     }
-    // The pause menu button is extra: without it the tab still works.
-    if (need("select tab", Sym::OptionsMenu_SelectCategory_Pattern, &g_select_tab)
-        && hook_install("native-menu", "pause menu action lookup",
-                        Sym::PauseMenu_GetActionCallback_Pattern,
-                        reinterpret_cast<void*>(&hook_get_callback),
-                        reinterpret_cast<void**>(&g_real_get_callback))) {
+    g_build_hooked.store(true, std::memory_order_release);
+    // The pause menu button is extra: without it the page still opens from Settings.
+    if (hook_install("native-menu", "pause menu action lookup",
+                     Sym::PauseMenu_GetActionCallback_Pattern,
+                     reinterpret_cast<void*>(&hook_get_callback),
+                     reinterpret_cast<void**>(&g_real_get_callback))) {
         Loader::get().log("[native-menu] pause menu Mods button armed");
     }
-    Loader::get().log("[native-menu] armed: open Settings for the Mods tab");
+    Loader::get().log("[native-menu] armed: Mods page via Settings");
     return true;
 }
 

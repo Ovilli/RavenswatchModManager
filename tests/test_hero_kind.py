@@ -8,10 +8,11 @@ contract — the same self-registration the enemy clone proved in game.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 
-from rsmm.engine import corpus
+from rsmm.engine import cooked, corpus
 from rsmm.engine import enemy_pools as EP
 from rsmm.engine import rsc_cache as RC
 from rsmm.sdk.content import ContentDef, ContentError
@@ -1310,6 +1311,52 @@ def test_a_scratch_heros_own_body_carries_its_own_skeleton(tmp_path):
         assert max(abs(x - y) for x, y in zip(mine[b.name].local, b.local, strict=True)) < 1e-4
     main = next(p for p in files if p.name == "Hero_Solo.entity.ot.EntitySettingsResource.gen")
     assert b"Hero_Solo_GEO.fbx" in main.read_bytes()
+    # the rig's own proportions: its clips play as they are, none is copied
+    assert not [p for p in files if p.name.endswith(".Animation.gen")]
+
+
+_JACK_BODY = Path(__file__).resolve().parents[1] / "mods/jack-frame/art/jack_body.glb"
+
+
+@needs_corpus
+@needs_install
+@pytest.mark.skipif(not _JACK_BODY.is_file(), reason="needs mods/jack-frame's body glb")
+def test_a_scratch_heros_own_body_gets_the_rigs_clips_re_proportioned(tmp_path):
+    """A body of other proportions plays the rig's clips re-proportioned
+    (anim_cook.retarget): copies of its own whose translation keys are scaled
+    by each bone's length ratio, rotations untouched; the slots point at them."""
+    import shutil
+
+    from rsmm.engine import skeleton_codec as SK
+    from rsmm.engine.cooked_schemas import animation as A
+    shutil.copy(_JACK_BODY, tmp_path / "body.glb")
+    files = heros.emit("m", ContentDef(kind="hero", id="Prop", fields={"frame": {
+        "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+        "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+        "model": "body.glb"}}), tmp_path / "assets")
+    run = next(p for p in files if p.name == "Hero_Prop_Kintaro_Run_Loop.fbx.Animation.gen")
+    own = SK.rest_translations(SK.decode(next(
+        p for p in files if p.name == "Hero_Prop_GEO.fbx.Geometry.gen").read_bytes()))
+    rig = SK.rest_translations(SK.decode(corpus.read(
+        "3D/Characters/Heroes/Kintaro/Kintaro_GEO.fbx.Geometry.gen")))
+
+    def anim(raw):
+        return A.parse_payload(b"".join(s.payload for s in cooked.parse(raw).sections))
+    mine = {t.name: t for t in anim(run.read_bytes()).tracks}
+    for t in anim(corpus.read("3D/Characters/Heroes/Kintaro/Animations/"
+                              "Kintaro_Run_Loop.fbx.Animation.gen")).tracks:
+        assert mine[t.name].r_values == t.r_values
+        la = sum(c * c for c in rig.get(t.name, (0, 0, 0))) ** 0.5
+        if t.name not in own or la < 0.01 or not t.t_values:
+            assert mine[t.name].t_values == t.t_values
+            continue
+        k = sum(c * c for c in own[t.name]) ** 0.5 / la
+        got = A._decode_trans_scale(mine[t.name].t_values[0])
+        want = [c * k for c in A._decode_trans_scale(t.t_values[0])]
+        assert max(abs(g - w) for g, w in zip(got, want, strict=True)) < 2e-3
+    every = b"".join(p.read_bytes() for p in files
+                     if p.name.endswith(".EntitySettingsResource.gen"))
+    assert b"Hero_Prop_Kintaro_Run_Loop.fbx" in every
 
 
 @needs_corpus

@@ -78,6 +78,14 @@ LOADER_FLAGS: list[dict[str, Any]] = [
         "safe": True,
     },
     {
+        "name": "RSMM_DISABLE_UI_MENUS",
+        "label": "Disable mod pages in the book",
+        "description": "Turn off R.ui.menus: mod-made pages and the entries "
+                       "mods add to the game's Settings page. Mods that use "
+                       "them show nothing there.",
+        "safe": True,
+    },
+    {
         "name": "RSMM_ENABLE_HERO_CAPTURE",
         "label": "Hero capture",
         "description": "Find your hero in memory so mods can read and change "

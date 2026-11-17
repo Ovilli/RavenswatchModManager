@@ -22,7 +22,11 @@ keeps everything else in ``_tail_hex``. This module types that tail:
     f32   band_hi                    tier band, high end
     u32   child_count
     child[child_count]               nested BEGIN..END composite-tile blocks
-    tresptr icon                     u8 resolved + lstr category + lstr path
+    u8    underground                1 = an off-map ROOM (live +0x2f0; the
+                                     generator only gives an underground
+                                     constraint a tile with this set). Kept as
+                                     ``icon[0]`` for compatibility.
+    tresptr icon                     lstr category + lstr path
     bytes rest[40]                   f32 tint[4], u32 x2, f32 pick_weight, u32 x3
 
 Validated by parsing **all 237 shipped tiledefs with zero failures**, and every
@@ -245,6 +249,102 @@ def parse_tail(tail: bytes) -> TileDef:
     return td
 
 
+@dataclass
+class Constraint:
+    """One entry of a tile's ``children``: a TILE CONSTRAINT.
+
+    When the generator places a tile, each constraint asks for ``count`` more
+    tiles carrying every flag in ``required`` (and none in ``excluded``),
+    placed between ``min_dist`` and ``max_dist`` metres away (``-1`` = no
+    limit). This is how an entrance pulls in its underground room: the Ghoul
+    den entrance asks for one ``Boss_Ghoul_Underground`` tile, and that tile
+    lands in one of the recipe's off-map ``whole_map`` slots. The same record
+    makes a Start tile place a ``Story`` tile, a Thieves' stash entrance its
+    room and a corpse master its refugee (``rsmm.engine.tilegen``).
+
+    Layout, decoded from all shipped children (every one re-encodes exactly)::
+
+        BEGIN u32 5
+          BEGIN u32 6
+            BEGIN u32 4  u32 n  lstr required[n]  END
+            BEGIN u32 4  u32 m  lstr excluded[m]  END
+          END
+          u32 count  f32 min_dist  f32 max_dist  u8 flag
+        END
+    """
+
+    required: list[str] = field(default_factory=list)
+    excluded: list[str] = field(default_factory=list)
+    count: int = 1
+    min_dist: float = -1.0
+    max_dist: float = -1.0
+    #: The cooked class-table indexes the block names (oCLinkedTile,
+    #: oCCustomFlagFilter, oCCustomFlagList) — per FILE, not constants: 5/6/4 in
+    #: every shipped tile that has constraints, but a tile without any has no
+    #: oCLinkedTile/oCCustomFlagFilter rows at all (see :func:`write`).
+    ci: tuple[int, int, int] = (5, 6, 4)
+    #: 1 = the wanted tile goes UNDERGROUND (an off-map ``whole_map`` slot:
+    #: every den, stash room, cave and stair corridor); 0 = it is placed on
+    #: the map within the distance band (Start -> Story, pig houses ->
+    #: materials, corpse master -> refugee). 27 / 22 across the corpus.
+    flag: int = 1
+
+
+def _lstr_list(r: _Reader) -> tuple[int, list[str]]:
+    r.mark(_BEGIN, "flag list")
+    ci = r.u32()
+    out = [r.lstr() for _ in range(r.u32())]
+    r.mark(_END, "flag list close")
+    return ci, out
+
+
+def parse_constraint(block: bytes) -> Constraint:
+    """Decode one raw ``children`` block (see :class:`Constraint`)."""
+    r = _Reader(block)
+    r.mark(_BEGIN, "constraint")
+    linked = r.u32()
+    r.mark(_BEGIN, "constraint filter")
+    filt = r.u32()
+    (lci, req), (lci2, exc) = _lstr_list(r), _lstr_list(r)
+    if lci != lci2:
+        raise TileCookError("constraint flag lists name two different classes")
+    r.mark(_END, "constraint filter close")
+    c = Constraint(req, exc, r.u32(), r.f32(), r.f32(), ci=(linked, filt, lci))
+    c.flag = r.u8()
+    r.mark(_END, "constraint close")
+    if r.i != len(block):
+        raise TileCookError(f"constraint block has {len(block) - r.i} trailing byte(s)")
+    return c
+
+
+def build_constraint(c: Constraint) -> bytes:
+    """Inverse of :func:`parse_constraint`."""
+    linked, filt, lci = c.ci
+
+    def flags(names: list[str]) -> bytes:
+        out = bytearray(_BEGIN) + struct.pack("<II", lci, len(names))
+        for n in names:
+            raw = n.encode("latin1")
+            out += struct.pack("<I", len(raw)) + raw
+        return bytes(out + _END)
+    return (_BEGIN + struct.pack("<I", linked) + _BEGIN + struct.pack("<I", filt)
+            + flags(c.required) + flags(c.excluded) + _END
+            + struct.pack("<IffB", c.count, c.min_dist, c.max_dist, c.flag & 0xFF) + _END)
+
+
+#: The class rows a constraint needs, as every shipped constraint-bearing tile
+#: declares them (class id, version major/minor, parent id = oISerializable).
+_CONSTRAINT_CLASSES = (
+    ("oCLinkedTile", 394456273, 1, 0, 1941868),
+    ("oCCustomFlagFilter", 363452863, 1, 0, 1941868),
+)
+
+
+def _with_ci(c: Constraint, ci: tuple[int, int, int]) -> Constraint:
+    c.ci = ci
+    return c
+
+
 def build_tail(td: TileDef) -> bytes:
     """Inverse of :func:`parse_tail`."""
     out = bytearray(_BEGIN)
@@ -294,6 +394,28 @@ def write(td: TileDef) -> bytes:
         raise TileCookError("write() needs a TileDef produced by read()")
     doc = dict(td._doc)
     doc["entity_ref"] = list(td.entity_ref)
+    if td.children:
+        # ⚠ A constraint names its classes by index into THIS file's class
+        # table. A tile that ships without constraints has no oCLinkedTile /
+        # oCCustomFlagFilter rows, so a constraint written into it pointed at
+        # classes the file never declares: the tiledef failed to load and was
+        # silently missing from the pool — measured 2026-11-15, every mod tile
+        # carrying `needs` was never placed. Declare the classes, then encode
+        # every block with the real indexes.
+        container = dict(doc["_container"])
+        classes = [list(c) for c in container["classes"]]
+        names = [c[0] for c in classes]
+        for row in _CONSTRAINT_CLASSES:
+            if row[0] not in names:
+                classes.append(list(row))
+                names.append(row[0])
+        container["classes"] = classes
+        doc["_container"] = container
+        ci = (names.index("oCLinkedTile"), names.index("oCCustomFlagFilter"),
+              names.index("oCCustomFlagList"))
+        td = TileDef(**{**td.__dict__, "children": [
+            build_constraint(_with_ci(parse_constraint(bytes.fromhex(ch)), ci)).hex()
+            for ch in td.children]})
     doc["_tail_hex"] = build_tail(td).hex()
     handler = _defs.DefinitionHandler(_defs._SPECS[CLASS])
     return handler.encode_container(json.dumps(doc).encode("utf-8"))

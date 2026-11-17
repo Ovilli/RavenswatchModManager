@@ -702,6 +702,22 @@ do
     va_trusted_val = false
     I.write_u64(root + 0x20, obj)
     check(R.stat.cached("attack_power") == nil, "an untrusted build refuses the va read")
+    -- The SDK's VA table ships apart from the DLL, so BOTH stamps must agree
+    -- with the running exe: engine_gen._va_build (checked in Lua) and the DLL
+    -- gate (va_trusted).
+    local va_build = require("engine_gen")._va_build or ""
+    if va_build ~= "" then
+        I.exe_sha256 = function() return va_build end
+        check(R.stat.cached("attack_power") == nil,
+              "a matching SDK stamp does not override an untrusting DLL gate")
+        va_trusted_val = true
+        check(R.stat.cached("attack_power") ~= nil,
+              "SDK stamp matches AND the DLL trusts: the va read goes through")
+        I.exe_sha256 = function() return string.rep("0", 64) end
+        check(R.stat.cached("attack_power") == nil,
+              "an exe that is not engine_gen's build refuses even when the DLL trusts")
+        I.exe_sha256 = nil
+    end
     va_trusted_val = true
     I.write_u64(ROOT_SLOT, 0)
 end
@@ -12069,19 +12085,32 @@ end
 do
     check(type(R.ui) == "table", "R.ui is loaded")
     local arm_calls, armed = 0, false
-    local counts = { menu = 0, book = 0, modal = 0, loading = 0, page = 0 }
+    local counts = { menu = 0, book = 0, modal = 0, loading = 0, page = 0, root = 0 }
+    local book_name, book_why, page_label = nil, nil, nil
     I.ui_state_arm = function()
         arm_calls = arm_calls + 1
         if armed then return true, nil end
         return false, "no UI controller vftable found by RTTI (game patched?)"
     end
-    I.ui_state_count = function(kind) return counts[kind] end
+    local count_why = {}
+    I.ui_state_count = function(kind)
+        local n = counts[kind]
+        if n == nil then return nil, count_why[kind] end
+        return n
+    end
+    I.ui_state_book = function() return book_name, book_why end
+    I.ui_state_page = function() return page_label end
     I.ui_state_open = function()
         return { { kind = "menu", class = "EscapeGameMenu", ptr = 0x1000 } }
     end
+    -- not armed: everything is nil + why, never false
     local open, why = R.ui.is_open("menu")
     check(open == nil and why:find("RTTI"), "cannot arm: is_open is nil + why, not false")
     check(R.ui.any() == nil, "cannot arm: any() is nil")
+    local b, bwhy0 = R.ui.book()
+    check(b == nil and bwhy0 and bwhy0:find("RTTI"), "cannot arm: book() is nil + why")
+    local pg, pwhy0 = R.ui.page()
+    check(pg == nil and pwhy0 and pwhy0:find("RTTI"), "cannot arm: page() is nil + why")
     armed = true
     -- a failed arm is retried by the SDK only while not armed; the native side
     -- caches the reason, so re-asking is cheap
@@ -12091,25 +12120,372 @@ do
     check(R.ui.any() == true and R.ui.any("book", "modal") == false, "any() over the given kinds")
     counts.menu, counts.loading = 0, 1
     check(R.ui.any() == false, "a loading screen alone is not 'in a UI'")
+    check(R.ui.any("modal", "loading") == true, "explicit kinds: loading counts when asked for")
+    -- book: true/false from the native count, nil when the native cannot tell
+    check(R.ui.is_open("book") == false and R.ui.count("book") == 0, "book closed: false / 0")
+    counts.book = 1
+    check(R.ui.is_open("book") == true and R.ui.count("book") == 1, "book shown: true / 1")
+    check(R.ui.any() == true, "a shown book is 'in a UI'")
+    counts.book = nil
+    local bo, bwhy = R.ui.is_open("book")
+    check(bo == nil and bwhy, "book unknown: is_open is nil + why, not false")
+    check(R.ui.any() == nil, "book unknown: any() is nil")
+    -- unknown book mode (unknown handler, or BookMenu_GetMode unresolved on an
+    -- old pattern DB): the native's reason comes through, never false / 0
+    count_why.book = "unknown book mode"
+    local uo, uowhy = R.ui.is_open("book")
+    check(uo == nil and uowhy == "unknown book mode", "unknown book mode: is_open is nil + that reason")
+    local uc, ucwhy = R.ui.count("book")
+    check(uc == nil and ucwhy == "unknown book mode", "unknown book mode: count is nil + that reason")
+    local ua, uawhy = R.ui.any()
+    check(ua == nil and uawhy == "unknown book mode", "nothing open, book unknown: any() is nil + why")
+    counts.modal = 1
+    check(R.ui.any() == true, "an open modal wins over an unknown book: any() is true")
+    check(R.ui.any("book", "modal") == true, "explicit kinds: unknown book first, open modal still true")
+    counts.modal = 0
+    check(R.ui.any("menu", "modal") == false, "no unknown kind asked for: any() stays false")
+    count_why.book = nil
+    counts.book = 0
+    -- which book
+    check(R.ui.book() == nil, "book closed: book() is nil")
+    book_name = "settings"
+    check(R.ui.book() == "settings", "book() names the shown book")
+    book_name, book_why = nil, "unknown book mode"
+    local ub, uwhy = R.ui.book()
+    check(ub == nil and uwhy == "unknown book mode", "book() passes a nil + why through")
+    book_why = nil
+    counts.root = 2
+    check(R.ui.is_open("root") == true and R.ui.count("root") == 2, "root is a valid kind")
+    counts.root = 0
     check(R.ui.open()[1].class == "EscapeGameMenu", "open() lists the controllers")
-    check(R.ui.page() == nil, "no page open: page() is nil")
+    -- page(): the native's answer, not a scan of open()
+    check(R.ui.page() == nil, "no book / page: page() is nil")
     I.ui_state_open = function()
-        return { { kind = "book", class = "BookMenu", ptr = 0x10 },
+        return { { kind = "root", class = "BookMenu", ptr = 0x10 },
                  { kind = "page", class = "PlayPage", ptr = 0x20 },
-                 { kind = "page", class = "TutorialPage", ptr = 0x30 } }
+                 { kind = "page", class = "SocialPage", ptr = 0x30 } }
     end
-    check(R.ui.page() == "TutorialPage", "page() is the newest open page")
+    page_label = "TutorialPage"
+    check(R.ui.page() == "TutorialPage", "page() is the native's current page, not the last activated")
+    page_label = "CreditsPage"
+    check(R.ui.page() == "CreditsPage", "page() reports CreditsPage")
+    page_label = nil
     check(R.ui.count("page") ~= nil, "page is a kind")
     local calls_before = arm_calls
-    check(R.ui.is_open("book") == false and arm_calls == calls_before,
+    check(R.ui.is_open("modal") == false and arm_calls == calls_before,
           "once armed, the SDK stops asking the loader to arm")
     check(not pcall(R.ui.is_open, "inventory"), "unknown kind is an error, not a silent false")
+    check(not pcall(R.ui.is_open, "main"), "main is not a kind")
+    check(not pcall(R.ui.count, "main"), "main is not a kind (count)")
     local got
     local id = R.on("ui:open", function(e) got = e end)
     fire("ui:open", { kind = "modal", class = "Modal", ptr = 0x2000 })
     check(got and got.kind == "modal" and got.class == "Modal", "ui:open reaches R.on handlers")
+    got = nil
+    fire("ui:open", { kind = "book", class = "BookMenu", ptr = 0x10, which = "settings" })
+    check(got and got.kind == "book" and got.which == "settings", "a book ui:open carries which")
     R.off(id)
     I.ui_state_arm, I.ui_state_count, I.ui_state_open = nil, nil, nil
+    I.ui_state_book, I.ui_state_page = nil, nil
+end
+
+-- R.ui.menus: Lua side of the book menu pages. The loader owns the page build; this
+-- checks what Lua pushes (a normalized snapshot table; the loader converts it to
+-- JSON, and an empty `categories` arrives there as {} and still means no categories)
+-- and how it answers the loader's synchronous internal events.
+do
+    check(type(R.ui) == "table" and type(R.ui.menus) == "table", "R.ui.menus is loaded")
+    local M = R.ui.menus
+    -- soft failure: no I.ui_menus_* (old loader)
+    local av, avwhy = M.available()
+    check(av == false and avwhy == "loader too old for R.ui.menus", "no native: available() is false + why")
+    local pg, pwhy = M.page("t.p", { categories = function() return {} end })
+    check(pg == nil and pwhy == "loader too old for R.ui.menus", "no native: page() is nil + why")
+    local en, ewhy = M.entry{ id = "e", title = "E", page = "t.p" }
+    check(en == nil and ewhy == "loader too old for R.ui.menus", "no native: entry() is nil + why")
+    local op, owhy = M.open("t.p")
+    check(op == nil and owhy == "loader too old for R.ui.menus", "no native: open() is nil + why")
+    local bk, bwhy = M.back()
+    check(bk == nil and bwhy == "loader too old for R.ui.menus", "no native: back() is nil + why")
+    check(M.current() == nil, "no native: current() is nil")
+
+    local pages, entries, removed, opened, vetoes = {}, {}, {}, {}, 0
+    local cur
+    local logged = {}
+    local log_saved = R.log
+    R.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    I.ui_menus_available = function() return true end
+    I.ui_menus_set_page = function(id, snap) pages[id] = snap; return true end
+    I.ui_menus_remove_page = function(id) removed[#removed + 1] = "page:" .. id end
+    I.ui_menus_set_entry = function(id, title, page, after)
+        entries[id] = { title = title, page = page, after = after }
+        return true
+    end
+    I.ui_menus_remove_entry = function(id) removed[#removed + 1] = "entry:" .. id end
+    I.ui_menus_open = function(id, ctx) opened[#opened + 1] = { id, ctx }; return true end
+    I.ui_menus_back = function() return true end
+    I.ui_menus_current = function() return cur end
+    I.ui_menus_veto_back = function() vetoes = vetoes + 1 end
+    check(M.available() == true, "native present: available()")
+
+    -- registration pushes a normalized snapshot
+    local seen_ctx = "unset"
+    local explode = false
+    local h = M.page("t.main", {
+        title = "T", kind = "categories",
+        categories = function(ctx)
+            seen_ctx = ctx
+            if explode then error("boom") end
+            return { { id = "a", label = "Alpha",
+                       header = { title = "Head", subtitle = "Sub", text = "l1\nl2" },
+                       rows = {
+                           { id = "speed", label = "Speed", choices = { "S", "N", "F" },
+                             value = 9, default = 2 },
+                           { id = "lock", label = "Locked", readonly = true,
+                             readonly_text = "Edit in the app" },
+                       } } }
+        end,
+        on_back = function(ctx) return ctx and ctx.allow == true end,
+    })
+    check(h and h.id == "t.main", "page() returns a handle")
+    check(seen_ctx == nil, "categories(nil) is evaluated at registration")
+    local snap = pages["t.main"]
+    check(snap.title == "T" and #snap.categories == 1, "snapshot carries title and categories")
+    local cat = snap.categories[1]
+    check(cat.header.title == "Head" and cat.header.subtitle == "Sub" and cat.header.text == "l1\nl2",
+          "snapshot carries the header")
+    check(cat.rows[1].value == 3 and cat.rows[1].default == 2, "value is clamped to 1..#choices")
+    check(math.type(cat.rows[1].value) == "integer" and math.type(cat.rows[1].default) == "integer",
+          "value and default stay integers")
+    check(type(cat.rows[1].choices) == "table" and #cat.rows[1].choices == 3, "choices is a list")
+    check(cat.rows[2].readonly == true and cat.rows[2].readonly_text == "Edit in the app"
+          and #cat.rows[2].choices == 0, "read-only row carries readonly_text and no choices")
+    -- an empty page pushes an empty categories table (the loader reads {} as no categories)
+    M.page("t.empty", { categories = function() return {} end })
+    check(type(pages["t.empty"].categories) == "table" and #pages["t.empty"].categories == 0
+          and pages["t.empty"].title == "", "an empty page pushes an empty categories table")
+    local ec = M.page("t.empty2", { title = "E", categories = function()
+        return { { id = "c", label = "C", header = {}, rows = {} } } end })
+    check(ec and type(pages["t.empty2"].categories[1].header) == "table"
+          and #pages["t.empty2"].categories[1].rows == 0, "empty header and rows are tables")
+    -- the header is not clipped Lua-side: the loader wraps it to the page width (phase 4c)
+    local long = string.rep("word ", 80) .. "\n" .. string.rep("x", 200)
+    M.page("t.long", { title = "L", categories = function()
+        return { { id = "c", label = "C",
+                   header = { title = string.rep("T", 60), subtitle = string.rep("S", 90), text = long },
+                   rows = {} } } end })
+    local lh = pages["t.long"].categories[1].header
+    check(lh.text == long and #lh.title == 60 and #lh.subtitle == 90,
+          "a long header reaches the loader whole, newlines kept")
+    local many = {}
+    for i = 1, 16 do many[i] = { id = "c" .. i, label = "Category " .. i, rows = {} } end
+    M.page("t.many", { title = "M", categories = function() return many end })
+    check(#pages["t.many"].categories == 16, "a page keeps more categories than the column shows")
+    explode = true
+    M.page("t.first_throw", { title = "FT", categories = function() error("first") end })
+    explode = false
+    check(pages["t.first_throw"] and pages["t.first_throw"].title == "FT"
+          and #pages["t.first_throw"].categories == 0, "a first-evaluation throw registers the page empty")
+    check(not pcall(M.page, "t.bad", { categories = function() return {} end, kind = "grid" }),
+          "kind other than categories is an error")
+
+    -- per-row reset opt-out
+    M.page("t.reset", { title = "R", categories = function()
+        return { { id = "c", label = "C", rows = {
+            { id = "a", label = "A", choices = { "x", "y" } },
+            { id = "b", label = "B", choices = { "x", "y" }, reset = false },
+            { id = "c", label = "C", readonly = true, readonly_text = "ro" },
+        } } }
+    end })
+    local rr = pages["t.reset"].categories[1].rows
+    check(rr[1].reset == true, "a row without reset comes out reset == true")
+    check(rr[2].reset == false, "reset = false comes out false")
+    check(rr[3].reset == nil, "a read-only row has no reset")
+    local log_n = #logged
+    local bad_ok = pcall(M.page, "t.reset_bad", { categories = function()
+        return { { id = "c", label = "C", rows = {
+            { id = "a", label = "A", choices = { "x" }, reset = "no" } } } }
+    end })
+    check(bad_ok and pages["t.reset_bad"] ~= nil and #pages["t.reset_bad"].categories == 0,
+          "reset = \"no\" is rejected (page registers with zero categories)")
+    local reset_logged = false
+    for i = log_n + 1, #logged do
+        if logged[i]:find("row.reset must be a boolean", 1, true) then reset_logged = true end
+    end
+    check(reset_logged, "reset = \"no\" logs 'row.reset must be a boolean'")
+
+    -- refresh re-evaluates with ctx
+    local before = pages["t.main"]
+    fire("ui:_menus_refresh", { page = "t.main", ctx = { from = "x" } })
+    check(type(seen_ctx) == "table" and seen_ctx.from == "x", "refresh re-runs categories(ctx)")
+    before = pages["t.main"]
+    -- a throw keeps the last good snapshot
+    explode = true
+    fire("ui:_menus_refresh", { page = "t.main", ctx = nil })
+    check(pages["t.main"] == before, "categories() throw keeps the last snapshot")
+    local said = false
+    for _, l in ipairs(logged) do if l:find("boom", 1, true) then said = true end end
+    check(said, "the throw is logged")
+    explode = false
+    fire("ui:_menus_refresh", { page = "not.ours", ctx = nil })
+    check(pages["not.ours"] == nil, "refresh for a page this state never registered is ignored")
+
+    -- on_back veto
+    fire("ui:_menus_back", { page = "t.main", ctx = { allow = true }, depth = 1 })
+    check(vetoes == 0, "on_back true does not veto")
+    fire("ui:_menus_back", { page = "t.main", ctx = { allow = false }, depth = 1 })
+    check(vetoes == 1, "on_back false calls I.ui_menus_veto_back")
+    fire("ui:_menus_back", { page = "other", ctx = nil, depth = 1 })
+    check(vetoes == 1, "back for another page is ignored")
+
+    -- entries
+    local eh = M.entry{ id = "uimt", title = "Menus Test", page = "t.main" }
+    check(eh and entries.uimt.after == "settings", "entry after defaults to settings")
+    M.entry{ id = "uimt.sub", title = "Sub", page = "t.main", after = "t.main" }
+    check(entries["uimt.sub"].after == "t.main", "entry after can name a page")
+
+    -- open passes ctx through as a table; current returns it as a table
+    local octx = { from = "deeper", n = 2, ok = true }
+    check(M.open("t.main", octx) == true, "open returns true")
+    check(opened[1][1] == "t.main" and opened[1][2] == octx, "open passes ctx through")
+    M.open("t.main", {})
+    check(type(opened[2][2]) == "table" and next(opened[2][2]) == nil, "open passes an empty ctx table")
+    opened[2] = nil
+    M.open("t.main")
+    check(opened[2][2] == nil, "open without ctx passes nil")
+    local open_saved = I.ui_menus_open
+    I.ui_menus_open = function() return false, "too deep (max 8)" end
+    local dok, dwhy = M.open("t.main")
+    check(dok == false and dwhy == "too deep (max 8)", "open passes the loader's refusal reason through")
+    I.ui_menus_open = open_saved
+    check(M.current() == nil, "current() is nil when none of ours is the leaf")
+    cur = { page = "t.main", ctx = { from = "deeper", list = { 1, 2 } }, depth = 2 }
+    local c = M.current()
+    check(c.page == "t.main" and c.depth == 2 and c.ctx.from == "deeper" and c.ctx.list[2] == 2,
+          "current() returns the ctx table")
+    cur = { page = "t.main", depth = 1 }
+    check(M.current().ctx == nil, "current() has no ctx when none was passed")
+    cur = nil
+
+    -- off removes
+    check(M.off(h) == true and M.off(eh) == true, "off() succeeds for page and entry")
+    check(removed[1] == "page:t.main" and removed[2] == "entry:uimt", "off removes through remove_*")
+    fire("ui:_menus_refresh", { page = "t.main", ctx = nil })
+    check(pages["t.main"] == before, "a removed page is no longer refreshed")
+
+    R.log = log_saved
+    I.ui_menus_available, I.ui_menus_set_page, I.ui_menus_remove_page = nil, nil, nil
+    I.ui_menus_set_entry, I.ui_menus_remove_entry, I.ui_menus_open = nil, nil, nil
+    I.ui_menus_back, I.ui_menus_current, I.ui_menus_veto_back = nil, nil, nil
+end
+
+-- R.engine.names() lists callables only: never the VA table or its build stamp.
+do
+    local internal = {}
+    for _, n in ipairs(R.engine.names()) do
+        if n:sub(1, 1) == "_" then internal[#internal + 1] = n end
+    end
+    check(#internal == 0, "R.engine.names() leaks internal keys: " .. table.concat(internal, ", "))
+end
+
+-- Settings > Mods page (rsmm/mods_menu.lua): a factory over R.ui.menus and the
+-- I.mods_* natives. R here is a proxy whose ui.menus is a recorder, so the RAW
+-- categories() result is checked (not a normalized snapshot).
+do
+    local factory = require "rsmm.mods_menu"
+    local pages, entries, sets = {}, {}, {}
+    local menus = {
+        page = function(id, def) pages[#pages + 1] = { id = id, def = def }; return { kind = "page", id = id } end,
+        entry = function(spec) entries[#entries + 1] = spec; return { kind = "entry", id = spec.id } end,
+    }
+    local env_R = setmetatable({ ui = { menus = menus } }, { __index = R })
+    local logged = {}
+    env_R.log = function(...) logged[#logged + 1] = table.concat({ ... }, " ") end
+    local owner = false
+    local model = {
+        mods = {
+            { id = "alpha", name = "Alpha", version = "1.2.0", author = "Ann", wanted = true, enabled = true,
+              description = "one two three four five six seven eight nine ten eleven twelve " .. string.rep("x", 40),
+              rows = {
+                  { id = "@enabled", label = "Enabled", choices = { "Off", "On" }, value = 2, default = 2 },
+                  { id = "speed", label = "Speed", choices = { "Slow", "Fast" }, value = 1, default = 2 },
+                  { id = "name", label = "Name", readonly = true },
+              } },
+            { id = "beta", name = "Beta", version = "", author = "", wanted = false, enabled = true, description = "",
+              rows = {
+                  { id = "@enabled", label = "Enabled", choices = { "Off (next launch)", "On" }, value = 1, default = 1 },
+                  { id = "mode", label = "Mode", choices = { "A", "B", "C" }, value = 2, default = 3 },
+                  { id = "gain", label = "Gain", choices = { "1", "2" }, value = 1, default = 2 },
+              } },
+        },
+    }
+    local I_saved = { I.mods_menu_owner, I.mods_model, I.mods_menu_set, I.mods_menu_refresh }
+    local refreshes = 0
+    I.mods_menu_refresh = function() refreshes = refreshes + 1 end
+    I.mods_menu_owner = function() return owner end
+    I.mods_model = function() return model end
+    I.mods_menu_set = function(m, r, i) sets[#sets + 1] = { m, r, i }; return true end
+
+    factory({ R = env_R, I = I })
+    check(#pages == 0 and #entries == 0, "mods menu: a non-owner state registers nothing")
+
+    owner = true
+    factory({ R = env_R, I = I })
+    check(#entries == 1 and entries[1].id == "rsmm.mods" and entries[1].title == "Mods"
+          and entries[1].page == "rsmm.mods", "mods menu: owner registers the entry once")
+    check(#pages == 1 and pages[1].id == "rsmm.mods" and pages[1].def.kind == "categories"
+          and pages[1].def.title == "Mods", "mods menu: owner registers the page once")
+
+    local cats = pages[1].def.categories({})
+    check(refreshes == 1, "mods menu: building the page's categories refreshes the model once")
+    check(#cats == 2 and cats[1].id == "alpha" and cats[2].id == "beta" and cats[1].label == "Alpha",
+          "mods menu: one category per mod in model order")
+    check(cats[1].header.title == "Alpha" and cats[1].header.subtitle == "v1.2.0 - by Ann - Enabled",
+          "mods menu: header subtitle has version, author and state")
+    check(cats[2].header.subtitle == "Disabled (next launch)" and cats[2].header.text == nil,
+          "mods menu: empty version/author/description are dropped")
+    check(not cats[1].header.text:find("\n") and cats[1].header.text:sub(-40) == string.rep("x", 40),
+          "mods menu: the description passes through unwrapped (the header label wraps it)")
+    check(cats[1].rows[3].readonly == true and cats[1].rows[3].readonly_text == "Edit in the desktop app",
+          "mods menu: an uneditable field is a readonly row")
+    check(cats[1].rows[1].id == "@enabled" and cats[1].rows[1].reset == false
+          and cats[1].rows[2].reset == nil, "mods menu: only the @enabled row opts out of Reset")
+    check(cats[1].rows[2].value == 1 and cats[1].rows[2].default == 2 and #cats[1].rows[2].choices == 2,
+          "mods menu: editable rows carry choices, value and default")
+
+    model.mods[2].wanted, model.mods[2].enabled = true, false
+    check(pages[1].def.categories({})[2].header.subtitle == "Enabled (next launch)",
+          "mods menu: a pending change says '(next launch)' and the model is re-read")
+    model.mods[2].wanted, model.mods[2].enabled = false, true
+
+    fire("ui:menus_change", { page = "rsmm.mods", category = "alpha", row = "speed", index = 2 })
+    check(#sets == 1 and sets[1][1] == "alpha" and sets[1][2] == "speed" and sets[1][3] == 2,
+          "mods menu: ui:menus_change calls mods_menu_set(mod, row, index)")
+    fire("ui:menus_change", { page = "other.page", category = "alpha", row = "speed", index = 1 })
+    fire("ui:menus_reset", { page = "other.page", category = "beta" })
+    check(#sets == 1, "mods menu: events for another page are ignored")
+
+    sets = {}
+    fire("ui:menus_reset", { page = "rsmm.mods", category = "beta" })
+    check(#sets == 2 and sets[1][1] == "beta" and sets[1][2] == "mode" and sets[1][3] == 3
+          and sets[2][2] == "gain" and sets[2][3] == 2,
+          "mods menu: reset sets that mod's defaults, skipping @enabled")
+
+    factory({ R = env_R, I = I })
+    sets = {}
+    fire("ui:menus_change", { page = "rsmm.mods", category = "beta", row = "mode", index = 1 })
+    check(#sets == 1, "mods menu: re-running the factory does not double-subscribe")
+
+    -- no model, or no mods: nothing registered, the reason is logged
+    local npages = #pages
+    I.mods_model = function() return nil, "native menu is off" end
+    factory({ R = env_R, I = I })
+    I.mods_model = function() return { mods = {} } end
+    factory({ R = env_R, I = I })
+    check(#pages == npages and #logged >= 2, "mods menu: no model / no mods registers nothing and logs why")
+
+    factory({ R = env_R, I = { mods_menu_owner = function() return false end } })   -- drop our handlers
+    I.mods_menu_owner, I.mods_model, I.mods_menu_set, I.mods_menu_refresh = I_saved[1], I_saved[2], I_saved[3], I_saved[4]
 end
 
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
