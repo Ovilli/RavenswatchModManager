@@ -176,16 +176,15 @@ def _disasm_code(addrs: set[int], exe: str | None = None) -> dict[int, str]:
 
     data = Path(exe).read_bytes()
     img, secs = gen.parse_pe(data)
-    ranges = _pdata_ranges(data, img, secs)
+    ends = dict(_pdata_ranges(data, img, secs))
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
     md.detail = False
 
     out: dict[int, str] = {}
     for va in sorted(addrs):
-        rng = next(((s, e) for s, e in ranges if s == va), None)
-        if rng is None:
+        if va not in ends:
             continue                 # not a .pdata function start; leave it out
-        start, end = rng
+        start, end = va, ends[va]
         off = gen.va_to_offset(start, img, secs)
         if off is None:
             continue
