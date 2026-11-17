@@ -43,7 +43,20 @@ CONTROLLERS = {
     "trait": "Trait Ability Controller",
     "ultimate": "Ultimate Power 1 Controller",
     "ultimate2": "Ultimate Power 2 Controller",
+    # The dash, rewritten: its controller pointed at the hero's own state in
+    # place of Hero_Common's "State Dash Ability" (Carmilla, the one hero that
+    # overrides the dash controller, still points it at the shared state).
+    # Hero_Common's dash brings its dodge window and look-at; a custom dash
+    # says its own (``intangible``, ``root_motion``).
+    "dash": "Dash Ability Controller",
 }
+
+
+def slot_word(slot: str) -> str:
+    """The word a button's parts are named with ("Power" -> "Power Ability");
+    the dash's own is "Custom Dash": "Dash Ability ..." are the shared dash's
+    inherited parts and the hero's own "Dash Ability Anim" slot."""
+    return "Custom Dash" if slot == "dash" else slot.title()
 _CLIP = ("Dash Ability Clip Selector", "Dash Ability Clip", "Dash Ability Anim")
 #: Hero_Common's tester every shipped ability state activates on entry (see
 #: ``build``): it takes the body off the move/idle animation for the ability.
@@ -331,7 +344,8 @@ class Ability:
                     or not 0 < b["seconds"] <= 120:
                 raise AbilityError(f"ability {slot}: buff {b['stat']!r} lasts 0..120 seconds")
         return cls(slot, str(raw.get("clip", "")),
-                   float(raw.get("cooldown", 0.0 if passive else 1.0)),
+                   float(raw.get("cooldown", 0.0 if passive else
+                                 -1.0 if slot == "dash" else 1.0)),
                    float(raw["duration"]) if raw.get("duration") is not None else None,
                    hits, ind, str(raw.get("bank", "")), str(raw.get("name_key", "")),
                    str(raw.get("desc_key", "")), sound, icons[0], icons[1],
@@ -353,7 +367,8 @@ BUFF_KEYS = {"stat", "value", "seconds"}
 #: Beowulf's / Snow Queen's defensive 0x15e13a41, the ultimates 0x15e13a45
 #: (both share it); special and trait are the table's own 0x15e13a3f/43.
 RELEASE_INPUT = {"power": 0x15E13A3D, "special": 0x15E13A3F, "defense": 0x15E13A41,
-                 "trait": 0x15E13A43, "ultimate": 0x15E13A45, "ultimate2": 0x15E13A45}
+                 "trait": 0x15E13A43, "ultimate": 0x15E13A45, "ultimate2": 0x15E13A45,
+                 "dash": 0x183A61A8}
 #: Geppetto's power's release tester lends the layout: a SimpleBoolTest of the
 #: Hero Controller's power input, negated.
 RELEASE_DONOR = "Ability Primary\\Primary Ability Has Been Released Tester"
@@ -428,7 +443,8 @@ CHARGE_COUNTERS = {"power": "Primary Ability Max Charges Counter",
                    "defense": "Defensive Ability Max Charges Counter",
                    "trait": "Trait Ability Max Charges Counter",
                    "ultimate": "Ultimate Ability Max Charges Counter",
-                   "ultimate2": "Ultimate Ability Max Charges Counter"}
+                   "ultimate2": "Ultimate Ability Max Charges Counter",
+                   "dash": "Dash Ability Max Charges Counter"}
 
 
 def set_charges(ef: EntityFile, hero_common: EntityFile, slot: str, n: int) -> None:
@@ -774,7 +790,7 @@ def add_indicator(ef: EntityFile, ab: Ability, *, seed: str) -> None:
     the hero's own parts (a kit step failed on them)."""
     if ab.indicator is None:
         return
-    word = ab.slot.title()
+    word = slot_word(ab.slot)
     tag = f"{word} Ability"
     disc = indicator(ef, ab.indicator, tag=tag, group=f"Ability {word}",
                      seed=f"{seed}:{ab.slot}")
@@ -1399,7 +1415,7 @@ def _build_passive(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed
 def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
           with_indicator: bool = True, read=None) -> str:
     """Write ``ab`` into the hero ``ef``; returns its state's name."""
-    word = ab.slot.title()
+    word = slot_word(ab.slot)
     group = f"Ability {word}"
     tag = f"{word} Ability"
     if ab.charges > 1:

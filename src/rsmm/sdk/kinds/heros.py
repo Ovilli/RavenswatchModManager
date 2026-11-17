@@ -1826,7 +1826,7 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     button_steps: dict[str, list] = {}
     for slot, raw in (frame.get("abilities") or {}).items():
         raw = dict(raw)
-        word = str(slot).title()
+        word = HA.slot_word(str(slot))
         if raw.get("steps"):
             hooks.append({"when": f"State {word} Ability", "steps": raw["steps"],
                           "slot": str(slot)})
@@ -2505,7 +2505,7 @@ def _frame_family(frame: dict, b, R, H, app: str, herodef: bytes, hero_alias: by
         for slot, raw in (frame.get("abilities") or {}).items():
             raw = dict(raw)
             card = {k: raw.pop(k) for k in ("name", "description") if k in raw}
-            word = str(slot).title()
+            word = HA.slot_word(str(slot))
             keys = {"name": f"Hero_{hid}_Ability_{word}_Name",
                     "description": f"Hero_{hid}_Ability_{word}_Desc"}
             for k, text in card.items():

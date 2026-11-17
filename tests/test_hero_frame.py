@@ -919,3 +919,22 @@ def test_a_held_button_ends_when_let_go():
     assert not any(struct.pack("<I", 0x15E13A3D) in p for p in new)
     with pytest.raises(HA.AbilityError):
         HA.Ability.parse("attack", {"clip": clip, "hold": True})
+
+
+@needs_corpus
+def test_a_custom_dash_replaces_the_shared_one():
+    """``dash``: the dash controller points at the hero's own state (named
+    "Custom Dash", so the hero's "Dash Ability Anim" slot still fills); with no
+    cooldown given it keeps the shared Dash Cooldown Default read."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import hero_ability as HA
+    clip = "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_BasicAttack01.fbx"
+    hc = HF.common(_read)
+    ef = _hero("Hero_T")
+    HF.fill_slot(ef, hc, "Dash Ability Anim", clip=clip)
+    HA.build(ef, hc, HA.Ability.parse("dash", {"clip": clip, "intangible": 0.3,
+                                                "hits": [{"at": 0.1, "radius": 2}]}), seed="t")
+    ctl = {f.name: f.text for f in EF.fields(ef.component("Dash Ability Controller"))}
+    assert ctl["ref_2"].endswith("State Custom Dash Ability")
+    assert "Dash Cooldown Default" in ctl["value_4"]
+    assert ef.component("Dash Ability Anim").override is not None
