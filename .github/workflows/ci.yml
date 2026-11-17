@@ -308,3 +308,16 @@ jobs:
           fail: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # The one check the main ruleset requires. Matrix jobs skipped by `changes`
+  # report under their unexpanded name (`python ${{ matrix.os }}`), so they
+  # cannot be required directly; this job rolls them up instead.
+  ci-ok:
+    name: ci ok
+    needs: [changes, python, sidecar, ts, loader-linux-mingw]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if a needed job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
