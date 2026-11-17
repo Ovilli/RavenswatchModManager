@@ -125,7 +125,6 @@
               "melody",
               "mesh",
               "modifier",
-              "nameplate_crown",
               "poi",
               "reward",
               "scenery",
@@ -526,29 +525,6 @@
                 "kind": {},
                 "name": {},
                 "schema_version": {}
-              },
-              "additionalProperties": false
-            }
-          },
-          {
-            "if": {
-              "properties": {
-                "kind": {
-                  "const": "nameplate_crown"
-                }
-              },
-              "required": [
-                "kind"
-              ]
-            },
-            "then": {
-              "properties": {
-                "id": {},
-                "kind": {},
-                "preview": {},
-                "schema_version": {},
-                "width": {},
-                "y": {}
               },
               "additionalProperties": false
             }

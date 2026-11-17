@@ -2,9 +2,9 @@
 
 import type { ReactNode } from 'react';
 import type { ModMedia } from '../../../lib/mod-presentation';
-import { RegistryDetailLayout } from '@rsmm/ui';
 import { MDPreview } from '../md-editor';
 import { ListingGallery } from './listing-gallery';
+import './listing-detail.css';
 
 /** One public detail composition; each route supplies its content and actions. */
 export function ListingDetailView({
@@ -35,20 +35,29 @@ export function ListingDetailView({
   children: ReactNode;
 }) {
   return (
-    <RegistryDetailLayout
-      className={className}
-      name={name}
-      summary={summary}
-      breadcrumb={breadcrumb}
-      labels={labels}
-      stats={stats}
-      media={<ListingGallery media={media} name={name} nsfw={nsfw} />}
-      navigation={navigation}
-      sidebar={sidebar}
-      sidebarLabel={sidebarLabel}
-    >
-      {children}
-    </RegistryDetailLayout>
+    <main className={`mod-detail container ${className}`}>
+      <nav aria-label="Breadcrumb" className="mod-breadcrumb">
+        {breadcrumb}
+      </nav>
+      <header className="mod-heading">
+        {labels}
+        <h1>{name}</h1>
+        {summary?.trim() ? <p className="mod-summary">{summary}</p> : null}
+        <div className="mod-social-proof">{stats}</div>
+      </header>
+      <ListingGallery media={media} name={name} nsfw={nsfw} />
+      <div className="mod-body">
+        <nav className="mod-section-nav" aria-label="On this page">
+          {navigation}
+        </nav>
+        <div className="mod-content-grid">
+          <aside className="mod-download-sidebar" aria-label={sidebarLabel}>
+            {sidebar}
+          </aside>
+          <div className="mod-reading">{children}</div>
+        </div>
+      </div>
+    </main>
   );
 }
 

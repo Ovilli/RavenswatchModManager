@@ -9,57 +9,22 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root';
-import { Route as SigninRouteImport } from './routes/signin';
-import { Route as SettingsRouteImport } from './routes/settings';
-import { Route as ProfilesRouteImport } from './routes/profiles';
-import { Route as LogRouteImport } from './routes/log';
-import { Route as ConflictsRouteImport } from './routes/conflicts';
-import { Route as CommandsRouteImport } from './routes/commands';
-import { Route as BrowseRouteImport } from './routes/browse';
-import { Route as AuthorRouteImport } from './routes/author';
-import { Route as AboutRouteImport } from './routes/about';
 import { Route as IndexRouteImport } from './routes/index';
-import { Route as ModSlugRouteImport } from './routes/mod.$slug';
+import { Route as AboutRouteImport } from './routes/about';
+import { Route as AuthorRouteImport } from './routes/author';
+import { Route as BrowseRouteImport } from './routes/browse';
+import { Route as CommandsRouteImport } from './routes/commands';
+import { Route as ConflictsRouteImport } from './routes/conflicts';
+import { Route as LogRouteImport } from './routes/log';
+import { Route as ProfilesRouteImport } from './routes/profiles';
+import { Route as SettingsRouteImport } from './routes/settings';
+import { Route as SigninRouteImport } from './routes/signin';
 import { Route as CollectionSlugRouteImport } from './routes/collection.$slug';
+import { Route as ModSlugRouteImport } from './routes/mod.$slug';
 
-const SigninRoute = SigninRouteImport.update({
-  id: '/signin',
-  path: '/signin',
-  getParentRoute: () => rootRouteImport,
-} as any);
-const SettingsRoute = SettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => rootRouteImport,
-} as any);
-const ProfilesRoute = ProfilesRouteImport.update({
-  id: '/profiles',
-  path: '/profiles',
-  getParentRoute: () => rootRouteImport,
-} as any);
-const LogRoute = LogRouteImport.update({
-  id: '/log',
-  path: '/log',
-  getParentRoute: () => rootRouteImport,
-} as any);
-const ConflictsRoute = ConflictsRouteImport.update({
-  id: '/conflicts',
-  path: '/conflicts',
-  getParentRoute: () => rootRouteImport,
-} as any);
-const CommandsRoute = CommandsRouteImport.update({
-  id: '/commands',
-  path: '/commands',
-  getParentRoute: () => rootRouteImport,
-} as any);
-const BrowseRoute = BrowseRouteImport.update({
-  id: '/browse',
-  path: '/browse',
-  getParentRoute: () => rootRouteImport,
-} as any);
-const AuthorRoute = AuthorRouteImport.update({
-  id: '/author',
-  path: '/author',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any);
 const AboutRoute = AboutRouteImport.update({
@@ -67,19 +32,54 @@ const AboutRoute = AboutRouteImport.update({
   path: '/about',
   getParentRoute: () => rootRouteImport,
 } as any);
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AuthorRoute = AuthorRouteImport.update({
+  id: '/author',
+  path: '/author',
   getParentRoute: () => rootRouteImport,
 } as any);
-const ModSlugRoute = ModSlugRouteImport.update({
-  id: '/mod/$slug',
-  path: '/mod/$slug',
+const BrowseRoute = BrowseRouteImport.update({
+  id: '/browse',
+  path: '/browse',
+  getParentRoute: () => rootRouteImport,
+} as any);
+const CommandsRoute = CommandsRouteImport.update({
+  id: '/commands',
+  path: '/commands',
+  getParentRoute: () => rootRouteImport,
+} as any);
+const ConflictsRoute = ConflictsRouteImport.update({
+  id: '/conflicts',
+  path: '/conflicts',
+  getParentRoute: () => rootRouteImport,
+} as any);
+const LogRoute = LogRouteImport.update({
+  id: '/log',
+  path: '/log',
+  getParentRoute: () => rootRouteImport,
+} as any);
+const ProfilesRoute = ProfilesRouteImport.update({
+  id: '/profiles',
+  path: '/profiles',
+  getParentRoute: () => rootRouteImport,
+} as any);
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any);
+const SigninRoute = SigninRouteImport.update({
+  id: '/signin',
+  path: '/signin',
   getParentRoute: () => rootRouteImport,
 } as any);
 const CollectionSlugRoute = CollectionSlugRouteImport.update({
   id: '/collection/$slug',
   path: '/collection/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any);
+const ModSlugRoute = ModSlugRouteImport.update({
+  id: '/mod/$slug',
+  path: '/mod/$slug',
   getParentRoute: () => rootRouteImport,
 } as any);
 
@@ -188,60 +188,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/signin': {
-      id: '/signin';
-      path: '/signin';
-      fullPath: '/signin';
-      preLoaderRoute: typeof SigninRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    '/settings': {
-      id: '/settings';
-      path: '/settings';
-      fullPath: '/settings';
-      preLoaderRoute: typeof SettingsRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    '/profiles': {
-      id: '/profiles';
-      path: '/profiles';
-      fullPath: '/profiles';
-      preLoaderRoute: typeof ProfilesRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    '/log': {
-      id: '/log';
-      path: '/log';
-      fullPath: '/log';
-      preLoaderRoute: typeof LogRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    '/conflicts': {
-      id: '/conflicts';
-      path: '/conflicts';
-      fullPath: '/conflicts';
-      preLoaderRoute: typeof ConflictsRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    '/commands': {
-      id: '/commands';
-      path: '/commands';
-      fullPath: '/commands';
-      preLoaderRoute: typeof CommandsRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    '/browse': {
-      id: '/browse';
-      path: '/browse';
-      fullPath: '/browse';
-      preLoaderRoute: typeof BrowseRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    '/author': {
-      id: '/author';
-      path: '/author';
-      fullPath: '/author';
-      preLoaderRoute: typeof AuthorRouteImport;
+    '/': {
+      id: '/';
+      path: '/';
+      fullPath: '/';
+      preLoaderRoute: typeof IndexRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     '/about': {
@@ -251,18 +202,60 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AboutRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    '/': {
-      id: '/';
-      path: '/';
-      fullPath: '/';
-      preLoaderRoute: typeof IndexRouteImport;
+    '/author': {
+      id: '/author';
+      path: '/author';
+      fullPath: '/author';
+      preLoaderRoute: typeof AuthorRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    '/mod/$slug': {
-      id: '/mod/$slug';
-      path: '/mod/$slug';
-      fullPath: '/mod/$slug';
-      preLoaderRoute: typeof ModSlugRouteImport;
+    '/browse': {
+      id: '/browse';
+      path: '/browse';
+      fullPath: '/browse';
+      preLoaderRoute: typeof BrowseRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    '/commands': {
+      id: '/commands';
+      path: '/commands';
+      fullPath: '/commands';
+      preLoaderRoute: typeof CommandsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    '/conflicts': {
+      id: '/conflicts';
+      path: '/conflicts';
+      fullPath: '/conflicts';
+      preLoaderRoute: typeof ConflictsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    '/log': {
+      id: '/log';
+      path: '/log';
+      fullPath: '/log';
+      preLoaderRoute: typeof LogRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    '/profiles': {
+      id: '/profiles';
+      path: '/profiles';
+      fullPath: '/profiles';
+      preLoaderRoute: typeof ProfilesRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    '/settings': {
+      id: '/settings';
+      path: '/settings';
+      fullPath: '/settings';
+      preLoaderRoute: typeof SettingsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    '/signin': {
+      id: '/signin';
+      path: '/signin';
+      fullPath: '/signin';
+      preLoaderRoute: typeof SigninRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     '/collection/$slug': {
@@ -270,6 +263,13 @@ declare module '@tanstack/react-router' {
       path: '/collection/$slug';
       fullPath: '/collection/$slug';
       preLoaderRoute: typeof CollectionSlugRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    '/mod/$slug': {
+      id: '/mod/$slug';
+      path: '/mod/$slug';
+      fullPath: '/mod/$slug';
+      preLoaderRoute: typeof ModSlugRouteImport;
       parentRoute: typeof rootRouteImport;
     };
   }

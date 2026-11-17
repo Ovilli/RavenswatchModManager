@@ -1,10 +1,10 @@
 import { type Collection, type ModListItem, hasPrivateOnlyTag } from '@rsmm/schemas';
-import { RegistryModCard } from '@rsmm/ui';
 import { Download, Edit2, ExternalLink, Layers, TriangleAlert, Users } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { REGISTRY_CATEGORIES } from '../../lib/registry-query';
 import { ModCover } from './mod-cover';
+import './mod-card.css';
 
 type CardMod = Pick<
   ModListItem,
@@ -40,32 +40,6 @@ export function ListingCard(props: ListingCardProps) {
   const category =
     REGISTRY_CATEGORIES.find(({ id }) => id === mod?.category)?.label ?? mod?.category;
   const hasRating = mod?.rating != null && mod.ratingCount !== 0;
-
-  if (mod && !manage) {
-    return (
-      <RegistryModCard
-        href={href}
-        privateOnly={privateOnly}
-        headingLevel={props.headingLevel}
-        mod={{
-          slug: mod.slug,
-          name: mod.name,
-          imageUrl: mod.imageUrl,
-          summary: mod.summary,
-          latestVersion: mod.latestVersion,
-          downloads: mod.downloads,
-          author: mod.author,
-          rating: mod.rating,
-          ratingCount: mod.ratingCount,
-          featured: mod.featured,
-          nsfw: mod.nsfw,
-          tags: mod.tags,
-          category,
-          role: mod.role,
-        }}
-      />
-    );
-  }
 
   return (
     <div className="mod-card">

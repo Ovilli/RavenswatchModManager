@@ -8,9 +8,6 @@
   "exports": {
     ".": "./src/index.ts",
     "./styles.css": "./src/styles.css",
-    "./registry.css": "./src/registry.css",
-    "./registry-detail.css": "./src/registry-detail.css",
-    "./registry-media": "./src/lib/registry-media.ts",
     "./tailwind-preset": "./tailwind.preset.cjs"
   },
   "scripts": {

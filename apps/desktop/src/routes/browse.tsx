@@ -5,27 +5,29 @@ import {
   isPrivateOnlyTag,
 } from '@rsmm/schemas';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  RegistryFilterDialog,
-  RegistryModCard,
-  RegistryResultsControls,
-  RegistrySearchBar,
-} from '@rsmm/ui';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import {
+  ChevronDown,
+  ChevronRight,
   ExternalLink,
+  EyeOff,
+  LayoutGrid,
   Loader2,
   Plus,
+  Rows3,
+  Search,
   WifiOff,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Button,
   CopyButton,
   Cover,
+  MonoTag,
   Panel,
+  SectionHeader,
   StatPill,
   useModalChrome,
 } from '../components/chrome';
@@ -69,7 +71,12 @@ function BrowsePage() {
   // point of the whole layout: clicking through five mods should not cost five
   // navigations and five trips back.
   const [selected, setSelected] = useState<string | null>(null);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  // `null` = follow the layout: open when browsing, collapsed while a mod's
+  // details are taking up the middle column. A click on the header pins it
+  // either way, because a filter panel that reopens itself is worse than one
+  // that stays where you put it.
+  const [filtersPinned, setFiltersPinned] = useState<boolean | null>(null);
+  const filterBodyId = useId();
   const [minRating, setMinRating] = useState(0);
   const installed = useApp((s) => s.installed);
   const profiles = useApp((s) => s.profiles);
@@ -180,6 +187,16 @@ function BrowsePage() {
 
   const activeFilters = countActiveFilters({ category, tags, minRating, hideInstalled });
 
+  const clearFilters = () => {
+    setCategory(null);
+    setTags([]);
+    setMinRating(0);
+    setHideInstalled(false);
+  };
+
+  const toggleTag = (t: string) =>
+    setTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
+
   const collections = useMemo(
     () => (tab === 'mods' ? [] : filterCollections(colData?.items ?? [], q)),
     [colData, q, tab],
@@ -216,8 +233,144 @@ function BrowsePage() {
     if (view !== 'list') setSelected(null);
   }, [view]);
 
+  // Auto-collapse, unless the user has said otherwise.
+  const filtersOpen = filtersPinned ?? selected === null;
+
+  /**
+   * Hoisted so it can be rendered in either place: its own column while
+   * browsing, or folded into the narrow index column once a mod's page has
+   * taken the right-hand side. One definition, two homes — a second copy would
+   * drift the first time a facet was added.
+   */
+  const filterPanel =
+    tab === 'mods' ? (
+      <aside
+        aria-label={t('Filters')}
+        // Its own sticky column while browsing; a plain block at the top of the
+        // index column once a mod is open, where the column already sets the
+        // width and the sticky/order rules would fight it.
+        className={`grimoire-card flex flex-col gap-3 p-3 ${
+          selected
+            ? ''
+            : `p-4 lg:sticky lg:top-2 lg:order-3 lg:shrink-0 ${filtersOpen ? 'lg:w-64' : 'lg:w-auto'}`
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => setFiltersPinned(!filtersOpen)}
+          aria-expanded={filtersOpen}
+          aria-controls={filterBodyId}
+          className="flex items-baseline justify-between gap-3 text-left"
+        >
+          <span className="font-fraktur inline-flex items-baseline gap-2 text-lg text-parchment">
+            {filtersOpen ? (
+              <ChevronDown className="h-4 w-4 self-center text-ash" aria-hidden />
+            ) : (
+              <ChevronRight className="h-4 w-4 self-center text-ash" aria-hidden />
+            )}
+            {t('Filters')}
+          </span>
+          {/* Collapsed, the count of ACTIVE filters is the load-bearing
+                      number: it is the only way to tell a short result list from a
+                      filtered one when the facets are hidden. */}
+          <span className="font-mono whitespace-nowrap text-xs text-ash">
+            {filtersOpen
+              ? t.n(list.length, '{n} mod', '{n} mods')
+              : activeFilters > 0
+                ? t('{n} on', { n: activeFilters })
+                : t('off')}
+          </span>
+        </button>
+
+        {filtersOpen ? (
+          <div id={filterBodyId} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <span className="text-ash text-xs">{t('Category')}</span>
+              <div className="flex flex-wrap gap-1.5">
+                <FilterChip active={category === null} onClick={() => setCategory(null)}>
+                  {t('any')}
+                </FilterChip>
+                {facets.categories.map(([name, count]) => (
+                  <FilterChip
+                    key={name}
+                    active={category === name}
+                    onClick={() => setCategory(category === name ? null : name)}
+                  >
+                    {name} <span className="text-ash">{count}</span>
+                  </FilterChip>
+                ))}
+              </div>
+              {facets.categories.length === 0 ? (
+                <span className="font-serif-italic text-sm text-ash">
+                  {t('nothing published yet')}
+                </span>
+              ) : null}
+            </div>
+
+            {facets.tags.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                <span className="text-ash text-xs">{t('Tags')}</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {facets.tags.map(([name, count]) => (
+                    <FilterChip
+                      key={name}
+                      active={tags.includes(name)}
+                      onClick={() => toggleTag(name)}
+                    >
+                      {isPrivateOnlyTag(name) ? t('Private games only') : name}{' '}
+                      <span className="text-ash">{count}</span>
+                    </FilterChip>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <label className="flex flex-col gap-2">
+              <span className="text-ash text-xs">{t('Rating')}</span>
+              <select
+                value={minRating}
+                onChange={(e) => setMinRating(Number(e.target.value))}
+                aria-label={t('Minimum rating')}
+                className="select-grim"
+              >
+                <option value={0}>{t('any')}</option>
+                <option value={3}>★ 3+</option>
+                <option value={4}>★ 4+</option>
+                <option value={4.5}>★ 4.5+</option>
+              </select>
+            </label>
+
+            <label className="flex cursor-pointer items-start gap-2 text-parchment">
+              <input
+                type="checkbox"
+                checked={hideInstalled}
+                onChange={(e) => setHideInstalled(e.target.checked)}
+                className="mt-1 h-4 w-4 accent-crimson"
+              />
+              <span className="font-serif-italic text-sm">{t('Hide what I already have')}</span>
+            </label>
+
+            {activeFilters > 0 ? (
+              <Button type="button" size="sm" onClick={clearFilters} className="w-full">
+                <X className="h-3.5 w-3.5" aria-hidden /> {t('clear {n}', { n: activeFilters })}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+      </aside>
+    ) : null;
+
   return (
     <div className="space-y-6">
+      <SectionHeader
+        title={tab === 'mods' ? t('Browse') : t('Collections')}
+        subtitle={
+          tab === 'mods'
+            ? t('The remote index. Mods from the community catalog.')
+            : t('Curated bundles of mods made by the community.')
+        }
+      />
+
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           {/* `aria-pressed`, like every other toggle group in the app: colour
@@ -241,39 +394,82 @@ function BrowsePage() {
             {t('Collections')}
           </Button>
         </div>
-        <div className="min-w-[260px] flex-1">
-          <RegistrySearchBar
-            query={q}
-            onQueryChange={setQ}
+        <div className="relative flex-1 min-w-[260px]">
+          <Search
+            className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ash"
+            aria-hidden
+          />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
             placeholder={tab === 'mods' ? t('Search the index…') : t('Search collections…')}
-            searchLabel={tab === 'mods' ? t('Search mods') : t('Search collections')}
-            activeFilters={activeFilters}
-            filtersOpen={filtersOpen}
-            onOpenFilters={tab === 'mods' ? () => setFiltersOpen(true) : undefined}
+            aria-label={tab === 'mods' ? t('Search mods') : t('Search collections')}
+            className="input-grim"
           />
         </div>
         {tab === 'mods' ? (
-          <RegistryResultsControls
-            sort={sort}
-            view={view}
-            labels={{
-              sortBy: t('Sort by'),
-              sort: t('Sort mods'),
-              popular: t('popular'),
-              recent: t('recent'),
-              rating: t('Top rated'),
-              layout: t('Layout'),
-              cards: t('Cards'),
-              list: t('List'),
-            }}
-            onSortChange={setSort}
-            onViewChange={(nextView) => update({ browseView: nextView })}
-          />
+          <>
+            <div className="flex items-center gap-2">
+              {(['popular', 'recent', 'rating'] as const).map((s) => (
+                <Button
+                  key={s}
+                  type="button"
+                  onClick={() => setSort(s)}
+                  aria-pressed={sort === s}
+                  variant={sort === s ? 'gilt' : 'default'}
+                  size="sm"
+                >
+                  {s === 'popular' ? t('popular') : s === 'recent' ? t('recent') : t('rating')}
+                </Button>
+              ))}
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 text-parchment">
+              <input
+                type="checkbox"
+                checked={showNsfw}
+                onChange={(e) => update({ showNsfw: e.target.checked })}
+                className="h-4 w-4 accent-crimson"
+              />
+              <MonoTag tone="crimson">
+                <EyeOff className="mr-1 h-3 w-3" /> NSFW
+              </MonoTag>
+            </label>
+            <fieldset className="ml-auto flex items-center gap-1">
+              <legend className="sr-only">{t('Layout')}</legend>
+              <Button
+                type="button"
+                size="sm"
+                aria-pressed={view === 'grid'}
+                variant={view === 'grid' ? 'gilt' : 'default'}
+                onClick={() => update({ browseView: 'grid' })}
+                title={t('Cards')}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" aria-hidden /> {t('cards')}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                aria-pressed={view === 'list'}
+                variant={view === 'list' ? 'gilt' : 'default'}
+                onClick={() => update({ browseView: 'list' })}
+                title={t('List')}
+              >
+                <Rows3 className="h-3.5 w-3.5" aria-hidden /> {t('list')}
+              </Button>
+            </fieldset>
+          </>
         ) : null}
       </div>
 
-      {/* The shared registry filter dialog keeps filtering out of the list
-          layout, including when a mod detail is open beside it. */}
+      {/* TWO columns, never three. Faceted search reads as a column beside the
+          results — but once a mod's page is open there is no room for a third,
+          so the filters fold into the index column (collapsed, see
+          `filtersOpen`) and the store page takes the whole right-hand side.
+          Squeezed into a middle column it had nowhere to put its own two-column
+          layout, and the index beside it was too narrow to show a mod's name.
+
+          Below `lg` there is no second column at all, so everything stacks —
+          a filter you cannot reach is worse than one that costs a scroll. */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         {selected ? (
           <section aria-label={t('Mod details')} className="min-w-0 flex-1 lg:order-2">
@@ -293,6 +489,9 @@ function BrowsePage() {
           </section>
         ) : null}
 
+        {/* Browsing: the filters get their own column on the right. */}
+        {selected ? null : filterPanel}
+
         {/* With a mod open the results become an index column, wide enough for
             a name and its install button and no wider. */}
         <div
@@ -302,6 +501,8 @@ function BrowsePage() {
               : 'min-w-0 flex-1 space-y-4 lg:order-1'
           }
         >
+          {/* …and the filters ride along above it, collapsed. */}
+          {selected ? filterPanel : null}
           {error ? (
             <div className="ember-banner flex flex-col gap-2 px-4 py-3">
               <div className="flex items-center gap-3">
@@ -421,6 +622,7 @@ function BrowsePage() {
                         key={m.id}
                         m={m}
                         active={selected === m.slug}
+                        compact={selected !== null}
                         onOpen={() => setSelected(m.slug)}
                         install={
                           <InstallButton
@@ -433,30 +635,110 @@ function BrowsePage() {
                         }
                       />
                     ))
-                  : list.map((m) => (
-                      <RegistryModCard
-                        key={m.id}
-                        mod={m}
-                        privateOnly={hasPrivateOnlyTag(m.tags)}
-                        active={selected === m.slug}
-                        onOpen={() => navigate({ to: '/mod/$slug', params: { slug: m.slug } })}
-                        actions={
-                          <InstallButton
-                            m={m}
-                            installed={installed}
-                            profile={profile}
-                            installing={installing}
-                            onPick={openPicker}
-                          />
-                        }
-                        labels={{
-                          author: t('unknown'),
-                          nsfw: t('nsfw'),
-                          featured: t('Featured'),
-                          privateOnly: t('Private games only'),
-                        }}
-                      />
-                    ))}
+                  : list.map((m) => {
+                      return (
+                        <div
+                          key={m.id}
+                          tabIndex={0}
+                          // biome-ignore lint/a11y/useSemanticElements: card link with nested interactive controls; <a> may not legally wrap them, so a guarded role="link" is used
+                          role="link"
+                          aria-label={
+                            m.author
+                              ? t('{name} by {author}', { name: m.name, author: m.author })
+                              : m.name
+                          }
+                          onClick={(e) => {
+                            const el = e.target as HTMLElement;
+                            if (
+                              el.closest(
+                                'button, a, input, textarea, select, [role="switch"], [role="tooltip"]',
+                              )
+                            )
+                              return;
+                            navigate({ to: '/mod/$slug', params: { slug: m.slug } });
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.target !== e.currentTarget) return;
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              navigate({ to: '/mod/$slug', params: { slug: m.slug } });
+                            }
+                          }}
+                          aria-current={selected === m.slug ? 'true' : undefined}
+                          className={`grimoire-card flex cursor-pointer flex-col gap-3 p-5 transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60 ${
+                            selected === m.slug ? 'border-gilt/70 bg-gilt/5' : ''
+                          }`}
+                        >
+                          {m.imageUrl ? (
+                            <Cover
+                              src={m.imageUrl}
+                              alt={t('{name} cover', { name: m.name })}
+                              caption={`${m.slug}.png`}
+                              nsfw={m.nsfw}
+                            />
+                          ) : null}
+                          <header className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <Link
+                                to="/mod/$slug"
+                                params={{ slug: m.slug }}
+                                onClick={(e) => e.stopPropagation()}
+                                className="font-serif-italic break-words text-xl leading-tight text-parchment hover:text-gilt"
+                              >
+                                {m.name}
+                              </Link>
+                              {/* `truncate`: an author handle is a single
+                                  unbreakable token, so it overflowed the name
+                                  column instead of wrapping. */}
+                              <p className="font-mono mt-1 truncate text-ash">
+                                {m.author ?? t('unknown')}
+                                {m.latestVersion ? ` · v${m.latestVersion}` : ''}
+                              </p>
+                            </div>
+                            <InstallButton
+                              m={m}
+                              installed={installed}
+                              profile={profile}
+                              installing={installing}
+                              onPick={openPicker}
+                            />
+                          </header>
+                          {m.summary ? (
+                            <p className="font-serif-italic text-sm leading-snug text-smoke">
+                              {m.summary}
+                            </p>
+                          ) : null}
+                          {/* Wraps as a whole: the tag group and the rating
+                              pill share one line only while both fit. Pinned
+                              opposite a `shrink-0` pill, a single tag like
+                              "multiplayer" was wider than the space left for
+                              it and spilled out of the card. */}
+                          <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex min-w-0 flex-wrap gap-1">
+                              {hasPrivateOnlyTag(m.tags) ? <PrivateGamesOnlyBadge /> : null}
+                              {m.category ? <MonoTag tone="default">{m.category}</MonoTag> : null}
+                              {m.tags
+                                .filter((tag) => !isPrivateOnlyTag(tag))
+                                .slice(0, 2)
+                                .map((t) => (
+                                  <MonoTag key={t} tone="default">
+                                    {t}
+                                  </MonoTag>
+                                ))}
+                            </div>
+                            <StatPill
+                              className="shrink-0"
+                              value={m.rating != null ? `★ ${m.rating.toFixed(1)}` : '—'}
+                              label={
+                                m.downloads != null
+                                  ? t('{n} dl', { n: m.downloads.toLocaleString(t.tag) })
+                                  : ''
+                              }
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
               </div>
               {!isLoading && !error && list.length === 0 ? (
                 <p className="font-serif-italic py-10 text-center text-ash">
@@ -477,52 +759,6 @@ function BrowsePage() {
           onPick={pickProfile}
           onCreate={pickNewProfile}
           onCancel={() => setPickerSlug(null)}
-        />
-      ) : null}
-      {filtersOpen && tab === 'mods' ? (
-        <RegistryFilterDialog
-          value={{
-            category: category ?? '',
-            tags,
-            minRating,
-            toggles: { hideInstalled, showNsfw },
-          }}
-          categories={facets.categories.map(([name, count]) => ({ value: name, label: name, count }))}
-          tags={facets.tags.map(([name, count]) => ({
-            value: name,
-            label: isPrivateOnlyTag(name) ? t('Private games only') : name,
-            count,
-          }))}
-          ratings={[
-            { value: 0, label: t('any') },
-            { value: 3, label: '3+' },
-            { value: 4, label: '4+' },
-            { value: 4.5, label: '4.5+' },
-          ]}
-          toggles={[
-            { id: 'hideInstalled', label: t('Hide what I already have'), checked: hideInstalled },
-            { id: 'showNsfw', label: t('Include mature content'), checked: showNsfw },
-          ]}
-          labels={{
-            title: t('Filters'),
-            category: t('Category'),
-            tags: t('Tags'),
-            rating: t('Rating'),
-            preferences: t('Preferences'),
-            all: t('any'),
-            clear: t('Clear all'),
-            apply: t('Show mods'),
-          }}
-          onApply={(next) => {
-            setCategory(next.category || null);
-            setTags(next.tags);
-            setMinRating(next.minRating);
-            setHideInstalled(next.toggles.hideInstalled ?? false);
-            update({ showNsfw: next.toggles.showNsfw ?? showNsfw });
-            setFiltersOpen(false);
-          }}
-          onClose={() => setFiltersOpen(false)}
-          onClear={() => ({ category: '', tags: [], minRating: 0, toggles: { hideInstalled: false, showNsfw } })}
         />
       ) : null}
     </div>
@@ -564,7 +800,10 @@ function InstallButton({ m, installed, profile, installing, onPick }: InstallBut
       disabled={inProfile || installing[m.slug]}
       variant={inProfile ? 'default' : 'primary'}
       size="sm"
-      className="registry-install-button min-w-0 justify-center whitespace-nowrap"
+      // The label cycles install → downloading → in profile,
+      // each a different width. Without a floor the button
+      // resizes mid-download and squeezes the title next to it.
+      className="min-w-[7.5rem] justify-center whitespace-nowrap"
       title={
         inProfile
           ? t('Already in "{profile}"', { profile: profile.name })
@@ -575,23 +814,19 @@ function InstallButton({ m, installed, profile, installing, onPick }: InstallBut
     >
       {installing[m.slug] ? (
         <>
-          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-          <span className="registry-install-label">{t('downloading')}</span>
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('downloading')}
         </>
       ) : inProfile ? (
         <>
-          <CheckIcon className="h-4 w-4 shrink-0" />
-          <span className="registry-install-label">{t('in profile')}</span>
+          <CheckIcon className="h-4 w-4" /> {t('in profile')}
         </>
       ) : onDisk ? (
         <>
-          <Plus className="h-3.5 w-3.5 shrink-0" />
-          <span className="registry-install-label">{t('add')}</span>
+          <Plus className="h-3.5 w-3.5" /> {t('add')}
         </>
       ) : (
         <>
-          <Plus className="h-3.5 w-3.5 shrink-0" />
-          <span className="registry-install-label">{t('install')}</span>
+          <Plus className="h-3.5 w-3.5" /> {t('install')}
         </>
       )}
     </Button>
@@ -620,28 +855,118 @@ function ModRow({
   install,
   onOpen,
   active,
+  compact = false,
 }: {
   m: ModListItem;
   install: React.ReactNode;
   onOpen: () => void;
   active: boolean;
+  compact?: boolean;
 }) {
   const t = useT();
+  const open = onOpen;
   return (
-    <RegistryModCard
-      view="list"
-      mod={m}
-      privateOnly={hasPrivateOnlyTag(m.tags)}
-      active={active}
-      onOpen={onOpen}
-      actions={install}
-      labels={{
-        author: t('unknown'),
-        nsfw: t('nsfw'),
-        featured: t('Featured'),
-        privateOnly: t('Private games only'),
+    <div
+      tabIndex={0}
+      // biome-ignore lint/a11y/useSemanticElements: row link with nested interactive controls; <a> may not legally wrap them, so a guarded role="link" is used
+      role="link"
+      aria-label={m.author ? t('{name} by {author}', { name: m.name, author: m.author }) : m.name}
+      onClick={(e) => {
+        const el = e.target as HTMLElement;
+        if (el.closest('button, a, input, textarea, select, [role="switch"], [role="tooltip"]'))
+          return;
+        open();
       }}
-    />
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          open();
+        }
+      }}
+      aria-current={active ? 'true' : undefined}
+      className={`grimoire-card flex cursor-pointer items-center gap-3 px-3 py-2 transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60 ${
+        active ? 'border-gilt/70 bg-gilt/5' : ''
+      }`}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          {/* Plain text, NOT a link to the full page.
+              The row selects; the name is the most obvious thing to aim at, and
+              having it navigate away instead meant a slightly-off click threw
+              you out of the list you were working through. The detail panel
+              carries an explicit "open full page" for when that IS the intent. */}
+          <span className="font-serif-italic truncate text-base leading-tight text-parchment">
+            {m.name}
+          </span>
+          {m.nsfw ? (
+            <MonoTag tone="crimson" className="shrink-0 uppercase">
+              {t('nsfw')}
+            </MonoTag>
+          ) : null}
+        </div>
+        <p className="font-mono truncate text-xs text-ash">
+          {m.author ?? t('unknown')}
+          {m.latestVersion ? ` · v${m.latestVersion}` : ''}
+          {m.summary ? ` — ${m.summary}` : ''}
+        </p>
+        {hasPrivateOnlyTag(m.tags) ? (
+          <div className="mt-1">
+            <PrivateGamesOnlyBadge />
+          </div>
+        ) : null}
+      </div>
+
+      {/* Category and rating are the two columns worth scanning down, so they
+          get fixed slots rather than flowing with the title's length. Hidden on
+          a narrow window instead of crushing the name. */}
+      {/* One breakpoint later than feels natural, because these appear exactly
+          when the row gets NARROWER, not wider: at `lg` the filter panel takes
+          its own 16rem column out of a content area the sidebar has already
+          shortened by 18rem, so 240px of fixed columns plus the install button
+          no longer fit and the row overflowed its card. */}
+      {compact ? null : (
+        <>
+          <div className="hidden w-24 shrink-0 lg:block">
+            {m.category ? <MonoTag tone="default">{m.category}</MonoTag> : null}
+          </div>
+          <div className="font-mono hidden w-16 shrink-0 text-right text-xs text-gilt xl:block">
+            {m.rating != null ? `★ ${m.rating.toFixed(1)}` : '—'}
+          </div>
+          <div className="font-mono hidden w-20 shrink-0 text-right text-xs text-ash xl:block">
+            {m.downloads != null ? t('{n} dl', { n: m.downloads.toLocaleString(t.tag) }) : ''}
+          </div>
+        </>
+      )}
+      <div className="shrink-0">{install}</div>
+    </div>
+  );
+}
+
+/** One toggleable facet in the filter bar. `font-data`, like the `MonoTag` tags
+ * it filters: the facet and the tag on a card read as the same word. */
+function FilterChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`font-data rounded border px-2 py-0.5 text-xs transition-colors duration-150 ${
+        active
+          ? 'border-gilt/70 bg-gilt/15 text-parchment'
+          : 'border-border text-smoke hover:border-gilt/40 hover:text-parchment'
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 

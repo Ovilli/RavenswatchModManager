@@ -1,0 +1,100 @@
+.registry-search-slot {
+  min-width: 0;
+  width: min(100%, 640px);
+}
+.registry-search {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  height: 52px;
+  padding: 5px;
+  border: 1px solid hsl(var(--char));
+  border-radius: 999px;
+  background: hsl(var(--surface-1));
+}
+.registry-search:focus-within {
+  border-color: hsl(var(--gilt));
+}
+.registry-search input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding-inline: 6px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: hsl(var(--foreground));
+  font-size: 1rem;
+  line-height: 1.4;
+}
+.registry-search input::placeholder {
+  color: hsl(32 17% 68%);
+  opacity: 1;
+}
+.registry-search input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+.registry-search-submit,
+.registry-search-clear {
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: hsl(32 17% 68%);
+}
+.registry-search-submit:hover,
+.registry-search-clear:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--surface-2));
+}
+.registry-search-filters {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  gap: 7px;
+  height: 40px;
+  margin-left: 8px;
+  padding: 0 15px;
+  border-left: 1px solid hsl(var(--char));
+  border-radius: 0 999px 999px 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.registry-search-filters:hover {
+  background: hsl(var(--surface-2));
+}
+.registry-search-filters[data-active="true"] {
+  color: hsl(var(--crimson-text));
+}
+.registry-search-filter-count {
+  position: absolute;
+  top: -4px;
+  right: 2px;
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding-inline: 4px;
+  border-radius: 50%;
+  background: hsl(var(--parchment));
+  color: hsl(var(--background));
+  font-size: 0.6875rem;
+  line-height: 1;
+}
+@media (max-width: 640px) {
+  .registry-search-submit,
+  .registry-search-clear {
+    flex-basis: 36px;
+    width: 36px;
+  }
+  .registry-search-filters {
+    gap: 5px;
+    margin-left: 4px;
+    padding-inline: 10px;
+  }
+}
