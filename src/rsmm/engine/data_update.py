@@ -41,7 +41,7 @@ META_NAME = "function_patterns.meta.json"
 # tag's assets (`scripts/publish_pattern_db.sh`), no app release required.
 # Overridable for tests and for a future move to a first-party host.
 DEFAULT_REMOTE_BASE = (
-    "https://github.com/Ovilli/RavenswatchModManager/releases/download/pattern-db"
+    "https://github.com/Ravenswatch-Modding/RavenswatchModManager/releases/download/pattern-db"
 )
 
 _TIMEOUT = 30.0

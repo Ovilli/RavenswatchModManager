@@ -21,7 +21,7 @@ export const metadata: Metadata = {
 export const revalidate = 3600;
 
 const releaseUrl = (tag: string) =>
-  `https://github.com/Ovilli/RavenswatchModManager/releases/tag/${tag}`;
+  `https://github.com/Ravenswatch-Modding/RavenswatchModManager/releases/tag/${tag}`;
 const releasesUrl = RELEASES_URL;
 
 const steps = [

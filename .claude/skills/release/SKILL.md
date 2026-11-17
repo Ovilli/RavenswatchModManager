@@ -17,7 +17,7 @@ Moved out of the root `CLAUDE.md`.
 
 ## Notes
 
-**Updater + signing.** Tauri updater feed is `https://github.com/Ovilli/RavenswatchModManager/releases/latest/download/latest.json`, assembled by the `publish-updater-manifest` job in `.github/workflows/release.yml` from `.sig` files produced by `pnpm tauri build`. Pubkey embedded in `tauri.conf.json`; signing private key lives in `TAURI_SIGNING_PRIVATE_KEY` repo secret. The job is skipped when `vars.HAS_UPDATER_SIGNING != 'true'`, in which case releases ship without auto-update support.
+**Updater + signing.** Tauri updater feed is `https://github.com/Ravenswatch-Modding/RavenswatchModManager/releases/latest/download/latest.json`, assembled by the `publish-updater-manifest` job in `.github/workflows/release.yml` from `.sig` files produced by `pnpm tauri build`. Pubkey embedded in `tauri.conf.json`; signing private key lives in `TAURI_SIGNING_PRIVATE_KEY` repo secret. The job is skipped when `vars.HAS_UPDATER_SIGNING != 'true'`, in which case releases ship without auto-update support.
 
 **Version sources.** Five files must move in lockstep on every release: `apps/desktop/src-tauri/tauri.conf.json`, `apps/desktop/src-tauri/Cargo.toml`, `apps/desktop/src-tauri/Cargo.lock` (the `rsmm-desktop` entry), `apps/desktop/package.json`, and `pyproject.toml` (the CLI, which ships as the sidecar). Root `package.json` stays at `0.1.0`. Use `scripts/bump-version.py` to keep them aligned; its `--summary`/`--highlight` put the matching `data/changelog.json` entry in the same commit — the desktop app shows it once in a "What's new" dialog after the updater restarts the user into the new build, and a release with no entry silently shows nothing.
 

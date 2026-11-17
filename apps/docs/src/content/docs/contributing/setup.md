@@ -29,7 +29,7 @@ Platform extras for Tauri 2 desktop builds: see [tauri.app/start/prerequisites](
 
 ```sh
 # 1. Clone
-git clone https://github.com/Ovilli/RavenswatchModManager.git
+git clone https://github.com/Ravenswatch-Modding/RavenswatchModManager.git
 cd RavenswatchModManager
 
 # 2. Python virtual env (for the rsmm CLI)

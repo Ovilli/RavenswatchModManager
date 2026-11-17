@@ -75,3 +75,19 @@ def test_options_pierce_bare_and_base_impact():
     assert "Projectile_Model\\Projectile Attack" in sel and "Piercing" not in sel
     assert PF._fx_ids(me, "Alive Fx Default") == []
     assert PF.BASE_IMPACT.encode() in bytes(me.objects[PF._fx_ids(me, "Impact Fx Default")[0]])
+
+
+@needs_corpus
+def test_a_projectile_counts_as_the_damage_of_the_button_that_fires_it():
+    """``modifier_type`` overrides the base's constant 0 (a basic attack), as
+    11 of 15 shipped hero projectiles do, so the firing button's talents reach
+    its hits; left out, the base's selector stays."""
+    import struct
+
+    from rsmm.engine import entity_graph as EG
+    typed = EG.parse(PF.build(_read, stem="Hero_T_Axe", mesh="a.fbx", material="",
+                              modifier_type=5))
+    sel = {c.name: c for c in typed.components}["Modifier Type Selector"]
+    assert sel.override is not None and struct.unpack_from("<i", sel.body, 78)[0] == 5
+    plain = EG.parse(PF.build(_read, stem="Hero_T_Axe", mesh="a.fbx", material=""))
+    assert "Modifier Type Selector" not in {c.name for c in plain.components}

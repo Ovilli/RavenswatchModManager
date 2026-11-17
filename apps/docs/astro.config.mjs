@@ -71,13 +71,13 @@ export default defineConfig({
         },
       ],
       editLink: {
-        baseUrl: 'https://github.com/Ovilli/RavenswatchModManager/edit/main/apps/docs/',
+        baseUrl: 'https://github.com/Ravenswatch-Modding/RavenswatchModManager/edit/main/apps/docs/',
       },
       social: [
         {
           icon: 'github',
           label: 'GitHub',
-          href: 'https://github.com/Ovilli/RavenswatchModManager',
+          href: 'https://github.com/Ravenswatch-Modding/RavenswatchModManager',
         },
       ],
       // /editor/ is a standalone Astro page (the web editor), not a Starlight doc.

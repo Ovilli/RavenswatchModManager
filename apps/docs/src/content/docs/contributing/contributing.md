@@ -31,8 +31,8 @@ are all welcome.
   through a `manifest.toml` and high-level `R.*` calls. `rsmm lint` enforces this.
 - **No hardcoded engine addresses.** Add a symbol to `data/symbols.json` instead.
 
-Be kind, see the [code of conduct](https://github.com/Ovilli/RavenswatchModManager/blob/main/CODE_OF_CONDUCT.md). Security issues go through
-the [security policy](https://github.com/Ovilli/RavenswatchModManager/blob/main/SECURITY.md), not public issues.
+Be kind, see the [code of conduct](https://github.com/Ravenswatch-Modding/RavenswatchModManager/blob/main/CODE_OF_CONDUCT.md). Security issues go through
+the [security policy](https://github.com/Ravenswatch-Modding/RavenswatchModManager/blob/main/SECURITY.md), not public issues.
 
 ## Report issues
 

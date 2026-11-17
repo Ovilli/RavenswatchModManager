@@ -10,14 +10,14 @@ sidebar:
 ### Is RSMM free?
 
 Yes. RSMM is free and open source under the MIT licence. All of its code is on
-[GitHub](https://github.com/Ovilli/RavenswatchModManager).
+[GitHub](https://github.com/Ravenswatch-Modding/RavenswatchModManager).
 
 ### Is it safe? Windows warned me about it.
 
 Windows shows **"Windows protected your PC"** for programs that haven't paid for
 a code-signing certificate, which is common for small free projects. Click
 **More info**, then **Run anyway**. Download RSMM only from the official
-[release page](https://github.com/Ovilli/RavenswatchModManager/releases/latest).
+[release page](https://github.com/Ravenswatch-Modding/RavenswatchModManager/releases/latest).
 
 Mods on [rsmm.me](https://rsmm.me/registry) are scanned for malware before they
 appear on the site. Mods you get anywhere else haven't been checked, so treat
@@ -135,7 +135,7 @@ Run `rsmm pack MyMod` to make a `.zip`, then upload it on
 
 ### Where can I ask for help?
 
-Open an issue on [GitHub](https://github.com/Ovilli/RavenswatchModManager/issues).
+Open an issue on [GitHub](https://github.com/Ravenswatch-Modding/RavenswatchModManager/issues).
 Include your operating system, your RSMM version (**Settings → About**), and a
 [shared log link](/getting-started/troubleshooting/#share-your-log). First, try
 the [troubleshooting page](/getting-started/troubleshooting/): it covers the most
