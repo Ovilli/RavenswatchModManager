@@ -2,6 +2,18 @@
   "generated": "2026-11-17",
   "entries": [
     {
+      "version": "5.9.33",
+      "date": "2026-11-17",
+      "summary": "Works with the 2026-11-17 game patch. Game files restore when Ravenswatch closes, so a Steam launch is always vanilla. Simpler sidebar, launch and profile navigation. Scratch hero fixes.",
+      "highlights": [
+        "Works with the 2026-11-17 game patch",
+        "Game files restore when Ravenswatch closes, so a Steam launch is always vanilla",
+        "Simpler sidebar, launch and profile navigation",
+        "Scratch hero fixes"
+      ],
+      "loader_version": 62
+    },
+    {
       "version": "",
       "date": "2026-11-17",
       "summary": "Works with the 2026-11-17 game patch: symbols and struct offsets remapped for the new build.",
@@ -496,19 +508,6 @@
         "The item editor gets a Timed effect section and a card preview that shows the numbers the game will print"
       ],
       "cli_version": 6
-    },
-    {
-      "version": "",
-      "date": "2026-10-20",
-      "summary": "Item mods: timed bonuses and correct cards. Copied items show their own description, can drop the super effect, show fractions as percentages, and can copy parts from other items.",
-      "highlights": [
-        "Items can copy parts from another item with clone steps (from = an entity path), e.g. a timed '+X for N seconds' bonus",
-        "New percent step shows a card number as a percentage (a 0.3 crit bonus read '+0%')",
-        "super_effect = false removes a copy's super effect and its card text",
-        "A copy now shows its own description even when its base's text key does not contain the base id",
-        "The item editor gets an own-identity checkbox for copies, so a copy is not granted as its base"
-      ],
-      "cli_version": 5
     }
   ]
 }
