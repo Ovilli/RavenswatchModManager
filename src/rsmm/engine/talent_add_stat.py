@@ -780,6 +780,14 @@ def add_stat(raw: bytes, *, talent: str, stat: str | int, values=None, percent: 
             ef.add_external_ref(state.name, "activates", inc, inc_label)
             ef.add_external_ref(state.name, "disables_while_active?", dec, dec_label)
             new_mod = ""
+        elif key == _ANY_DEBUFF_DAMAGE:
+            # The general "Increase damage for each debuff" is read and then
+            # overwritten by the per-ability key for every hit type 0..6
+            # (FUN_1403a9b60), so it changed nothing (0 shipped uses). Written
+            # as all 7 per-ability stats off the one rarity number instead.
+            for i, k in enumerate(_PER_ABILITY_DEBUFF_DAMAGE):
+                w.modifier(f"{new_mod} {i}", k, amount)
+                ef.add_ref(state.name, "while_active", f"{new_mod} {i}")
         else:
             w.modifier(new_mod, key, amount)
             ef.add_ref(state.name, "while_active", new_mod)
@@ -789,6 +797,14 @@ def add_stat(raw: bytes, *, talent: str, stat: str | int, values=None, percent: 
     except (GE.EntityEditError, P.PartError) as e:
         raise AddStatError(f"talent {talent!r}: {e}") from e
     return out, AddedStat(new_sel, new_mod, slot)
+
+
+#: "Increase damage for each debuff" and the 7 keys the engine reads in its
+#: place, one per hit type (basic, primary, secondary, defensive, trait,
+#: ultimate, dash).
+_ANY_DEBUFF_DAMAGE = 0x17032652
+_PER_ABILITY_DEBUFF_DAMAGE = (0x1b8db6e4, 0x1b8db6e6, 0x1b8db6e8, 0x1b8db6ea, 0x1b8db6ec,
+                              0x1b8db6ed, 0x1b8db6ef)
 
 
 def action_state_name(talent: str, n: int) -> str:
@@ -822,7 +838,10 @@ def add_action_trigger(raw: bytes, *, talent: str, on: str, n: int = 1,
     ef = GE.EntityFile(raw)
     try:
         w = TW.TalentWriter(ef, f"{seed or talent}:action:{n}", state.group)
-        fires = w.state(name, flags=_flags_of(ef, state.name), mode=_mode_of(state))
+        # a one-frame EVENT (the item trigger proven in game is one): a copy of
+        # the owned state's flags (0x1, stays on) switched on once and never
+        # again, so every action talent fired once per run (audit 2026-11-16)
+        fires = w.state(name, flags=TW.EVENT, mode=1)
         listener = add_listener(w, on, f" Skill {talent} Action {n}", fires,
                                 alive=False, group=w.group, start_active=False)
         ef.add_ref(state.name, "while_active", listener)

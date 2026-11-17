@@ -738,3 +738,17 @@ def test_timed_intangible_loop_and_passive_buttons():
                 {"loop": True, "passive": True}):
         with pytest.raises(HA.AbilityError):
             HA.Ability.parse("power", bad)
+
+
+@needs_corpus
+def test_a_copied_sound_overrides_nothing():
+    """A donor FMod event that is itself an override (Jack NPC's voice walla
+    overrides Character_Common's footstep) is copied as an ordinary part: the
+    copy kept the header and replaced the hero's footsteps (audit 2026-11-16)."""
+    from rsmm.engine import entity_graph as EG
+    from rsmm.engine import hero_ability as HA
+    ef = _hero("Hero_T")
+    donor = "DarkHills\\Jack\\Jack_NPC_Model.entity.ot | Voice Walla Jack Dodge FMod Event"
+    HA.own_sound(ef, donor, name="T Sound", group="Ability Dash", seed="t")
+    g = {c.name: c for c in EG.parse(ef.to_bytes(), "Hero_T").components}
+    assert g["T Sound"].override is None

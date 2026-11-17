@@ -90,6 +90,31 @@ def _set_pitch(ef: EntityFile, radians: float) -> None:
     struct.pack_into("<f", p, v, radians)
 
 
+#: Which button's damage a hit of the projectile counts as (the hero's
+#: ``hero_ability.DAMAGE_TYPE``: attack 0, power 1, special 2, defense 3,
+#: trait 4, ultimate 5, dash 6). The base's selector is a constant 0, so every
+#: projectile counted as a BASIC attack and the talents of the button that
+#: fired it never reached it (audit 2026-11-16). 11 of 15 shipped hero
+#: projectiles override it with their own constant (Carmilla's power orb 1,
+#: her bats 3, Beowulf's ultimate fireball 5).
+_TYPE_SELECTOR = "Modifier Type Selector"
+#: Where the selector's one entry keeps its int, in the record body: the
+#: value union's type word (1 = int), then the number.
+_TYPE_AT = 74
+
+
+def _set_modifier_type(ef: EntityFile, base: EntityFile, value: int) -> None:
+    import struct
+    HF.fill_slot(ef, base, _TYPE_SELECTOR)
+    c = ef.component(_TYPE_SELECTOR)
+    p = ef.objects[c.index - 1]
+    at = len(p) - len(c.body) + _TYPE_AT
+    if struct.unpack_from("<I", p, at)[0] != 1:
+        raise ProjectileError(f"{_TYPE_SELECTOR}: its entry is not an int where expected "
+                              "(the base's layout changed)")
+    struct.pack_into("<i", p, at + 4, value)
+
+
 def _set_float(ef: EntityFile, part: str, name: str, value: float) -> None:
     p, at, size = _value_field(ef, part, name)
     if size != _PICK_F32 or struct.unpack_from("<I", p, at + 17)[0] != 0:
@@ -186,7 +211,7 @@ def _trail_tuning(obj: bytearray, flag_at: int) -> None:
 
 def build(read, *, stem: str, mesh: str, material: str, lifetime: float = 1.0,
           trail: str = "", impact: str = "", pierce: bool = True,
-          size: float = SIZE, pitch: float = PITCH) -> bytes:
+          size: float = SIZE, pitch: float = PITCH, modifier_type: int | None = None) -> bytes:
     """The projectile entity ``stem`` (cooked bytes). ``read`` reads a shipped
     entity by reference; ``mesh``/``material`` are cooked 3D paths of the
     mod's own; ``trail``/``impact`` name ``.vfx.ot`` effects (an empty trail
@@ -199,6 +224,8 @@ def build(read, *, stem: str, mesh: str, material: str, lifetime: float = 1.0,
     ef = EntityFile(HF.main_frame(MODEL, HF.guid(stem, "projectile")), stem)
     try:
         HF.fill_slot(ef, base, "Lifetime Duration", value=float(lifetime))
+        if modifier_type is not None:
+            _set_modifier_type(ef, base, int(modifier_type))
         HF.fill_slot(ef, base, "Mesh")
         _swap_resource(ef, "Mesh", (_SAMPLES, _BASE_MESH), ("3D", mesh))
         if material:                     # else the base's plain grey
