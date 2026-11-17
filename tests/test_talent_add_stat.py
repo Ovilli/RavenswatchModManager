@@ -857,3 +857,18 @@ def test_convert_crit_zeroes_crit_only_while_its_condition_holds(wukong):
         assert any("DEFENSE" in r for r in refs), refs
     with pytest.raises(TA.AddStatError, match="only one talent"):
         TA.add_stat(out, talent="Power Hold", stat="Convert crit into damage")
+
+
+def test_vitality_points_are_stored_as_a_fraction_and_shown_as_points(wukong):
+    """Vitality is written in points (+10) but its modifier stores a fraction
+    (one point is 0.01, the item path proven in game); the card shows it x100,
+    so it still reads 10 (Golden Bean wrote +1000, audit 2026-11-16)."""
+    out, added = TA.add_stat(wukong, talent="Trait Fire", stat="Vitality",
+                             values=[10, 15, 20, 25], percent=False)
+    tiers = {t: round(v[1], 4) for t, v in TV.tier_values(out, added.selector).items()}
+    assert tiers == {"Common": 0.10, "Rare": 0.15, "Epic": 0.20, "Legendary": 0.25}
+    from rsmm.engine import entity_graph_edit as GE
+    card = comp(out, "Skill String Desc Trait Fire")
+    slot = GE.EntityFile(out)._format_slots(card)[0][added.slot]
+    # the slot's display mode, the u32 before its end mark: 1 = shown x100
+    assert struct.unpack_from("<I", card.body, slot.offset + slot.size - 8)[0] == 1
