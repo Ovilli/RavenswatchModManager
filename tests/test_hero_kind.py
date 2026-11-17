@@ -417,11 +417,21 @@ def test_a_relinked_number_takes_its_new_targets_accessor():
 
 @needs_corpus
 def test_a_copy_across_class_versions_is_refused():
-    """Character_Common's damage records are version 1.23, Scarlet's bomb's
-    1.21: a copied record is read with the wrong layout and the bomb never
-    loaded in game (2026-11-01). Copying the bomb's own record works."""
+    """A record copied from a file whose class is a NEWER version than the
+    target's is read with the wrong layout: Scarlet's bomb (damage records
+    1.21) never loaded in game with Character_Common's 1.23 copied in
+    (2026-11-01). The 2026-11-17 patch recooked every damage record to 1.23,
+    so the bomb's own class is lowered to 1.21 here to keep the guard tested.
+    Copying the bomb's own record works."""
+    import struct
+
     from rsmm.engine import ability_edit as AE
-    files = {"Hero_Red": corpus.read(_RED), "Hero_Red_Bomb": corpus.read(_RED_BOMB)}
+    bomb = bytearray(corpus.read(_RED_BOMB))
+    name = b"oCDtEntityCpntDamageSettings"
+    at = bomb.find(name) + len(name) + 8          # class id, major, MINOR
+    assert struct.unpack_from("<I", bomb, at)[0] in (21, 23)
+    struct.pack_into("<I", bomb, at, 21)
+    files = {"Hero_Red": corpus.read(_RED), "Hero_Red_Bomb": bytes(bomb)}
     with pytest.raises(AE.AbilityEditError, match="version 1.21 of it, the source 1.23"):
         AE.apply(files, [{"entity": "Bomb", "clone": ["Bleed Damage"],
                           "from": "Character_Common/Character_Common"}],
