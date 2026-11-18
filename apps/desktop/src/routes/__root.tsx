@@ -2,7 +2,6 @@ import type { QueryClient } from '@tanstack/react-query';
 import { Link, Outlet, createRootRouteWithContext, useLocation } from '@tanstack/react-router';
 import { ArrowUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Search, X } from 'lucide-react';
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
-import PromotedBanner from '../components/PromotedBanner';
 import { AccountStrip } from '../components/account-strip';
 import { FirstRunDialogs } from '../components/changelog-dialog';
 import { ChannelStatusBanner } from '../components/channel-status-banner';
@@ -529,11 +528,6 @@ function RootLayout() {
                 ))}
               </nav>
 
-              {collapsed ? null : (
-                <div className="px-4 pb-3 pt-2">
-                  <PromotedBanner vertical />
-                </div>
-              )}
               <SidebarLaunch collapsed={collapsed} />
               <div className="shrink-0 px-3 pb-3">
                 <NavLink {...SETTINGS_NAV} collapsed={collapsed} />
