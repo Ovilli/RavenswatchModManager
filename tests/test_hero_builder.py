@@ -159,7 +159,8 @@ def test_a_rig_suggests_its_on_foot_body_and_its_clips():
 
 @needs_corpus
 def test_the_shipped_lists_offer_names_in_the_form_the_build_reads(install_only):
-    HB.shipped.cache_clear(); HB.rig.cache_clear()
+    HB.shipped.cache_clear()
+    HB.rig.cache_clear()
     from rsmm.engine import hero_ability as HA
     from rsmm.engine import vfx_writer as VW
     s = HB.shipped()
