@@ -125,7 +125,14 @@ export function trackMainWindow(): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   void (async () => {
-    const win = getCurrentWindow();
+    // Throws outside the Tauri shell (Vite page in a plain browser), and an
+    // async IIFE turns that into an unhandled rejection.
+    let win: ReturnType<typeof getCurrentWindow>;
+    try {
+      win = getCurrentWindow();
+    } catch {
+      return;
+    }
 
     try {
       const saved = readRect();
