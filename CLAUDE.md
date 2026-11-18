@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Follow the shared agent instructions in [AGENTS.md](AGENTS.md), including the mandatory before/after screenshots at the top of every PR description that impacts UX.
+
 ## Repository shape
 
 Hybrid monorepo with two parallel toolchains:
