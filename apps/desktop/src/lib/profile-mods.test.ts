@@ -13,11 +13,13 @@ vi.mock('./rsmm', () => ({
   modsRoot: () => '/srv/rsmm/mods',
 }));
 
-import { type Profile, useApp } from '../store';
+import { type Profile, isEnabledIn, useApp } from '../store';
 import {
   duplicateProfileWithMods,
   installModIntoProfile,
+  modIdsOf,
   resolveInstallTarget,
+  syncInstalledMods,
 } from './profile-mods';
 
 const mk = (id: string, loadOrder: string[] = []): Profile => ({
@@ -27,6 +29,12 @@ const mk = (id: string, loadOrder: string[] = []): Profile => ({
   disabled: new Set<string>(),
   createdAt: new Date().toISOString(),
 });
+
+function profileById(id: string): Profile {
+  const profile = useApp.getState().profiles.find((p) => p.id === id);
+  if (!profile) throw new Error(`no profile ${id}`);
+  return profile;
+}
 
 const listed = (...ids: string[]) =>
   ids.map((id) => ({
@@ -87,6 +95,85 @@ describe('installModIntoProfile', () => {
     expect(installModVersion).toHaveBeenCalledWith('shared', '2.0.0', 'B');
   });
 
+  it('enables a successful install even when its manifest was disabled', async () => {
+    const disabledOnDisk = listed('shared').map((m) => ({ ...m, enabled: false }));
+    listLocalModsForProfile.mockResolvedValueOnce([]).mockResolvedValueOnce(disabledOnDisk);
+    installModFromIndex.mockResolvedValue({ ok: true });
+    useApp.setState({
+      profiles: [mk('default'), mk('A'), { ...mk('B'), disabled: new Set(['shared']) }],
+    });
+
+    await installModIntoProfile('shared', 'B');
+
+    expect(isEnabledIn(profileById('B'), 'shared')).toBe(true);
+    // A later deliberate toggle still wins when the library refreshes.
+    useApp.getState().toggleMod('shared');
+    useApp.getState().syncLocalMods(listed('shared'), 'B');
+    expect(isEnabledIn(profileById('B'), 'shared')).toBe(false);
+  });
+
+  it('re-enables an existing disabled mod without another download', async () => {
+    listLocalModsForProfile.mockResolvedValue(listed('shared'));
+    useApp.setState({
+      profiles: [mk('default'), mk('A'), { ...mk('B', ['shared']), disabled: new Set(['shared']) }],
+    });
+
+    expect(await installModIntoProfile('shared', 'B')).toBe(false);
+    expect(installModFromIndex).not.toHaveBeenCalled();
+    expect(isEnabledIn(profileById('B'), 'shared')).toBe(true);
+  });
+
+  it('uses target-only folder ids when re-enabling an existing registry slug', async () => {
+    const targetMods = listed('folder', 'other').map((m) =>
+      m.id === 'folder' ? { ...m, slug: 'registry-slug', enabled: false } : m,
+    );
+    listLocalModsForProfile.mockResolvedValue(targetMods);
+    useApp.setState({
+      profiles: [
+        mk('default'),
+        mk('A'),
+        {
+          ...mk('B', ['folder', 'other']),
+          disabled: new Set(['folder', 'other']),
+        },
+      ],
+      localMods: {},
+    });
+
+    expect(await installModIntoProfile('registry-slug', 'B')).toBe(false);
+
+    expect(profileById('B').loadOrder).toEqual(['folder', 'other']);
+    expect(profileById('B').disabled).toEqual(new Set(['other']));
+    expect(isEnabledIn(profileById('B'), 'folder')).toBe(true);
+    expect(installModFromIndex).not.toHaveBeenCalled();
+  });
+
+  it('enables the folder id first discovered after a successful download', async () => {
+    const targetMods = listed('folder').map((m) => ({
+      ...m,
+      slug: 'registry-slug',
+      enabled: false,
+    }));
+    listLocalModsForProfile.mockResolvedValueOnce([]).mockResolvedValueOnce(targetMods);
+    installModFromIndex.mockResolvedValue({ ok: true });
+    useApp.setState({
+      profiles: [
+        mk('default'),
+        mk('A'),
+        {
+          ...mk('B', ['folder']),
+          disabled: new Set(['folder']),
+        },
+      ],
+      localMods: {},
+    });
+
+    expect(await installModIntoProfile('registry-slug', 'B')).toBe(true);
+
+    expect(profileById('B').loadOrder).toEqual(['folder']);
+    expect(isEnabledIn(profileById('B'), 'folder')).toBe(true);
+  });
+
   it('treats an ok:false result as a failure and leaves the profile alone', async () => {
     // The bridge exits 0 with `{ ok: false }`, so an unchecked result read as
     // success and the mod was added to a profile whose folder lacked it.
@@ -98,15 +185,82 @@ describe('installModIntoProfile', () => {
     expect(useApp.getState().profiles.find((p) => p.id === 'B')?.loadOrder).toEqual([]);
   });
 
+  it('does not enable a previously disabled mod when reinstalling fails', async () => {
+    listLocalModsForProfile.mockResolvedValue([]);
+    installModFromIndex.mockResolvedValue({ ok: false, error: 'download failed' });
+    useApp.setState({
+      profiles: [mk('default'), mk('A'), { ...mk('B', ['shared']), disabled: new Set(['shared']) }],
+    });
+
+    await expect(installModIntoProfile('shared', 'B')).rejects.toThrow('download failed');
+
+    expect(isEnabledIn(profileById('B'), 'shared')).toBe(false);
+    expect(useApp.getState().activeProfileId).toBe('A');
+  });
+
   it('uses and updates a batch listing without re-listing', async () => {
     installModFromIndex.mockResolvedValue({ ok: true });
-    const onDisk = new Set<string>(['one']);
+    const onDisk = modIdsOf(listed('one'));
     await installModIntoProfile('one', 'B', { onDisk });
     await installModIntoProfile('two', 'B', { onDisk });
     await installModIntoProfile('two', 'B', { onDisk });
     expect(installModFromIndex).toHaveBeenCalledTimes(1);
     expect(listLocalModsForProfile).not.toHaveBeenCalled();
     expect(onDisk.has('two')).toBe(true);
+  });
+
+  it('retains target-only folder identities throughout a batch', async () => {
+    const targetMods = listed('folder').map((m) => ({
+      ...m,
+      slug: 'registry-slug',
+      enabled: false,
+    }));
+    useApp.setState({
+      profiles: [
+        mk('default'),
+        mk('A'),
+        {
+          ...mk('B', ['folder']),
+          disabled: new Set(['folder']),
+        },
+      ],
+      localMods: {},
+    });
+    const onDisk = modIdsOf(targetMods);
+
+    await installModIntoProfile('registry-slug', 'B', { onDisk });
+    syncInstalledMods(targetMods, 'B', ['registry-slug']);
+
+    expect(profileById('B').loadOrder).toEqual(['folder']);
+    expect(isEnabledIn(profileById('B'), 'folder')).toBe(true);
+    expect(listLocalModsForProfile).not.toHaveBeenCalled();
+    expect(installModFromIndex).not.toHaveBeenCalled();
+  });
+
+  it('enables newly downloaded batch folder ids at final sync without changing other mods', async () => {
+    const targetMods = listed('folder', 'other').map((m) =>
+      m.id === 'folder' ? { ...m, slug: 'registry-slug', enabled: false } : m,
+    );
+    installModFromIndex.mockResolvedValue({ ok: true });
+    useApp.setState({
+      profiles: [
+        mk('default'),
+        mk('A'),
+        {
+          ...mk('B', ['folder', 'other']),
+          disabled: new Set(['folder', 'other']),
+        },
+      ],
+      localMods: {},
+    });
+
+    await installModIntoProfile('registry-slug', 'B', { onDisk: modIdsOf(listed('other')) });
+    syncInstalledMods(targetMods, 'B', ['registry-slug']);
+
+    expect(profileById('B').loadOrder).toEqual(['folder', 'other']);
+    expect(profileById('B').disabled).toEqual(new Set(['other']));
+    expect(isEnabledIn(profileById('B'), 'folder')).toBe(true);
+    expect(listLocalModsForProfile).not.toHaveBeenCalled();
   });
 });
 

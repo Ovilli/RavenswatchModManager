@@ -3,6 +3,7 @@ import { useApp } from '../store';
 import { t } from './i18n';
 import {
   type InstallResult,
+  type LocalMod,
   installModFromIndex,
   installModVersion,
   listLocalModsForProfile,
@@ -64,14 +65,26 @@ export function resolveInstallTarget(requested?: string): string {
   return s.createProfile(INSTALL_PROFILE_NAME);
 }
 
-/** Ids (and slugs) of the mods in a folder listing. */
-export function modIdsOf(mods: ReadonlyArray<{ id: string; slug: string }> | null): Set<string> {
-  const ids = new Set<string>();
+/** Resolve both folder ids and registry slugs against one profile's listing. */
+export function modIdsOf(
+  mods: ReadonlyArray<{ id: string; slug: string }> | null,
+): Map<string, string> {
+  const ids = new Map<string, string>();
   for (const m of mods ?? []) {
-    ids.add(m.id);
-    ids.add(m.slug);
+    ids.set(m.id, m.id);
+    ids.set(m.slug, m.id);
   }
   return ids;
+}
+
+/** Reconcile completed batch installs once their final folder ids are known. */
+export function syncInstalledMods(mods: LocalMod[], profileId: string, slugs: string[]): void {
+  const ids = modIdsOf(mods);
+  for (const slug of slugs) {
+    const id = ids.get(slug);
+    if (id !== undefined) useApp.getState().installMod(slug, profileId, id);
+  }
+  useApp.getState().syncLocalMods(mods, profileId);
 }
 
 /**
@@ -86,14 +99,15 @@ export function modIdsOf(mods: ReadonlyArray<{ id: string; slug: string }> | nul
  *
  * `installMod` makes the target the active profile, so its listing is synced
  * into the store afterwards. A batch passes `onDisk` (the target folder's ids,
- * listed once and updated here as mods land) and syncs once at the end itself.
+ * listed once and updated here as mods land) and calls `syncInstalledMods`
+ * with its completed slugs at the end, when newly downloaded folder ids are known.
  * `version` installs that exact version instead of the latest. Returns whether
  * anything was downloaded.
  */
 export async function installModIntoProfile(
   slug: string,
   profileId: string,
-  opts: { version?: string; onDisk?: Set<string> } = {},
+  opts: { version?: string; onDisk?: Map<string, string> } = {},
 ): Promise<boolean> {
   const listed = opts.onDisk ? null : await listLocalModsForProfile(profileId);
   const onDisk = opts.onDisk ?? modIdsOf(listed);
@@ -107,12 +121,16 @@ export async function installModIntoProfile(
     if (!result || !result.ok) {
       throw new Error(result?.error ?? t('failed to install {slug}', { slug }));
     }
-    onDisk.add(slug);
+    onDisk.set(slug, slug);
     downloaded = true;
   }
-  useApp.getState().installMod(slug, profileId);
-  if (opts.onDisk) return downloaded;
+  if (opts.onDisk) {
+    useApp.getState().installMod(slug, profileId, onDisk.get(slug));
+    return downloaded;
+  }
   const fresh = downloaded ? await listLocalModsForProfile(profileId) : listed;
+  const id = modIdsOf(fresh).get(slug) ?? onDisk.get(slug) ?? slug;
+  useApp.getState().installMod(slug, profileId, id);
   if (fresh) useApp.getState().syncLocalMods(fresh, profileId);
   return downloaded;
 }

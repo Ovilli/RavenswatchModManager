@@ -13,9 +13,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, describeApiError, logApiError } from '../lib/api';
 import { getApiUrl } from '../lib/api-url';
 import { useT } from '../lib/i18n-react';
-import { registryGalleryLabels, registryMediaLabels } from '../lib/registry-labels';
 import { inTauri } from '../lib/platform';
 import { installModIntoProfile, resolveInstallTarget } from '../lib/profile-mods';
+import { registryGalleryLabels, registryMediaLabels } from '../lib/registry-labels';
 import {
   disableHookWarning,
   installModVersion,
@@ -497,7 +497,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
                         <Button
                           type="button"
                           size="sm"
-                          onClick={() => installVersion(v.version)}
+                          onClick={() => installVersion(v.version, !installedHere)}
                           disabled={versionBusy === v.version}
                         >
                           {installedHere ? t('downgrade') : t('install')}

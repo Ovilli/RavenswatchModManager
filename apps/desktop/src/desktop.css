@@ -2,6 +2,14 @@
   --text-title: 0 0% 100%;
 }
 
+/* Installed is a persistent label that sizes to its text, including at larger UI scales. */
+.mod-card-actions--overlay .installed-state {
+  min-height: 2.5rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  background-color: hsl(var(--pitch) / 0.85);
+}
+
 /* Desktop titles share one color, including headings in shared components.
    The legacy display-text selector covers empty-state and profile titles that
    use a paragraph or span. Mod-authored item colors remain explicitly themed. */

@@ -308,6 +308,41 @@ describe('install / uninstall / toggle / reorder', () => {
     expect(p.disabled.has('mod-a')).toBe(false); // re-enabled
   });
 
+  it('clears a stale disabled entry when adding a mod back to the profile', () => {
+    const pid = useApp.getState().createProfile('p');
+    useApp.setState({
+      profiles: useApp
+        .getState()
+        .profiles.map((p) => (p.id === pid ? { ...p, disabled: new Set(['mod-a', 'other']) } : p)),
+    });
+
+    useApp.getState().installMod('mod-a', pid);
+
+    expect(isEnabledIn(profileById(pid), 'mod-a')).toBe(true);
+    expect(profileById(pid).disabled).toEqual(new Set(['other']));
+  });
+
+  it('clears disabled slug aliases when installing an on-disk folder', () => {
+    const pid = useApp.getState().createProfile('p');
+    useApp.getState().syncLocalMods([localMod({ id: 'folder', slug: 'registry-slug' })]);
+    useApp.setState({
+      profiles: useApp
+        .getState()
+        .profiles.map((p) =>
+          p.id === pid
+            ? { ...p, loadOrder: ['folder'], disabled: new Set(['folder', 'registry-slug']) }
+            : p,
+        ),
+    });
+
+    useApp.getState().installMod('registry-slug', pid);
+    useApp.getState().syncLocalMods([localMod({ id: 'folder', slug: 'registry-slug' })]);
+
+    expect(profileById(pid).loadOrder).toEqual(['folder']);
+    expect(isEnabledIn(profileById(pid), 'folder')).toBe(true);
+    expect(profileById(pid).disabled.size).toBe(0);
+  });
+
   it('uninstall is per-profile and keeps the mod available in others', () => {
     const s = useApp.getState();
     const a = s.createProfile('A');

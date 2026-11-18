@@ -1,9 +1,7 @@
-import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { ChevronDown, Copy, Plus } from 'lucide-react';
+import { ChevronDown, Plus } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useT } from '../lib/i18n-react';
-import { duplicateProfileWithMods } from '../lib/profile-mods';
 import { validateProfileName } from '../lib/profile-name';
 import { useApp } from '../store';
 import { Button } from './chrome';
@@ -20,7 +18,6 @@ export function ProfilePopover() {
   const activeId = useApp((s) => s.activeProfileId);
   const setActive = useApp((s) => s.setActiveProfile);
   const create = useApp((s) => s.createProfile);
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const dialog = useDialog();
   const toast = useToast();
@@ -45,24 +42,6 @@ export function ProfilePopover() {
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
-
-  /**
-   * Same as the Profiles page: the row AND the mod files. This button copied
-   * only the row, so the copy (which becomes active) had no folder and both it
-   * and the original looked empty in the Library.
-   */
-  const onDuplicate = async (id: string) => {
-    const { copyError } = await duplicateProfileWithMods(id);
-    if (copyError) {
-      toast.push(
-        t('Copied the profile, but not its mod files: {error}', { error: copyError }),
-        'error',
-      );
-    }
-    // The new profile went active before its folder existed, so a list read in
-    // between saw nothing. Read it again now that the files are there.
-    await queryClient.invalidateQueries({ queryKey: ['rsmm', 'list'] });
-  };
 
   const onNewProfile = async () => {
     setOpen(false);
@@ -143,18 +122,6 @@ export function ProfilePopover() {
               className="flex-1"
             >
               <Plus className="h-3.5 w-3.5" /> {t('New')}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                if (active) void onDuplicate(active.id);
-              }}
-              className="flex-1"
-            >
-              <Copy className="h-3.5 w-3.5" /> {t('Duplicate')}
             </Button>
           </div>
           <div className="border-t border-border p-2">
