@@ -1,14 +1,14 @@
 'use client';
 
 import { type ModListItem, hasPrivateOnlyTag } from '@rsmm/schemas';
-import { RegistryModCard, RegistryResultsControls, Spinner, buttonVariants } from '@rsmm/ui';
-import { useQuery } from '@tanstack/react-query';
 import {
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  ExternalLink,
-} from 'lucide-react';
+  RegistryGridSkeleton,
+  RegistryModCard,
+  RegistryResultsControls,
+  buttonVariants,
+} from '@rsmm/ui';
+import { useQuery } from '@tanstack/react-query';
+import { ChevronLeft, ChevronRight, Download, ExternalLink } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -47,9 +47,9 @@ function RegistryFallback() {
         <RegistrySearchFallback />
         <div className="registry-toolbar-controls-placeholder" aria-hidden />
       </div>
-      <div className="registry-loading">
-        <Spinner />
-        <span>Loading mods…</span>
+      <div className="registry-results" aria-busy="true">
+        <span className="sr-only">Loading mods…</span>
+        <RegistryGridSkeleton />
       </div>
     </main>
   );
@@ -174,10 +174,7 @@ function RegistryInner() {
               : `${total} mods found.`}
         </output>
         {list.isLoading ? (
-          <div className="registry-loading">
-            <Spinner />
-            <span>Loading mods…</span>
-          </div>
+          <RegistryGridSkeleton />
         ) : list.isError ? (
           <div className="registry-empty">
             <h2>We couldn’t load the mods</h2>

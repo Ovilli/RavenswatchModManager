@@ -1,4 +1,5 @@
-import { GridSkeleton } from '../../components/skeletons';
+import { RegistryGridSkeleton } from '@rsmm/ui';
+import './registry.css';
 
 /**
  * Scoped to the `/registry` list by the `(list)` route group on purpose.
@@ -13,5 +14,14 @@ import { GridSkeleton } from '../../components/skeletons';
  * its own `loading.tsx`.
  */
 export default function Loading() {
-  return <GridSkeleton />;
+  return (
+    <main className="registry-explore" aria-busy="true">
+      <div className="registry-browse-bar" aria-hidden="true">
+        <div className="h-6 w-48 animate-pulse rounded bg-surface-2" />
+      </div>
+      <div className="registry-results">
+        <RegistryGridSkeleton />
+      </div>
+    </main>
+  );
 }

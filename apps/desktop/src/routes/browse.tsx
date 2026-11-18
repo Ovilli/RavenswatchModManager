@@ -6,6 +6,7 @@ import {
 } from '@rsmm/schemas';
 import {
   RegistryFilterDialog,
+  RegistryGridSkeleton,
   RegistryModCard,
   RegistryResultsControls,
   RegistrySearchBar,
@@ -289,6 +290,7 @@ function BrowsePage() {
         {/* With a mod open the results become an index column, wide enough for
             a name and its install button and no wider. */}
         <div
+          aria-busy={isLoading}
           className={
             selected
               ? 'min-w-0 space-y-3 lg:order-1 lg:w-[22rem] lg:shrink-0'
@@ -329,7 +331,7 @@ function BrowsePage() {
             </div>
           ) : null}
 
-          {isLoading ? <BrowseSkeleton /> : null}
+          {isLoading ? <RegistryGridSkeleton /> : null}
 
           {tab === 'collections' ? (
             <>
@@ -401,13 +403,7 @@ function BrowsePage() {
             </>
           ) : (
             <>
-              <div
-                className={
-                  view === 'list'
-                    ? 'flex flex-col gap-2'
-                    : 'grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3'
-                }
-              >
+              <div className={view === 'list' ? 'registry-list' : 'registry-grid'}>
                 {view === 'list'
                   ? list.map((m) => (
                       <ModRow
@@ -766,21 +762,5 @@ function ProfilePicker({
       </div>
     </dialog>,
     document.body,
-  );
-}
-
-function BrowseSkeleton() {
-  return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" aria-busy="true">
-      {Array.from({ length: 6 }).map((_, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton elements, no reordering
-        <div key={i} className="grimoire-card flex flex-col gap-3 p-5 animate-pulse">
-          <div className="aspect-video w-full bg-oxblood/20 rounded" />
-          <div className="h-6 w-3/4 bg-oxblood/20 rounded" />
-          <div className="h-4 w-1/2 bg-oxblood/15 rounded" />
-          <div className="h-4 w-full bg-oxblood/10 rounded" />
-        </div>
-      ))}
-    </div>
   );
 }
