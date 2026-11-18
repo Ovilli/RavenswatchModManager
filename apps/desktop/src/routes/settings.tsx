@@ -1,6 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { invoke } from '@tauri-apps/api/core';
-import { Activity, ChevronDown, EyeOff, ShieldAlert, Sparkles, Trash2 } from 'lucide-react';
+import {
+  Activity,
+  ChevronDown,
+  ExternalLink,
+  EyeOff,
+  ShieldAlert,
+  Sparkles,
+  Trash2,
+} from 'lucide-react';
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { AboutPanels } from '../components/about-panels';
 import { Button, Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
@@ -99,7 +107,32 @@ function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <SectionHeader title={t('Settings')} subtitle={t('Where things live. How they look.')} />
+      <SectionHeader
+        title={t('Settings')}
+        subtitle={t('Where things live. How they look.')}
+        right={
+          <div className="flex flex-wrap justify-end gap-2">
+            <a
+              href="https://discord.gg/dZbsKBWjSF"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="btn-grim px-3 py-1.5 text-sm"
+            >
+              {t('Discord')}
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+            </a>
+            <a
+              href="https://github.com/Ravenswatch-Modding/RavenswatchModManager"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="btn-grim px-3 py-1.5 text-sm"
+            >
+              {t('Repository')}
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+            </a>
+          </div>
+        }
+      />
 
       <SettingsTabs value={tab} onChange={setTab} />
 

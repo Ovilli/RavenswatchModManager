@@ -272,6 +272,7 @@ export const zhCN: Record<string, string> = {
   'Disabling these mods will leave others missing dependencies:':
     '禁用这些模组会使其他模组缺少依赖：',
   Discard: '放弃更改',
+  Discord: 'Discord',
   Dismiss: '忽略',
   Doctor: '体检',
   'Doctor + repair': '体检并修复',
