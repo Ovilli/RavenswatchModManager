@@ -16,7 +16,7 @@ import { ExternalLink, Loader2, Plus, WifiOff, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Button, CopyButton, Cover, Panel, StatPill, useModalChrome } from '../components/chrome';
-import { CheckIcon } from '../components/icons/CheckIcon';
+import { InstalledState } from '../components/installed-state';
 import { ModDetail } from '../components/mod-detail';
 import { PrivateGamesOnlyBadge } from '../components/private-games-only-badge';
 import { useToast } from '../components/toast';
@@ -553,6 +553,9 @@ function InstallButton({ m, installed, profile, installing, onPick }: InstallBut
   // deleted outside the app) otherwise rendered as "in profile" with the
   // button disabled — leaving no way to install the mod it pointed at.
   const inProfile = profile.loadOrder.includes(m.slug) && onDisk;
+  if (inProfile && !installing[m.slug]) {
+    return <InstalledState title={t('Already in "{profile}"', { profile: profile.name })} />;
+  }
   return (
     <Button
       type="button"
@@ -560,27 +563,20 @@ function InstallButton({ m, installed, profile, installing, onPick }: InstallBut
         e.stopPropagation();
         onPick(m.slug);
       }}
-      disabled={inProfile || installing[m.slug]}
-      variant={inProfile ? 'default' : 'primary'}
+      disabled={installing[m.slug]}
+      variant="primary"
       size="sm"
       className="registry-install-button min-w-0 justify-center whitespace-nowrap"
       title={
-        inProfile
-          ? t('Already in "{profile}"', { profile: profile.name })
-          : onDisk
-            ? t('On disk — click to add to "{profile}"', { profile: profile.name })
-            : t('Download from index + add to "{profile}"', { profile: profile.name })
+        onDisk
+          ? t('On disk — click to add to "{profile}"', { profile: profile.name })
+          : t('Download from index + add to "{profile}"', { profile: profile.name })
       }
     >
       {installing[m.slug] ? (
         <>
           <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
           <span className="registry-install-label">{t('downloading')}</span>
-        </>
-      ) : inProfile ? (
-        <>
-          <CheckIcon className="h-4 w-4 shrink-0" />
-          <span className="registry-install-label">{t('in profile')}</span>
         </>
       ) : onDisk ? (
         <>

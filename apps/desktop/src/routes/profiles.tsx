@@ -1,13 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { invoke } from '@tauri-apps/api/core';
-import { Copy, Download, FolderOpen, Pencil, Plus, Trash2, Upload } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { FolderOpen, Pencil, Plus, Trash2 } from 'lucide-react';
+import { useEffect } from 'react';
 import { Button, Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
 import { CheckIcon } from '../components/icons/CheckIcon';
 import { useDialog, useToast } from '../components/toast';
 import { useT } from '../lib/i18n-react';
-import { duplicateProfileWithMods } from '../lib/profile-mods';
 import { validateProfileName } from '../lib/profile-name';
 import { listLocalMods, listLocalModsForProfiles, modsRoot } from '../lib/rsmm';
 import { isSafeProfileId } from '../lib/untrusted-state';
@@ -24,16 +23,6 @@ function ProfilesPage() {
   const create = useApp((s) => s.createProfile);
   const rename = useApp((s) => s.renameProfile);
   const remove = useApp((s) => s.deleteProfile);
-  const exportP = useApp((s) => s.exportProfile);
-  const importP = useApp((s) => s.importProfile);
-  const exportBackup = useApp((s) => s.exportBackup);
-  const importBackup = useApp((s) => s.importBackup);
-  const [importing, setImporting] = useState(false);
-  const [importingBackup, setImportingBackup] = useState(false);
-  const [code, setCode] = useState('');
-  const [backupCode, setBackupCode] = useState('');
-  const [importError, setImportError] = useState<string | null>(null);
-  const [backupError, setBackupError] = useState<string | null>(null);
   const activeProfileId = useApp((s) => s.activeProfileId);
   const syncLocalMods = useApp((s) => s.syncLocalMods);
   const pruneMissing = useApp((s) => s.pruneMissingMods);
@@ -84,32 +73,6 @@ function ProfilesPage() {
   const dialog = useDialog();
   const toast = useToast();
 
-  /**
-   * Duplicate a profile — the store row AND the mods on disk.
-   *
-   * A profile's mods live in `<modsDir>/profiles/<id>`, and every CLI call
-   * runs with `RSMM_MODS_DIR` pointed at the ACTIVE profile's directory. So
-   * copying the store row alone made the new profile — which duplication also
-   * activates — a directory that does not exist: `rsmm json list` returned
-   * nothing, the library renders that list, and so BOTH the copy and the
-   * original looked stripped of every mod until the original was activated
-   * again.
-   */
-  const onDuplicate = async (profileId: string) => {
-    // An empty mods-folder setting means "the default folder", not "skip the
-    // files": this used to return early there, leaving the copy empty.
-    const { copyError } = await duplicateProfileWithMods(profileId);
-    if (copyError) {
-      toast.push(
-        t('Copied the profile, but not its mod files: {error}', { error: copyError }),
-        'error',
-      );
-    }
-    // The active profile just changed, so the list the library renders is the
-    // new directory's — refetch it rather than leaving the old one on screen.
-    await localModsQuery.refetch();
-  };
-
   const onOpenFolder = async (profileId: string) => {
     // Creating and revealing the directory happens in Rust
     // (`profile_dir::open_profile_dir`), which re-validates the profile id,
@@ -130,31 +93,6 @@ function ProfilesPage() {
       toast.push(err instanceof Error ? err.message : String(err), 'error');
     }
   };
-
-  function onImport() {
-    const id = importP(code);
-    if (!id) {
-      setImportError(t('Could not read that code. Check it and try again.'));
-      return;
-    }
-
-    setCode('');
-    setImporting(false);
-    setImportError(null);
-    toast.push(t('Profile imported.'), 'success');
-  }
-
-  function onImportBackup() {
-    const result = importBackup(backupCode);
-    if (!result.ok) {
-      setBackupError(result.reason);
-      return;
-    }
-    setBackupCode('');
-    setImportingBackup(false);
-    setBackupError(null);
-    toast.push(t('Backup imported.'), 'success');
-  }
 
   const onNewProfile = async () => {
     const name = await dialog.prompt({
@@ -203,129 +141,17 @@ function ProfilesPage() {
     }
   };
 
-  const onExport = async (id: string) => {
-    const text = exportP(id);
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.push(t('Profile code copied to clipboard.'), 'success');
-    } catch {
-      await dialog.prompt({
-        title: t('Profile code'),
-        label: t('Copy this code to share the profile'),
-        initialValue: text,
-        submitLabel: t('Close'),
-        multiline: true,
-      });
-    }
-  };
-
-  const onExportBackup = async () => {
-    const text = exportBackup();
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.push(t('Backup code copied to clipboard.'), 'success');
-    } catch {
-      await dialog.prompt({
-        title: t('Backup code'),
-        label: t('Copy this code to restore the full app state'),
-        initialValue: text,
-        submitLabel: t('Close'),
-        multiline: true,
-      });
-    }
-  };
-
   return (
     <div className="space-y-6">
       <SectionHeader
         title={t('Profiles')}
-        subtitle={t('Different loadouts for different runs. Share one as a code.')}
+        subtitle={t('Different loadouts for different runs.')}
         right={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button type="button" onClick={() => setImporting((v) => !v)}>
-              <Upload className="h-4 w-4" aria-hidden="true" /> {t('Import')}
-            </Button>
-            <Button type="button" onClick={() => setImportingBackup((v) => !v)}>
-              <Upload className="h-4 w-4" aria-hidden="true" /> {t('Backup')}
-            </Button>
-            <Button type="button" variant="primary" onClick={onNewProfile}>
-              <Plus className="h-4 w-4" aria-hidden="true" /> {t('New profile')}
-            </Button>
-          </div>
+          <Button type="button" variant="primary" onClick={onNewProfile}>
+            <Plus className="h-4 w-4" aria-hidden="true" /> {t('New profile')}
+          </Button>
         }
       />
-
-      {importing ? (
-        <Panel>
-          <h3 className="font-fraktur text-lg text-parchment mb-2">{t('Import profile')}</h3>
-          <p className="font-serif-italic text-ash mb-3">
-            {t('Paste an exported profile code below.')}
-          </p>
-          <textarea
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            rows={4}
-            className="field-grim font-mono w-full resize-none p-3"
-            placeholder={t('base64-encoded profile…')}
-          />
-          {importError ? (
-            <p className="text-sm text-crimson mt-2" role="alert">
-              {importError}
-            </p>
-          ) : null}
-          <div className="mt-3 flex justify-end gap-2">
-            <Button type="button" size="sm" onClick={() => setImporting(false)}>
-              {t('Cancel')}
-            </Button>
-            <Button type="button" size="sm" variant="primary" onClick={onImport}>
-              {t('Import')}
-            </Button>
-          </div>
-        </Panel>
-      ) : null}
-
-      {importingBackup ? (
-        <Panel>
-          <h3 className="font-fraktur text-lg text-parchment mb-2">{t('Import backup')}</h3>
-          <p className="font-serif-italic text-ash mb-3">
-            {t('Paste a full-state backup code to restore profiles and settings.')}
-          </p>
-          <textarea
-            value={backupCode}
-            onChange={(e) => setBackupCode(e.target.value)}
-            rows={4}
-            className="field-grim font-mono w-full resize-none p-3"
-            placeholder={t('base64-encoded backup…')}
-          />
-          {backupError ? (
-            <p className="text-sm text-crimson mt-2" role="alert">
-              {backupError}
-            </p>
-          ) : null}
-          <div className="mt-3 flex justify-end gap-2">
-            <Button type="button" size="sm" onClick={() => setImportingBackup(false)}>
-              {t('Cancel')}
-            </Button>
-            <Button type="button" size="sm" variant="primary" onClick={onImportBackup}>
-              {t('Import backup')}
-            </Button>
-          </div>
-        </Panel>
-      ) : null}
-
-      <Panel>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="font-fraktur text-lg text-parchment mb-2">{t('Backup')}</h3>
-            <p className="font-serif-italic text-ash">
-              {t('Save or restore all profiles, the active profile, and settings.')}
-            </p>
-          </div>
-          <Button type="button" size="sm" onClick={onExportBackup}>
-            <Download className="h-3.5 w-3.5" aria-hidden="true" /> {t('Export backup')}
-          </Button>
-        </div>
-      </Panel>
 
       {localModsQuery.isError ? (
         <Panel className="border-crimson">
@@ -346,7 +172,7 @@ function ProfilesPage() {
       {/* `xl`, not `md`. Tailwind breakpoints watch the VIEWPORT, but the
           sidebar takes 288px off this column before it starts: at the `md`
           width of 768px a "two-column" grid is two ~230px cards, and a profile
-          card carries six actions plus a mod list. Splitting only once the
+          card carries profile actions plus a mod list. Splitting only once the
           window is genuinely wide keeps each card usable. */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {profiles.map((p) => {
@@ -476,14 +302,8 @@ function ProfilesPage() {
                     <CheckIcon className="h-4 w-4" aria-hidden="true" /> {t('Activate')}
                   </Button>
                 ) : null}
-                <Button type="button" size="sm" onClick={() => void onDuplicate(p.id)}>
-                  <Copy className="h-3.5 w-3.5" aria-hidden="true" /> {t('Duplicate')}
-                </Button>
                 <Button type="button" size="sm" onClick={() => onRename(p.id, p.name)}>
                   <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> {t('Rename')}
-                </Button>
-                <Button type="button" size="sm" onClick={() => onExport(p.id)}>
-                  <Download className="h-3.5 w-3.5" aria-hidden="true" /> {t('Export')}
                 </Button>
                 <Button type="button" size="sm" onClick={() => onOpenFolder(p.id)}>
                   <FolderOpen className="h-3.5 w-3.5" aria-hidden="true" /> {t('Open folder')}
