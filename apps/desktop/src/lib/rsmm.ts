@@ -1158,6 +1158,8 @@ export interface UpdateLoaderResult {
   plantedVersion?: number | null;
   /** `none` = no winhttp.dll, `dev` = its sha256 differs from the manifest's entry. */
   loaderState?: 'release' | 'dev' | 'none';
+  /** Version the next launch plants (newer of the cached and bundled loader); null when unknown. */
+  nextVersion?: number | null;
   rsmmVersion?: string | null;
   generated?: string | null;
   notes?: string | null;

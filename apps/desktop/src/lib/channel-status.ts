@@ -228,14 +228,21 @@ export async function trackCliUpdate(): Promise<UpdateCliResult | null> {
 /** Where the loader in the game dir came from: `release`, a hand-built `dev`, or `none`. */
 export type LoaderState = 'release' | 'dev' | 'none';
 
-/** "v9", "dev", "none", or null when it cannot be told. */
+/**
+ * "v9 · active", "dev · active", "v9 · inactive" (not planted; `nextVersion` is
+ * what the next launch plants), "none", or null when it cannot be told.
+ */
 export function describeLoaderInstall(
   state: LoaderState | undefined,
   version: number | null | undefined,
+  nextVersion?: number | null,
 ): string | null {
-  if (state === 'none') return tr('none');
-  if (state === 'dev') return tr('dev');
+  if (state === 'none') {
+    return nextVersion == null ? tr('none') : tr('v{version} · inactive', { version: nextVersion });
+  }
+  if (state === 'dev') return tr('dev · active');
   if (version == null) return null;
+  if (state === 'release') return tr('v{version} · active', { version });
   return `v${version}`;
 }
 

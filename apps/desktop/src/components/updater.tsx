@@ -678,7 +678,11 @@ export function VersionFooter() {
       .then((r) => {
         if (alive && r) {
           setLoaderText(
-            describeLoaderInstall(r.loaderState, r.plantedVersion ?? r.installedVersion),
+            describeLoaderInstall(
+              r.loaderState,
+              r.plantedVersion ?? r.installedVersion,
+              r.nextVersion,
+            ),
           );
         }
       })
@@ -698,7 +702,11 @@ export function VersionFooter() {
         const r = getNotedLoaderResult();
         if (r) {
           setLoaderText(
-            describeLoaderInstall(r.loaderState, r.plantedVersion ?? r.installedVersion),
+            describeLoaderInstall(
+              r.loaderState,
+              r.plantedVersion ?? r.installedVersion,
+              r.nextVersion,
+            ),
           );
         }
       }),
@@ -966,6 +974,7 @@ export function UpdaterSettings() {
     describeLoaderInstall(
       loader?.loaderState,
       loader?.plantedVersion ?? loader?.installedVersion,
+      loader?.nextVersion,
     ) ?? t('unknown');
   const cliPending = cli?.staged ?? cliStaged;
   const loaderPending =

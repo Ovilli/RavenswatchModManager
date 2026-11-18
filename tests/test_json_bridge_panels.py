@@ -237,18 +237,51 @@ def _planted(game, dll: bytes, manifest_dll: bytes | None, version=7):
         }))
 
 
-def test_loader_state_none_without_dll(tmp_path):
+@pytest.fixture
+def bundled(monkeypatch):
+    from rsmm.engine import loader_update
+    monkeypatch.setattr(loader_update, "bundled_version", lambda: 5)
+
+
+def _cached(game, version):
+    cache = game / "rsmm" / "cache" / "loader"
+    (cache / "payload").mkdir(parents=True)
+    (cache / "loader.manifest.json").write_text(json.dumps({"loader_version": version}))
+    (cache / "loader.manifest.json.minisig").write_text("sig")
+
+
+def test_loader_state_none_without_dll(tmp_path, bundled):
     assert json_bridge.loader_install_state(tmp_path) == {
-        "plantedVersion": None, "loaderState": "none"}
+        "plantedVersion": None, "loaderState": "none", "nextVersion": 5}
 
 
-def test_loader_state_release_when_dll_matches_manifest(tmp_path):
+def test_loader_state_next_version_is_the_newer_cache(tmp_path, bundled):
+    _cached(tmp_path, 8)
+    assert json_bridge.loader_install_state(tmp_path)["nextVersion"] == 8
+
+
+def test_loader_state_next_version_ignores_an_older_or_incomplete_cache(tmp_path, bundled):
+    _cached(tmp_path, 3)
+    assert json_bridge.loader_install_state(tmp_path)["nextVersion"] == 5
+    (tmp_path / "rsmm" / "cache" / "loader" / "loader.manifest.json.minisig").unlink()
+    (tmp_path / "rsmm" / "cache" / "loader" / "loader.manifest.json").write_text(
+        json.dumps({"loader_version": 99}))
+    assert json_bridge.loader_install_state(tmp_path)["nextVersion"] == 5
+
+
+def test_loader_state_next_version_unknown_when_unstamped(tmp_path, monkeypatch):
+    from rsmm.engine import loader_update
+    monkeypatch.setattr(loader_update, "bundled_version", lambda: 0)
+    assert json_bridge.loader_install_state(tmp_path)["nextVersion"] is None
+
+
+def test_loader_state_release_when_dll_matches_manifest(tmp_path, bundled):
     _planted(tmp_path, b"dll", b"dll", version=9)
     assert json_bridge.loader_install_state(tmp_path) == {
-        "plantedVersion": 9, "loaderState": "release"}
+        "plantedVersion": 9, "loaderState": "release", "nextVersion": 5}
 
 
-def test_loader_state_dev_when_dll_differs_from_manifest(tmp_path):
+def test_loader_state_dev_when_dll_differs_from_manifest(tmp_path, bundled):
     _planted(tmp_path, b"hand built", b"dll", version=9)
     assert json_bridge.loader_install_state(tmp_path) == {
-        "plantedVersion": 9, "loaderState": "dev"}
+        "plantedVersion": 9, "loaderState": "dev", "nextVersion": 5}

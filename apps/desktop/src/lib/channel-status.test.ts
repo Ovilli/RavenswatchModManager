@@ -81,9 +81,11 @@ describe('failureReason', () => {
 
 describe('describeLoaderInstall / describeCliSource', () => {
   it('distinguishes release, dev and none', () => {
-    expect(describeLoaderInstall('release', 9)).toBe('v9');
-    expect(describeLoaderInstall('dev', 9)).toBe('dev');
+    expect(describeLoaderInstall('release', 9)).toBe('v9 · active');
+    expect(describeLoaderInstall('dev', 9)).toBe('dev · active');
     expect(describeLoaderInstall('none', null)).toBe('none');
+    expect(describeLoaderInstall('none', null, null)).toBe('none');
+    expect(describeLoaderInstall('none', null, 9)).toBe('v9 · inactive');
     expect(describeLoaderInstall(undefined, null)).toBeNull();
     expect(describeLoaderInstall(undefined, 4)).toBe('v4');
   });

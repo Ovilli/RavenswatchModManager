@@ -1773,11 +1773,19 @@ def loader_install_state(game_dir: Path) -> dict[str, Any]:
     no manifest, from the DLL this build carries) or ``release``.
     ``plantedVersion`` is the manifest's ``loader_version`` (the bundled stamp when
     there is no manifest and the DLL is the bundled one), else None.
+    ``nextVersion`` is the version the next launch plants (the larger of the cached
+    bundle and the bundled stamp), else None; the app shows it while the loader is
+    not planted.
     """
+    from rsmm.engine.loader_update import next_launch_version
     from rsmm.engine.mod_requires import loader_install
 
     inst = loader_install(game_dir)
-    return {"plantedVersion": inst["version"], "loaderState": inst["state"]}
+    return {
+        "plantedVersion": inst["version"],
+        "loaderState": inst["state"],
+        "nextVersion": next_launch_version(game_dir),
+    }
 
 
 def cmd_update_loader(check_only: bool) -> int:
