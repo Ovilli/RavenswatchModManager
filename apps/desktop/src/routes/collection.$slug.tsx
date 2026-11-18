@@ -16,13 +16,18 @@ import {
   SectionHeader,
   StatPill,
 } from '../components/chrome';
-import { CheckIcon } from '../components/icons/CheckIcon';
+import { InstalledState } from '../components/installed-state';
 import { ScreenshotLightbox } from '../components/screenshot-lightbox';
 import { useToast } from '../components/toast';
 import { useDialog } from '../components/toast';
 import { api, describeApiError, logApiError } from '../lib/api';
 import { useT } from '../lib/i18n-react';
-import { installModIntoProfile, modIdsOf, resolveInstallTarget } from '../lib/profile-mods';
+import {
+  installModIntoProfile,
+  modIdsOf,
+  resolveInstallTarget,
+  syncInstalledMods,
+} from '../lib/profile-mods';
 import { listLocalModsForProfile } from '../lib/rsmm';
 import { activeProfile, useApp } from '../store';
 
@@ -52,7 +57,6 @@ function CollectionDetailPage() {
   const dialog = useDialog();
   const profile = useApp(activeProfile);
   const createProfile = useApp((s) => s.createProfile);
-  const syncLocalMods = useApp((s) => s.syncLocalMods);
   const [installing, setInstalling] = useState<Record<string, boolean>>({});
   const [installAllRunning, setInstallAllRunning] = useState(false);
   const [installProgress, setInstallProgress] = useState({ value: 0, max: 0 });
@@ -112,7 +116,7 @@ function CollectionDetailPage() {
     // The target's OWN folder, listed once. The store's `installed` described
     // the profile active when the page opened — after `createProfile` that is
     // no longer the target, and every mod it happened to hold was skipped.
-    let onDisk: Set<string>;
+    let onDisk: Map<string, string>;
     try {
       onDisk = modIdsOf(await listLocalModsForProfile(targetProfileId));
     } catch (err) {
@@ -121,11 +125,19 @@ function CollectionDetailPage() {
       setInstallProgress({ value: 0, max: 0 });
       return;
     }
+    const completedSlugs: string[] = [];
     for (const [idx, m] of data.mods.entries()) {
       setInstalling((prev) => ({ ...prev, [m.slug]: true }));
       try {
         await installModIntoProfile(m.slug, targetProfileId, { onDisk });
+        completedSlugs.push(m.slug);
       } catch (err) {
+        // Earlier downloads still succeeded. Resolve their folder ids even
+        // when a later item failed, while preserving the original error.
+        if (completedSlugs.length > 0) {
+          const local = await listLocalModsForProfile(targetProfileId).catch(() => null);
+          if (local) syncInstalledMods(local, targetProfileId, completedSlugs);
+        }
         setInstallError(err instanceof Error ? err.message : String(err));
         setInstalling((prev) => ({ ...prev, [m.slug]: false }));
         setInstallAllRunning(false);
@@ -136,7 +148,7 @@ function CollectionDetailPage() {
       setInstallProgress({ value: idx + 1, max: data.mods.length });
     }
     const local = await listLocalModsForProfile(targetProfileId);
-    if (local) syncLocalMods(local, targetProfileId);
+    if (local) syncInstalledMods(local, targetProfileId, completedSlugs);
     await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
     setInstallAllRunning(false);
     setInstallProgress({ value: 0, max: 0 });
@@ -172,23 +184,29 @@ function CollectionDetailPage() {
     setInstallError(null);
     setInstallProgress({ value: 0, max: data.mods.length });
     const newProfileId = createProfile(name);
+    const completedSlugs: string[] = [];
     try {
       // A new profile's folder starts empty (or does not exist yet).
       const onDisk = modIdsOf(await listLocalModsForProfile(newProfileId));
       for (const [idx, m] of data.mods.entries()) {
         setInstalling((prev) => ({ ...prev, [m.slug]: true }));
         await installModIntoProfile(m.slug, newProfileId, { onDisk });
+        completedSlugs.push(m.slug);
         setInstalling((prev) => ({ ...prev, [m.slug]: false }));
         setInstallProgress({ value: idx + 1, max: data.mods.length });
       }
     } catch (err) {
+      if (completedSlugs.length > 0) {
+        const local = await listLocalModsForProfile(newProfileId).catch(() => null);
+        if (local) syncInstalledMods(local, newProfileId, completedSlugs);
+      }
       setInstallError(err instanceof Error ? err.message : String(err));
       setInstallAllRunning(false);
       setInstallProgress({ value: 0, max: 0 });
       return;
     }
     const local = await listLocalModsForProfile(newProfileId);
-    if (local) syncLocalMods(local, newProfileId);
+    if (local) syncInstalledMods(local, newProfileId, completedSlugs);
     await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
     setInstallAllRunning(false);
     setInstallProgress({ value: 0, max: 0 });
@@ -401,21 +419,24 @@ function CollectionDetailPage() {
                           </p>
                         ) : null}
                       </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={inProfile ? 'default' : 'primary'}
-                        onClick={() => installOne(m.slug)}
-                        disabled={inProfile || installing[m.slug]}
-                      >
-                        {installing[m.slug] ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : inProfile ? (
-                          <CheckIcon className="h-4 w-4" />
-                        ) : (
-                          <Plus className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
+                      {inProfile && !installing[m.slug] ? (
+                        <InstalledState />
+                      ) : (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="primary"
+                          onClick={() => installOne(m.slug)}
+                          disabled={installing[m.slug]}
+                          aria-label={t('Install')}
+                        >
+                          {installing[m.slug] ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Plus className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      )}
                     </li>
                   );
                 })}

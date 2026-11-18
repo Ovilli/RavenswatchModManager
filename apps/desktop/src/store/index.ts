@@ -121,7 +121,7 @@ interface State {
   settings: AppSettings;
   /** Non-persisted: live mods discovered by rsmm on disk, keyed by id. */
   localMods: Record<string, Mod>;
-  installMod: (id: string, targetProfileId?: string) => void;
+  installMod: (id: string, targetProfileId?: string, onDiskId?: string) => void;
   uninstallMod: (id: string) => void;
   toggleMod: (id: string) => void;
   reorderMod: (id: string, toIndex: number) => void;
@@ -400,7 +400,7 @@ export const useApp = create<State>()(
       },
       localMods: {},
 
-      installMod: (id, targetProfileId) =>
+      installMod: (id, targetProfileId, onDiskId) =>
         set((s) => {
           // "Install" = make the mod available on disk + add it to a
           // target profile. Caller may pass an explicit profile id (the
@@ -412,7 +412,9 @@ export const useApp = create<State>()(
           //
           // Always store folder slugs in loadOrder — never API UUIDs
           // (mod detail used to pass apiMod.id, which syncLocalMods pruned).
-          const modId = resolveModId(id, s.localMods, s.installed);
+          // Install helpers know the TARGET folder's id. The active profile's
+          // listing may map the same registry slug to a different folder.
+          const modId = onDiskId ?? resolveModId(id, s.localMods, s.installed);
           const installed = s.installed.includes(modId) ? s.installed : [...s.installed, modId];
           const requested = targetProfileId ?? s.activeProfileId;
           if (requested === 'default') {
@@ -432,15 +434,27 @@ export const useApp = create<State>()(
           }
           const profiles = s.profiles.map((p) => {
             if (p.id !== requested) return p;
-            if (p.loadOrder.includes(modId)) {
-              if (p.disabled.has(modId)) {
-                const disabled = new Set(p.disabled);
-                disabled.delete(modId);
-                return { ...p, disabled };
-              }
+            const loadOrder = [
+              ...new Set([...p.loadOrder.map((entry) => (entry === id ? modId : entry)), modId]),
+            ];
+            // An explicit install enables the mod even when an old disabled
+            // entry survived after it left the profile, or used its slug.
+            const disabled = new Set(
+              [...p.disabled].filter(
+                (entry) =>
+                  entry !== id &&
+                  entry !== modId &&
+                  (onDiskId !== undefined ||
+                    resolveModId(entry, s.localMods, s.installed) !== modId),
+              ),
+            );
+            if (
+              loadOrder.length === p.loadOrder.length &&
+              loadOrder.every((entry, index) => entry === p.loadOrder[index]) &&
+              disabled.size === p.disabled.size
+            )
               return p;
-            }
-            return { ...p, loadOrder: [...p.loadOrder, modId] };
+            return { ...p, loadOrder, disabled };
           });
           return { installed, profiles, activeProfileId: requested };
         }),

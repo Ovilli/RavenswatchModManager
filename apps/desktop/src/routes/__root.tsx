@@ -2,7 +2,6 @@ import type { QueryClient } from '@tanstack/react-query';
 import { Link, Outlet, createRootRouteWithContext, useLocation } from '@tanstack/react-router';
 import { ArrowUp, ChevronDown, PanelLeftClose, PanelLeftOpen, Search, X } from 'lucide-react';
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
-import PromotedBanner from '../components/PromotedBanner';
 import { AccountStrip } from '../components/account-strip';
 import { FirstRunDialogs } from '../components/changelog-dialog';
 import { ChannelStatusBanner } from '../components/channel-status-banner';
@@ -233,7 +232,7 @@ function SidebarLaunch({ collapsed }: { collapsed: boolean }) {
         <button
           type="button"
           disabled={busy}
-          className="sidebar-launch-action grid min-h-11 min-w-0 flex-1 items-center overflow-hidden py-2 font-semibold text-parchment transition-colors duration-150 hover:bg-parchment/10 disabled:pointer-events-none disabled:opacity-50"
+          className="sidebar-launch-action grid min-h-11 min-w-0 flex-1 items-center overflow-hidden py-2 text-base font-semibold text-parchment transition-colors duration-150 hover:bg-parchment/10 disabled:pointer-events-none disabled:opacity-50"
           aria-label={label}
           data-sidebar-tooltip={collapsed ? label : undefined}
           onClick={() => {
@@ -276,14 +275,14 @@ function SidebarLaunch({ collapsed }: { collapsed: boolean }) {
           id={menuId}
           role="menu"
           aria-label={t('Launch options')}
-          className="grimoire-card grimoire-card--raised absolute bottom-full left-3 z-50 mb-2 w-64 max-w-[calc(100vw-1.5rem)] p-1.5"
+          className="grimoire-card grimoire-card--raised absolute inset-x-3 bottom-full z-50 mb-2 p-1.5"
         >
           <button
             ref={vanillaRef}
             type="button"
             role="menuitem"
             disabled={busy}
-            className="flex min-h-11 w-full items-center gap-3 rounded px-3 py-2 text-left text-sm text-parchment transition-colors duration-150 hover:bg-char/60 focus-visible:bg-char/60"
+            className="flex min-h-11 w-full items-center gap-3 rounded px-3 py-2 text-left text-base font-semibold text-parchment transition-colors duration-150 hover:bg-char/60 focus-visible:bg-char/60"
             onClick={() => {
               setMenuOpen(false);
               disclosureRef.current?.focus();
@@ -529,11 +528,6 @@ function RootLayout() {
                 ))}
               </nav>
 
-              {collapsed ? null : (
-                <div className="px-4 pb-3 pt-2">
-                  <PromotedBanner vertical />
-                </div>
-              )}
               <SidebarLaunch collapsed={collapsed} />
               <div className="shrink-0 px-3 pb-3">
                 <NavLink {...SETTINGS_NAV} collapsed={collapsed} />
