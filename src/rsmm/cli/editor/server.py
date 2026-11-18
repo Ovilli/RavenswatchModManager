@@ -89,7 +89,7 @@ class Handler(BaseHTTPRequestHandler):
             n = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             return
-        if 0 < n <= app.MAX_BODY:
+        if 0 < n <= app.body_limit(self.path):
             self.rfile.read(n)
 
     def _serve(self, method: str) -> None:
@@ -103,7 +103,7 @@ class Handler(BaseHTTPRequestHandler):
                 n = int(self.headers.get("Content-Length") or 0)
             except ValueError:
                 return self._reply(app._fail(400, "bad content length"))
-            if n > app.MAX_BODY:
+            if n > app.body_limit(self.path):
                 return self._reply(app._fail(413, "request body missing or too large"))
             body = self.rfile.read(n)
         r = app.handle(self.server.ctx, method, self.path, self.headers, body, alive=self._alive)

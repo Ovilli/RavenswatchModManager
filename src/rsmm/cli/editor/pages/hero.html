@@ -7,41 +7,107 @@
 <style>{{common.css}}</style>
 <style>
 body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--ink); }
-header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 10px 16px;
-         border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
-header h1 { font-size: 16px; margin: 0 8px 0 0; }
-main { max-width: 860px; margin: 0 auto; padding: 16px 16px 120px; }
+header { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; padding: 10px 16px;
+         border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 3; }
+header h1 { font-size: 16px; margin: 0 6px 0 0; }
+header label { display: flex; gap: 6px; align-items: center; }
+#layout { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 18px; max-width: 1180px; margin: 0 auto; padding: 16px 16px 140px; }
+nav { position: sticky; top: 64px; align-self: start; display: flex; flex-direction: column; gap: 2px; }
+nav button { text-align: left; border: 1px solid transparent; background: none; border-radius: 8px; padding: 6px 10px; display: flex; justify-content: space-between; gap: 6px; }
+nav button:hover { border-color: var(--line); }
+nav button.on { background: var(--accentbg); border-color: var(--accentline); font-weight: 600; }
+nav .n { color: var(--muted); font-size: 12px; font-weight: 400; }
+nav .bad { color: var(--bad); }
+main { min-width: 0; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; }
-.card h2 { font-size: 15px; margin: 0 0 2px; }
-.card > .muted { margin: 0 0 12px; }
-.muted { color: var(--muted); font-size: 13px; }
-.grid { display: grid; grid-template-columns: 140px 1fr; gap: 10px 12px; align-items: center; }
-.grid input, .grid select, .grid textarea { width: 100%; box-sizing: border-box; }
-textarea { min-height: 54px; resize: vertical; font: inherit; }
-.slot { display: grid; grid-template-columns: 110px 210px 1fr; gap: 10px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line); }
-.slot:first-of-type { border-top: none; }
-.slot b { padding-top: 6px; }
-.slot .pick input { width: 100%; box-sizing: border-box; }
-.why { color: var(--muted); font-size: 12px; margin-top: 4px; }
-.forms { display: flex; gap: 8px; flex-wrap: wrap; }
-.forms label { border: 1px solid var(--line); border-radius: 9px; padding: 8px 12px; cursor: pointer; }
-.forms label:has(input:checked) { border-color: var(--accentline); background: var(--accentbg, transparent); font-weight: 600; }
-footer { position: fixed; bottom: 0; left: 0; right: 0; display: flex; gap: 12px; align-items: center;
-         padding: 10px 16px; background: var(--panel); border-top: 1px solid var(--line); }
-#status { flex: 1; } #status.bad { color: var(--bad, #c33); } #status.ok { color: var(--good, #3a8); }
-button.primary { background: var(--accent); color: var(--onaccent); border: none; border-radius: 8px; padding: 8px 16px; font-weight: 600; cursor: pointer; }
-button.primary:disabled { opacity: .5; cursor: default; }
-.tl { grid-column: 1 / -1; border-left: 3px solid var(--accentline); margin: 4px 0 2px 6px; padding: 6px 0 6px 12px; }
-.blk { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--bg); border: 1px solid var(--line);
-       border-radius: 9px; padding: 8px 10px; margin: 6px 0; }
-.blk .k { font-weight: 600; min-width: 110px; }
-.blk input[type=number] { width: 70px; }
-.blk .grow { flex: 1; min-width: 200px; }
-.blk .x { margin-left: auto; display: flex; gap: 4px; }
-.blk .x button, .adds button { font-size: 12px; padding: 3px 8px; }
-.inner { flex-basis: 100%; border-left: 2px dashed var(--line); padding-left: 10px; }
-.adds { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
-@media (max-width: 640px) { .slot { grid-template-columns: 1fr; } .grid { grid-template-columns: 1fr; } }
+.card > h2 { font-size: 15px; margin: 0 0 2px; display: flex; gap: 8px; align-items: center; }
+.card > h2 .grow { flex: 1; }
+.lead { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+.rec { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; gap: 7px 10px; align-items: center; }
+.rec > label { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.rec > label[title] { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
+.rec > .val { min-width: 0; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.rec > .val > input:not([type=checkbox]):not([type=color]), .rec > .val > select, .rec > .val > textarea { flex: 1; min-width: 120px; width: 100%; }
+.rec > .x button { font-size: 12px; padding: 1px 7px; }
+.rec .unit { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.rec .sub { grid-column: 2 / -1; }
+.rec > .val > .hint { flex-basis: 100%; color: var(--muted); font-size: 11.5px; line-height: 1.35; margin-top: -2px; }
+.kv { display: grid; gap: 5px; width: 100%; }
+.kvrow { display: flex; gap: 6px; align-items: center; }
+.kvrow > input { flex: 1; min-width: 0; }
+.kvrow.new > input { border-style: dashed; }
+textarea { min-height: 56px; resize: vertical; font: inherit; }
+textarea.code { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; min-height: 90px; }
+.add { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.add select { max-width: 260px; }
+.item { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin: 8px 0; background: var(--bg); }
+.item > .bar { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.item > .bar .t { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item > .bar .t .muted { font-weight: 400; }
+.item > .bar button { font-size: 12px; padding: 1px 8px; }
+.item.closed > :not(.bar) { display: none; }
+.item.closed > .bar { margin-bottom: 0; }
+.item .item { background: var(--panel); }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
+.tabs button { border-radius: 999px; padding: 4px 12px; }
+.tabs button.on { background: var(--accent); color: var(--onaccent); border-color: var(--accent); }
+.tabs button.off { color: var(--muted); border-style: dashed; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.tiers { display: flex; gap: 4px; flex-wrap: wrap; }
+.tiers input { width: 72px; }
+.colors { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.colors .c { display: flex; gap: 3px; align-items: center; border: 1px solid var(--line); border-radius: 7px; padding: 2px 4px; }
+.colors input[type=color] { width: 30px; height: 24px; padding: 0; border: none; background: none; }
+.colors input[type=number] { width: 54px; }
+.note { font-size: 12px; color: var(--muted); }
+.warn { background: var(--warnbg); color: var(--warn); border-radius: 8px; padding: 8px 10px; font-size: 13px; margin-bottom: 12px; }
+#problems { margin: 0; padding-left: 18px; }
+#problems li { cursor: pointer; } #problems li:hover { text-decoration: underline; }
+footer { position: fixed; bottom: 0; left: 0; right: 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+         padding: 10px 16px; background: var(--panel); border-top: 1px solid var(--line); z-index: 3; }
+#status { flex: 1; min-width: 200px; } #status.bad { color: var(--bad); } #status.ok { color: var(--ok); }
+dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); width: min(820px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
+dialog::backdrop { background: rgba(0,0,0,.45); }
+dialog pre { white-space: pre-wrap; font-size: 12px; max-height: 60vh; overflow: auto; background: var(--bg); padding: 8px; border-radius: 8px; }
+.empty { color: var(--muted); font-style: italic; padding: 6px 0; }
+/* Files: a tree of the mod's art beside a preview of the picked file. */
+.files { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 14px; min-height: 420px; }
+.files.drop { outline: 2px dashed var(--accentline); outline-offset: 6px; border-radius: 10px; }
+.tree { border: 1px solid var(--line); border-radius: 10px; padding: 6px; overflow: auto; max-height: 70vh; background: var(--bg); }
+.tree .dir { font-weight: 600; font-size: 13px; padding: 6px 6px 2px; color: var(--muted); cursor: pointer; user-select: none;
+  display: flex; gap: 5px; align-items: center; }
+.tree .ico { display: inline-flex; flex: none; }
+.tree .ico-chevron { transition: transform .12s; }
+.tree .dir.closed .ico-chevron { transform: rotate(-90deg); }
+.tree .f .ico { color: var(--muted); }
+.tree .f .ico-image { color: #2a9d8f; }
+.tree .f .ico-model { color: #8a6fd1; }
+.tree .f.on .ico { color: inherit; }
+.tree .f { display: flex; gap: 6px; align-items: center; width: 100%; text-align: left; border: 1px solid transparent; background: none;
+  border-radius: 7px; padding: 4px 6px 4px 16px; font-size: 13px; }
+.tree .f:hover { border-color: var(--line); }
+.tree .f.on { background: var(--accentbg); border-color: var(--accentline); }
+.tree .f .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree .f .sz { color: var(--muted); font-size: 11px; }
+.tree .f .unused { color: var(--warn); font-size: 11px; }
+.preview { min-width: 0; }
+.preview .stage { border: 1px solid var(--line); border-radius: 10px; min-height: 360px; display: grid; place-items: center; overflow: hidden;
+  background-color: #fff; background-image: linear-gradient(45deg, #ddd 25%, transparent 25%), linear-gradient(-45deg, #ddd 25%, transparent 25%),
+  linear-gradient(45deg, transparent 75%, #ddd 75%), linear-gradient(-45deg, transparent 75%, #ddd 75%);
+  background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0; }
+.preview .stage.dark { background: #1b1b1f; }
+.preview .stage img { max-width: 100%; max-height: 60vh; image-rendering: auto; }
+.preview .stage canvas { width: 100%; height: 420px; display: block; cursor: grab; }
+.preview .meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+.preview .meta .grow { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.preview ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
+@media (max-width: 760px) { .files { grid-template-columns: 1fr; } }
+@media (max-width: 760px) {
+  #layout { grid-template-columns: 1fr; }
+  nav { position: static; flex-direction: row; flex-wrap: wrap; }
+  .rec { grid-template-columns: 1fr auto; }
+  .rec > label { grid-column: 1 / -1; }
+}
 </style>
 </head>
 <body>
@@ -49,50 +115,47 @@ button.primary:disabled { opacity: .5; cursor: default; }
   <h1>Hero Builder</h1>
   <label>Mod <select id="mod"></select></label>
   <label>Hero <select id="pick"></select></label>
-  <span id="busy" class="muted"></span>
+  <span id="busy" class="muted tiny"></span>
 </header>
-<main>
-  <section class="card">
-    <h2>Who</h2>
-    <p class="muted">Your hero starts as a copy of a shipped hero: its body, moves and everything you do not change below.</p>
-    <div class="grid">
-      <label for="base">Built on</label><select id="base"></select>
-      <label for="name">Name</label><input id="name" placeholder="e.g. Blood Wolf">
-      <label for="desc">Description</label><textarea id="desc" placeholder="Shown on the hero select screen"></textarea>
-    </div>
-  </section>
-  <section class="card" id="formCard" hidden>
-    <h2>Form</h2>
-    <p class="muted">This hero changes form. Pick whether yours does.</p>
-    <div class="forms">
-      <label><input type="radio" name="form" value=""> Switches at night, as the original</label>
-      <label><input type="radio" name="form" value="wolf"> Always wolf</label>
-      <label><input type="radio" name="form" value="human"> Never turns <span class="muted">(untested)</span></label>
-    </div>
-  </section>
-  <section class="card">
-    <h2>Abilities</h2>
-    <p class="muted">For each button, keep what the original does, take it away, or have it also fire a projectile from anywhere in the game (an enemy's included). Greyed-out choices say why this hero cannot do them yet.</p>
-    <div id="slots"></div>
-  </section>
-  <section class="card" id="petsCard">
-    <h2>Pets</h2>
-    <p class="muted">Creatures that follow your hero and fight for it, Piper's way: an enemy from anywhere in the game, turned to your side. They come at the start of a run, or one batch per press of a button. Leaving a fight calls them back.</p>
-    <label><input type="checkbox" id="petsOn"> This hero has pets</label>
-    <div id="pets"></div>
-  </section>
-  <section class="card">
-    <h2>Numbers and wiring</h2>
-    <p class="muted">Damage, cooldowns and everything the blocks above do not cover are in the Abilities tab. Save here first, then pick “a new hero built on it” there and choose this hero.</p>
-    <button type="button" id="advanced">Open the Abilities tab</button>
-  </section>
-</main>
+<div id="layout">
+  <nav id="nav" aria-label="Sections"></nav>
+  <main id="main"></main>
+</div>
 <footer>
-  <div id="status" class="muted">Pick what your hero is built on and give it a name.</div>
-  <button id="save" class="primary" disabled>Save hero</button>
+  <div id="status" class="muted">Loading…</div>
+  <button id="undo" type="button" title="Undo the last change (Ctrl+Z)" disabled>Undo</button>
+  <button id="redo" type="button" title="Redo what was undone (Ctrl+Shift+Z)" disabled>Redo</button>
+  <button id="reset" type="button" title="Throw away every change since the hero was opened or saved" disabled>Reset</button>
+  <button id="remove" type="button" hidden>Remove hero</button>
+  <button id="build" type="button" title="Builds every file of the hero into a throwaway folder, exactly as rsmm apply would (about half a minute)">Build check</button>
+  <button id="check" type="button">Check</button>
+  <button id="save" type="button" class="primary">Save hero</button>
 </footer>
-<datalist id="projList"></datalist>
-<datalist id="enemyList"></datalist>
+<dialog id="buildDlg">
+  <h3 id="buildTitle" style="margin:0 0 8px">Build check</h3>
+  <div id="buildBody"></div>
+  <form method="dialog" style="text-align:right;margin-top:10px"><button>Close</button></form>
+</dialog>
+<datalist id="dl-anim"></datalist>
+<datalist id="dl-fx"></datalist>
+<datalist id="dl-own"></datalist>
+<datalist id="dl-png"></datalist>
+<datalist id="dl-glb"></datalist>
+<datalist id="dl-tpl"></datalist>
+<datalist id="dl-rigclip"></datalist>
+<datalist id="dl-slot"></datalist>
+<datalist id="dl-stat"></datalist>
+<datalist id="dl-template"></datalist>
+<datalist id="dl-ui"></datalist>
+<datalist id="dl-enemy"></datalist>
+<datalist id="dl-fxmesh"></datalist>
+<datalist id="dl-fxmat"></datalist>
+<datalist id="dl-wmesh"></datalist>
+<datalist id="dl-wmat"></datalist>
+<datalist id="dl-bone"></datalist>
+<datalist id="dl-tclip"></datalist>
+<datalist id="dl-sound"></datalist>
+{{newmod.html}}
 <script>{{common.js}}</script>
 <script>
 "use strict";
@@ -101,462 +164,1357 @@ function el(tag, attrs = {}, ...kids) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (v == null || v === false) continue;
-    if (k.startsWith("on")) e.addEventListener(k.slice(2), v); else if (k === "text") e.textContent = v; else e.setAttribute(k, v === true ? "" : v);
+    if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (k === "text") e.textContent = v;
+    else if (k === "value") e.value = v;
+    else e.setAttribute(k, v === true ? "" : v);
   }
-  for (const k of kids) if (k != null) e.append(k);
+  for (const k of kids) if (k != null && k !== false) e.append(k);
   return e;
 }
-const SLOTS = [["attack", "Attack"], ["power", "Power"], ["special", "Special"], ["defense", "Defense"],
-  ["ultimate", "Ultimate"], ["ultimate2", "Ultimate 2"], ["trait", "Trait"], ["dash", "Dash"]];
-const NEW_MOD = "__new__", NEW_HERO = "__new__";
-// The game's names for heroes whose files say something else.
-const HERO_NAME = { Red: "Scarlet", Geppetto: "Pinocchio", SunWukong: "Sun Wukong", Snow_Queen: "Snow Queen" };
-const heroName = (h) => HERO_NAME[h] || h.replace(/_/g, " ");
-const S = { mod: NEW_MOD, hero: NEW_HERO, heroes: [], opts: null, kit: {}, tags: [], projs: [], enemies: [], dirty: false };
+const clone = (v) => JSON.parse(JSON.stringify(v));
+const NEW = "__new__";
+const SLOT_LABEL = { attack: "Attack", power: "Power", special: "Special", defense: "Defense",
+  trait: "Trait", dash: "Dash", ultimate: "Ultimate 1", ultimate2: "Ultimate 2" };
+const RARITY = ["Common", "Rare", "Epic", "Legendary"];
+const S = { schema: null, mod: NEW, block: NEW, heroes: [], others: [], hero: null, dirty: false,
+  section: "hero", slot: "attack", files: [], rig: null, clips: null, problems: [], tags: [],
+  templates: [], projectiles: [] };
+// Files made before the mod exists wait in a draft folder of this page's own
+// and move into the mod when it is first saved.
+const DRAFT = Array.from(crypto.getRandomValues(new Uint8Array(12)), b => (b % 36).toString(36)).join("");
+const where = () => S.mod === NEW ? { mod: "", draft: DRAFT } : { mod: S.mod };
+const whereName = () => S.mod === NEW ? "this hero (it moves into the mod when you save)" : S.mod;
 const setStatus = (cls, text) => { $("status").className = cls; $("status").textContent = text; };
+function changed() { remember(); S.dirty = S.last !== S.saved; tellShell(); refreshLists(); drawNav(); }
 
+// ---- history: undo, redo, reset ------------------------------------------------------------
+// Every change keeps the hero as it was before; a burst of typing in one field
+// is one step. Files already written into the mod (uploads, starters) stay.
+const HISTORY_MAX = 200;
+function startHistory() {
+  S.past = []; S.future = []; S.last = S.saved = JSON.stringify(S.hero); S.lastAt = 0;
+  historyButtons();
+}
+function remember() {
+  if (!S.past) { startHistory(); return; }
+  const now = JSON.stringify(S.hero);
+  if (now === S.last) return;
+  if (Date.now() - S.lastAt > 800 || !S.past.length) {
+    S.past.push(S.last);
+    if (S.past.length > HISTORY_MAX) S.past.shift();
+  }
+  S.lastAt = Date.now(); S.future = []; S.last = now;
+  historyButtons();
+}
+function historyButtons() {
+  $("undo").disabled = !S.past?.length; $("redo").disabled = !S.future?.length;
+  $("reset").disabled = S.last === S.saved;
+}
+async function restore(state, what) {
+  const rig = F()?.rig;
+  S.last = state; S.lastAt = 0; S.hero = JSON.parse(state);
+  S.dirty = S.last !== S.saved;
+  if (F().rig !== rig) {          // a rig of its own: its slots, bones and clips
+    S.rig = F().rig ? await api("api/rig?rig=" + encodeURIComponent(F().rig)).catch(() => null) : null;
+    opts("dl-slot", S.rig?.slots || []); opts("dl-bone", S.rig?.bones || []);
+    await loadClips();
+  }
+  refreshLists(); draw(); tellShell(); historyButtons();
+  setStatus("muted", what);
+}
+function undo() {
+  if (!S.past.length) return;
+  S.future.push(S.last);
+  restore(S.past.pop(), `Undone (${S.past.length} more to undo). Files already written into the mod stay in Files.`);
+}
+function redo() {
+  if (!S.future.length) return;
+  S.past.push(S.last);
+  restore(S.future.pop(), `Redone (${S.future.length} more to redo).`);
+}
+function resetHero() {
+  if (S.last === S.saved || !confirm("Throw away every change since this hero was opened or last saved? (Undo brings them back.)")) return;
+  S.past.push(S.last); S.future = [];
+  restore(S.saved, "Back to the hero as it was opened or last saved. Undo brings your changes back; files already written stay in Files.");
+}
+
+// ---- field specs ------------------------------------------------------------------------
+// How each key is edited. A key with no spec gets an editor for the type of
+// its value (JSON for tables and lists), so whatever the build takes can be set.
+const num = (unit, hint) => ({ t: "num", unit, hint });
+const txt = (hint, list) => ({ t: "text", hint, list });
+const SOUND = txt('a sound the game ships: type a hero or a word (Impact, Swing) and pick one', "dl-sound");
+const FX = { t: "text", list: "dl-fx", hint: "fx:<one of your effects>, or a shipped Settings\\…\\<name>.vfx.ot" };
+const CLIP = { t: "text", list: "dl-anim", hint: "anim:<one of your animations>, or a shipped clip path" };
+const UI = { t: "file", ext: ".png", folder: "art/ui", starter: "picture", list: "dl-ui",
+  hint: "a .png in the mod (art/…), or a shipped UI path (Heroes\\…\\x.png)" };
+const PNG = (folder, hint) => ({ t: "file", ext: ".png", folder, list: "dl-png", hint });
+const GLB = (folder, hint, starter) => ({ t: "file", ext: ".glb,.gltf", folder, list: "dl-glb", hint, starter });
+const ENUM = (e, hint) => ({ t: "enum", e, hint });
+const SPEC = {
+  hit: { at: num("s", "seconds after the press"), radius: num("m"), damage: num("%", "% of a hit"),
+    stun: num("s", "seconds the enemy is stunned (0..10)"), knockback: num("", "push strength (0..200)"),
+    stagger: num("", "stagger power (0..100)"), status: ENUM("status", "a status put on whoever it hits"),
+    fx: FX, impact: { ...FX, hint: "played ON each enemy hit" }, shake: ENUM("shake", "camera shake"),
+    sound: SOUND, arc: num("°", "a cone ahead of the hero; 0 = all round") },
+  indicator: { radius: num("m", "0.2..30"), forward: num("m", "how far ahead (-30..30)"), color: { t: "color" } },
+  buff: { stat: { t: "text", list: "dl-stat" }, value: txt('as a talent writes it: "+20%", "+10"'), seconds: num("s", "0..120") },
+  strike: { clip: CLIP, duration: num("s", "0..10"), after: num("s", "an enemy already in reach is struck this long in (default 0.25)") },
+  combo: { clip: CLIP, duration: num("s", "default: the clip's length"), hit_at: num("s", "when the hit lands"),
+    link_at: num("s", "from when the next press chains"), exit_at: num("s", "from when moving ends the step"),
+    sound: SOUND, swing: SOUND, swing_at: num("s"), hits: { t: "hits", noAt: true } },
+  button: { name: txt("the card's title"), description: { t: "area", hint: "the card's text (#WORD@ = highlight)" },
+    icon: { ...UI, hint: "HUD picture: a .png in the mod or a shipped one; empty = the rig's" },
+    icon_disabled: { ...UI, hint: "the greyed picture while it cools down (default: made from the icon)" },
+    clip: CLIP, cooldown: num("s"), duration: num("s", "how long it holds the hero (default: the clip's length)"),
+    charges: { t: "int", hint: "uses before it must cool down (1..20)" },
+    sound: { ...SOUND, hint: SOUND.hint + ", played at 0 s" },
+    hold: { t: "bool", hint: "ends as soon as the button is let go; duration = the longest hold" },
+    loop: { t: "bool", hint: "loops the clip for the whole duration" },
+    moving: { t: "bool", hint: "the hero may walk while it plays" },
+    passive: { t: "bool", hint: "no button: a card, an icon and an always-on state" },
+    intangible: { t: "text", hint: "true, or seconds (0..60): attacks pass through the hero", parse: "boolnum" },
+    root_motion: num("×", "how much of the clip's travel moves the hero (0 = in place, 0..5)"),
+    hits: { t: "hits" }, indicator: { t: "rec", spec: "indicator" }, buffs: { t: "list", of: "buff", title: (b) => b.stat || "buff" },
+    strike: { t: "rec", spec: "strike" }, combo: { t: "combo" }, steps: { t: "steps" },
+    add_stats: { t: "stats" }, template: { t: "text", list: "dl-template", hint: '"<Hero>: <button>", a shipped button lent whole' },
+    values: { t: "map", vt: "num", kph: "a part of the template", hint: "a number of the lent button to change: its name, then the new value" },
+    clips: { t: "map", klist: "dl-tclip", vlist: "dl-anim", kph: "the template's clip", vph: "the clip to play instead",
+      hint: "swap a clip of the lent button: pick the template's clip, then the one to play" } },
+  stat: { stat: { t: "text", list: "dl-stat" }, values: { t: "tiers" }, percent: { t: "bool", hint: "a percentage (default true)" },
+    during: ENUM("ability", "only while that ability is in use"), after: ENUM("ability", "for `seconds` after each use of that ability"),
+    on: ENUM("trigger", "for `seconds` after this event"), seconds: num("s"), cooldown: num("s", "at most once every so many seconds"),
+    next: ENUM("ability", "until the next use of this ability") },
+  action: { on: ENUM("trigger", "fires each time this happens while the talent is owned"), hits: { t: "hits" }, steps: { t: "steps" } },
+  talent: { title: txt("the card's title"), description: { t: "area", hint: "{0} = the number, &…~ scales with rarity, #WORD@ highlights" },
+    icon: UI, starter: { t: "bool", hint: "in the pick at the start of a run" }, add_stats: { t: "stats" },
+    actions: { t: "list", of: "action", title: (a) => a.on ? "on " + a.on : "action" } },
+  ultimate: { title: txt(), description: { t: "area" }, icon: UI, add_stats: { t: "stats" },
+    actions: { t: "list", of: "action", title: (a) => a.on ? "on " + a.on : "action" } },
+  projectile: { model: GLB("art/props", "a .glb in the mod, flying along +Y", "projectile"), albedo: { ...PNG("art/props"), starter: "projectile" },
+    mra: PNG("art/props"), normal: PNG("art/props"), scale: num("×"), size: num("×", "hit size"),
+    lifetime: num("s"), trail: FX, impact: FX, pierce: { t: "bool", hint: "flies through enemies (default true)" }, pitch: num("°") },
+  layer: { texture: { ...PNG("art/fx", "a white shape (.png in the mod), tinted by colors"), starter: "shape" },
+    soft: { t: "bool", hint: "fades into the ground" }, material: txt("a shipped material, instead of a texture", "dl-fxmat"),
+    mesh: txt('"decal" (on the ground) or a shipped FX mesh (Fan_Flat_Large_180)', "dl-fxmesh"),
+    light: num("", "a glow: lights the ground in its colour, as wide as its size"),
+    burst: { t: "int", hint: "particles at once" }, rate: num("/s", "particles per second"),
+    lifetime: { t: "range", unit: "s" }, size: { t: "range", unit: "m" }, speed: num("m/s"), up: num("m/s", "upward speed"),
+    radius: num("m", "spawn radius"), spread: num("°"), rotation: num("°", "random start rotation"), angle: num("°", "facing"),
+    gravity: num("", "+ falls, - rises"), drag: num(""), spin: num("°/s"), delay: num("s"), duration: num("s"),
+    blend: { t: "int" }, colors: { t: "colors" }, grow: { t: "nums", hint: "size over its life, e.g. 1, 0.6" }, name: txt() },
+  animation: { source: GLB("art/anims", "a Blender clip on the rig's skeleton (.glb)", "anim"),
+    clip: txt("the clip's name inside the .glb"), template: { t: "text", list: "dl-tpl", hint: "a rig clip lending bone order (e.g. Kintaro_FightingIdle_Loop)" },
+    strict: { t: "bool" } },
+  slot: { clip: CLIP, duration: num("s"), value: num("", "a number slot (camera distance …)"), bone: txt("a bone of the body (DEF.Chest)", "dl-bone"), texture: UI },
+  weapon: { from: ENUM("hero", "the shipped hero whose hand weapon layout it uses"), model: GLB("art/props", "handle along +Y, grip at the origin", "weapon"),
+    albedo: { ...PNG("art/props"), starter: "weapon" }, mesh: txt("a shipped weapon mesh (instead of a model)", "dl-wmesh"),
+    material: txt("the shipped material it is drawn with", "dl-wmat") },
+  memoir: { title: txt(), text: { t: "area" } },
+};
+// Step blocks: a step is named by its first key.
+const STEP_SPEC = {
+  fire: { fire: { t: "text", list: "dl-own", hint: "own:<projectile>, or a shipped one" }, angles: { t: "nums", hint: "a fan, degrees (0 = facing)" },
+    offsets: { t: "nums", hint: "side by side, metres" }, speed: num("m/s"), damage: num("%"), lifetime: num("s"), size: num("×"),
+    knockback: num(""), stagger: num(""), explode: num("m", "burst radius"), forward: num("m", "metres ahead it starts"),
+    burn: num("s"), poison: num("s"), root: num("s"), curse: { t: "bool" }, vulnerable: { t: "bool" },
+    ricochet: { t: "int" }, ricochet_damage: num("%"), reads: { t: "map", kph: "name", vph: "value", hint: "extra values the projectile reads, by name" } },
+  hit: { hit: { t: "rec", spec: "stephit" }, forward: num("m", "metres ahead it lands") },
+  heal: { heal: num("", "in the hero's own heal units") },
+  summon: { summon: txt("an enemy (Enemies/Wolves/Standard_Wolf_Timber)", "dl-enemy") },
+  anim: { anim: CLIP },
+  wait: { wait: num("s") },
+  repeat: { repeat: { t: "int", hint: "how many times" }, every: num("s"), steps: { t: "steps" } },
+};
+SPEC.stephit = { radius: num("m"), damage: num("%"), delay: num("s") };
+const STEP_DEFAULT = { fire: "", hit: { radius: 3, damage: 100 }, heal: 10, summon: "", anim: "", wait: 0.2, repeat: 2 };
+
+// ---- generic editors ---------------------------------------------------------------------
+// Each edits `obj[key]` in place; an emptied field deletes the key, so the
+// manifest never grows `x = ""` lines the author did not write.
+function setKey(obj, key, v) {
+  if (v === undefined || v === "" || (Array.isArray(v) && !v.length)) delete obj[key]; else obj[key] = v;
+  changed();
+}
+function parseNum(s) { const n = Number(String(s).trim()); return String(s).trim() === "" || !Number.isFinite(n) ? undefined : n; }
+function guess(v) {
+  if (typeof v === "boolean") return { t: "bool" };
+  if (typeof v === "number") return { t: "num" };
+  if (typeof v === "string") return v.length > 80 ? { t: "area" } : { t: "text" };
+  return { t: "json" };
+}
+function input(obj, key, sp) {
+  const v = obj[key];
+  const t = sp.t;
+  if (t === "bool") {
+    const box = el("input", { type: "checkbox", onchange: () => setKey(obj, key, box.checked ? true : (obj[key] === undefined ? undefined : false)) });
+    box.checked = !!v;
+    return [box, sp.hint ? el("span", { class: "unit", text: sp.hint }) : null];
+  }
+  if (t === "num" || t === "int") {
+    const i = el("input", { type: "number", step: t === "int" ? "1" : "any", value: v ?? "",
+      onchange: () => { const n = parseNum(i.value); setKey(obj, key, t === "int" && n !== undefined ? Math.round(n) : n); } });
+    return [i, sp.unit ? el("span", { class: "unit", text: sp.unit }) : null];
+  }
+  if (t === "enum") {
+    const opts = sp.e === "hero" ? S.schema.hero_folders || S.schema.rigs.map(r => r.replace(/^Hero_/, "")) : S.schema.enums[sp.e] || [];
+    const s = el("select", { onchange: () => setKey(obj, key, s.value || undefined) },
+      el("option", { value: "", text: "—" }), ...opts.map(o => el("option", { value: o, text: o })));
+    if (v && !opts.includes(v)) s.append(el("option", { value: v, text: v }));
+    s.value = v ?? "";
+    return [s];
+  }
+  if (t === "area") {
+    const a = el("textarea", { value: v ?? "", oninput: () => setKey(obj, key, a.value) });
+    return [a];
+  }
+  if (t === "tiers") {
+    const list = Array.isArray(v) ? v : v === undefined ? ["", "", "", ""] : [v, v, v, v];
+    const ins = RARITY.map((r, n) => el("input", { title: r, placeholder: r, value: list[n] ?? "",
+      onchange: () => setKey(obj, key, ins.map(i => parseNum(i.value) ?? (i.value.trim() || 0))) }));
+    return [el("div", { class: "tiers" }, ...ins)];
+  }
+  if (t === "range") {
+    const i = el("input", { value: Array.isArray(v) ? v.join(", ") : v ?? "", placeholder: "one value, or min, max",
+      onchange: () => { const ns = i.value.split(",").map(parseNum).filter(n => n !== undefined); setKey(obj, key, ns.length > 1 ? ns.slice(0, 2) : ns[0]); } });
+    return [i, sp.unit ? el("span", { class: "unit", text: sp.unit }) : null];
+  }
+  if (t === "nums") {
+    const i = el("input", { value: Array.isArray(v) ? v.join(", ") : v ?? "",
+      onchange: () => setKey(obj, key, i.value.split(",").map(parseNum).filter(n => n !== undefined)) });
+    return [i];
+  }
+  if (t === "color") return [colorInput(v, (c) => setKey(obj, key, c))];
+  if (t === "colors") {
+    const list = Array.isArray(v) ? v : [];
+    const wrap = el("div", { class: "colors" });
+    const draw = () => wrap.replaceChildren(
+      ...list.map((c, n) => el("span", { class: "c" }, colorInput(c, (nc) => { list[n] = nc; setKey(obj, key, list); }),
+        el("button", { type: "button", class: "small", title: "Remove this colour", text: "×", onclick: () => { list.splice(n, 1); setKey(obj, key, list); draw(); } }))),
+      el("button", { type: "button", class: "small", text: "+ colour", onclick: () => { list.push(list.length ? clone(list[list.length - 1]) : [1, 1, 1, 1]); setKey(obj, key, list); draw(); } }));
+    draw();
+    return [wrap, el("span", { class: "unit", text: "over its life" })];
+  }
+  if (t === "file") return fileInput(obj, key, sp);
+  if (t === "map") return [mapInput(obj, key, sp)];
+  if (t === "json") return [jsonInput(obj, key, v)];
+  // text (with an optional suggestion list); "boolnum" keeps true/false and numbers typed
+  const i = el("input", { value: v === undefined ? "" : String(v), list: sp.list || null, placeholder: sp.ph || "",
+    onchange: () => {
+      let x = i.value.trim();
+      if (sp.parse === "boolnum") x = x === "true" ? true : x === "false" ? false : parseNum(x) ?? (x || undefined);
+      setKey(obj, key, x);
+    } });
+  return [i];
+}
+// A file of the mod: typed, picked from the mod's files, uploaded from this
+// computer, or written as a starter (the rig's own body, a clip, a shape …)
+// so there is always something to open in Blender or a paint program.
+const SHAPES = ["spark", "puff", "dot", "ring", "slash", "streak", "leaf"];
+const STARTER_LABEL = { body: "Use the rig's body", albedo: "Use the rig's texture", anim: "Start from a rig clip…",
+  shape: "Draw a shape…", picture: "Copy the game's picture", projectile: "Use a dagger", weapon: "Use the hero's weapon" };
+function fileInput(obj, key, sp) {
+  const i = el("input", { value: obj[key] ?? "", list: sp.list || null, placeholder: "art/…",
+    onchange: () => setKey(obj, key, i.value.trim()) });
+  const up = el("button", { type: "button", class: "small", text: "Upload…", title: `Copy a ${sp.ext} file from this computer into the mod's ${sp.folder}/` });
+  up.addEventListener("click", async () => {
+    const path = await uploadFile(sp.ext, sp.folder);
+    if (path) { obj[key] = path; i.value = path; changed(); }
+  });
+  const view = el("button", { type: "button", class: "small", text: "View", title: "Show it in Files",
+    onclick: () => { S.section = "files"; S.fileSel = obj[key]; draw(); } });
+  view.hidden = !S.files.includes(obj[key]);
+  i.addEventListener("change", () => { view.hidden = !S.files.includes(i.value.trim()); });
+  const kids = [i, up, view];
+  if (sp.starter === "shape" || sp.starter === "anim") {
+    const choices = sp.starter === "shape" ? SHAPES : (S.clips?.templates || []);
+    const sel = el("select", { class: "small", "aria-label": STARTER_LABEL[sp.starter], title: "Write a starter file into the mod and use it" },
+      el("option", { value: "", text: STARTER_LABEL[sp.starter] }), ...choices.map(c => el("option", { value: c, text: c })));
+    if (!choices.length) { sel.disabled = true; sel.title = "Pick a rig (Body & rig) first"; }
+    sel.addEventListener("change", async () => {
+      const v = sel.value; sel.value = ""; if (!v) return;
+      await runStarter(sp.starter, obj, key, sp.starter === "shape" ? { shape: v } : { template: v });
+    });
+    kids.push(sel);
+  } else if (sp.starter) {
+    kids.push(el("button", { type: "button", class: "small", text: STARTER_LABEL[sp.starter],
+      title: "Write a starter file into the mod (from your game install) and use it",
+      onclick: () => runStarter(sp.starter, obj, key, {}) }));
+  }
+  return kids;
+}
+async function readB64(file) {
+  const buf = new Uint8Array(await file.arrayBuffer());
+  let s = "";
+  for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+// Ask for a file and copy it into the mod. Resolves to its path in the mod, or "".
+function uploadFile(ext, folder) {
+  return new Promise(resolve => {
+    const pick = el("input", { type: "file", accept: ext });
+    pick.addEventListener("change", async () => {
+      const file = pick.files[0]; if (!file) { resolve(""); return; }
+      resolve(await sendFile(file, folder));
+    });
+    pick.click();
+  });
+}
+// Copy one file into the mod (or this hero's draft). `as` keeps a name (replace).
+async function sendFile(file, folder, as) {
+  setStatus("muted", `Copying ${file.name}…`);
+  try {
+    const { path } = await api("api/upload", { ...where(), folder, name: as || file.name, replace: !!as,
+      data: await readB64(file) });
+    await loadFiles(); setStatus("ok", `✓ ${file.name} is now ${path} in ${whereName()}.`);
+    return path;
+  } catch (e) { setStatus("bad", e.message); return ""; }
+}
+// Write a starter file into the mod and point the field (and its partners:
+// a body's texture, a clip's name and template) at it.
+async function runStarter(what, obj, key, extra) {
+  const f = F();
+  if (["body", "albedo", "anim"].includes(what) && !f.mesh) { setStatus("bad", "Pick a rig first (Body & rig): the starter is taken from it."); return; }
+  if (obj[key] && !confirm(`Replace ${obj[key]} with a starter file?`)) return;
+  setStatus("muted", "Writing a starter file…");
+  try {
+    const body = { ...where(), what, mesh: f.mesh, material: f.material, ...extra };
+    if (what === "picture") { body.ref = String(obj[key] || ""); body.name = key; }
+    if (what === "weapon") body.hero = (f.weapon && f.weapon.from) || "Aladdin";
+    const r = await api("api/starter", body);
+    if (r.path) obj[key] = r.path;
+    if (r.model) obj.model = r.model;
+    if (r.albedo) obj.albedo = r.albedo;
+    if (r.source) { obj.source = r.source; obj.clip = r.clip; obj.template = r.template; }
+    changed(); await loadFiles(); draw();
+    const made = [r.path, r.model, r.albedo, r.source].filter(Boolean);
+    const name = r.source ? Object.keys(f.animations || {}).find(k => f.animations[k] === obj) : "";
+    setStatus("ok", `✓ Wrote ${made.join(" and ")} in ${whereName()}. Open it, change it, keep the name: the next apply uses yours.`
+      + (name ? ` Play it on a button or slot with clip = "anim:${name}".` : ""));
+  } catch (e) { setStatus("bad", e.message); }
+}
+function colorInput(c, set) {
+  const rgba = Array.isArray(c) && c.length >= 3 ? c : [1, 1, 1, 1];
+  const hex = "#" + rgba.slice(0, 3).map(x => Math.round(Math.max(0, Math.min(1, x)) * 255).toString(16).padStart(2, "0")).join("");
+  const pick = el("input", { type: "color", value: hex });
+  const a = el("input", { type: "number", min: "0", max: "1", step: "0.05", value: rgba[3] ?? 1, title: "opacity (0..1)" });
+  const out = () => {
+    const h = pick.value; const r = (k) => +(parseInt(h.slice(k, k + 2), 16) / 255).toFixed(3);
+    set([r(1), r(3), r(5), parseNum(a.value) ?? 1]);
+  };
+  pick.addEventListener("change", out); a.addEventListener("change", out);
+  return el("span", { class: "c" }, pick, a);
+}
+// A `{ name = value }` table as rows, each name picked from what it can be
+// (sp.klist) and each value typed or picked (sp.vlist), never JSON by hand.
+function mapInput(obj, key, sp) {
+  const cur = obj[key];
+  const m = cur && typeof cur === "object" && !Array.isArray(cur) ? cur : {};
+  const val = (x) => sp.vt === "num" ? parseNum(x) ?? 0 : parseNum(x) ?? x.trim();
+  const save = () => setKey(obj, key, Object.keys(m).length ? m : undefined);
+  const field = (k, v) => el("input", { value: v ?? "", list: k ? sp.klist || null : sp.vlist || null,
+    placeholder: k ? sp.kph || "name" : sp.vph || "value", type: !k && sp.vt === "num" ? "number" : null, step: !k && sp.vt === "num" ? "any" : null });
+  const wrap = el("div", { class: "kv" });
+  const draw = () => {
+    const rows = Object.entries(m).map(([k, v]) => {
+      const ki = field(true, k), vi = field(false, v);
+      ki.addEventListener("change", () => {
+        const nk = ki.value.trim();
+        if (nk === k) return;
+        if (!nk || nk in m) { ki.value = k; return; }
+        const keep = m[k]; delete m[k]; m[nk] = keep; save(); draw();
+      });
+      vi.addEventListener("change", () => { m[k] = val(vi.value); save(); });
+      return el("div", { class: "kvrow" }, ki, el("span", { class: "unit", text: "→" }), vi,
+        el("button", { type: "button", class: "small", title: "Remove " + k, text: "×", onclick: () => { delete m[k]; save(); draw(); } }));
+    });
+    const nk = field(true, ""), nv = field(false, "");
+    const add = el("button", { type: "button", class: "small", text: "Add", onclick: () => {
+      const k = nk.value.trim();
+      if (!k) { nk.focus(); return; }
+      m[k] = val(nv.value); save(); draw();
+    } });
+    wrap.replaceChildren(...rows, el("div", { class: "kvrow new" }, nk, el("span", { class: "unit", text: "→" }), nv, add));
+  };
+  draw();
+  return wrap;
+}
+function jsonInput(obj, key, v) {
+  const a = el("textarea", { class: "code", value: v === undefined ? "" : JSON.stringify(v, null, 1).replace(/\n\s*/g, " ") });
+  a.addEventListener("change", () => {
+    if (!a.value.trim()) { setKey(obj, key, undefined); a.style.outlineColor = ""; return; }
+    try { setKey(obj, key, JSON.parse(a.value)); a.setCustomValidity(""); }
+    catch (e) { a.setCustomValidity("Not valid JSON: " + e.message); a.reportValidity(); }
+  });
+  return a;
+}
+
+// A table: one row per key it has (or always shows), "+ field" for the rest.
+// `keys` are what the build takes (from the server); `spec` how to edit each.
+function record(obj, keys, spec, opts = {}) {
+  const wrap = el("div");
+  const draw = () => {
+    const always = opts.always || [];
+    // `only`: a few keys of a table other cards edit too (the hero, its frame).
+    const shown = [...new Set([...always, ...keys.filter(k => k in obj), ...(opts.only ? [] : Object.keys(obj))])]
+      .filter(k => !(opts.skip || []).includes(k));
+    const grid = el("div", { class: "rec" });
+    for (const k of shown) {
+      const sp = spec[k] || guess(obj[k]);
+      const unknown = !keys.includes(k) && !spec[k];
+      grid.append(el("label", { title: sp.hint || (unknown ? "not a key this part takes: the build will refuse it" : null),
+        text: (opts.label && opts.label[k]) || k }));
+      if (["hits", "steps", "stats", "combo", "list", "rec"].includes(sp.t)) {
+        grid.append(el("div", { class: "val" }, el("span", { class: "unit", text: summary(obj[k], sp) })));
+        grid.append(el("div", { class: "x" }, always.includes(k) ? null :
+          el("button", { type: "button", title: "Remove " + k, text: "×", onclick: () => { delete obj[k]; changed(); draw(); } })));
+        grid.append(el("div", { class: "sub" }, nested(obj, k, sp)));
+        continue;
+      }
+      // The hint is shown, not only on hover: nobody should need to know what a field takes.
+      grid.append(el("div", { class: "val" }, ...input(obj, k, sp),
+        sp.hint && sp.t !== "bool" ? el("div", { class: "hint", text: sp.hint }) : null));
+      grid.append(el("div", { class: "x" }, always.includes(k) ? null :
+        el("button", { type: "button", title: "Remove " + k, text: "×", onclick: () => { delete obj[k]; changed(); draw(); } })));
+    }
+    const rest = keys.filter(k => !shown.includes(k) && !(opts.skip || []).includes(k) && !(opts.hide || []).includes(k));
+    const kids = [grid];
+    if (rest.length) {
+      const sel = el("select", { "aria-label": "Add a field" }, el("option", { value: "", text: "+ field…" }),
+        ...rest.map(k => el("option", { value: k, text: k + (spec[k] && spec[k].hint ? " — " + spec[k].hint.slice(0, 60) : "") })));
+      sel.addEventListener("change", () => {
+        const k = sel.value; if (!k) return;
+        const sp = spec[k] || {};
+        obj[k] = defaultFor(sp); changed(); draw();
+      });
+      kids.push(el("div", { class: "add" }, sel));
+    }
+    wrap.replaceChildren(...kids);
+  };
+  draw();
+  return wrap;
+}
+function defaultFor(sp) {
+  switch (sp.t) {
+    case "bool": return true;
+    case "num": case "int": return 0;
+    case "hits": case "steps": case "stats": case "list": case "combo": case "colors": case "nums": return [];
+    case "rec": case "map": case "json": return {};
+    case "tiers": return [0, 0, 0, 0];
+    case "color": return [1, 1, 1, 1];
+    default: return "";
+  }
+}
+function summary(v, sp) {
+  if (Array.isArray(v)) return `${v.length} ${sp.t === "steps" ? "step" : sp.t === "hits" ? "hit" : "item"}${v.length === 1 ? "" : "s"}`;
+  return "";
+}
+function nested(obj, k, sp) {
+  if (sp.t === "rec") { if (!obj[k] || typeof obj[k] !== "object") obj[k] = {}; return record(obj[k], Object.keys(SPEC[sp.spec]), SPEC[sp.spec]); }
+  if (!Array.isArray(obj[k])) obj[k] = [];
+  if (sp.t === "hits") return list(obj[k], {
+    title: (h) => [h.at !== undefined && !sp.noAt ? h.at + " s" : "", h.radius ? h.radius + " m" : "", h.damage ? h.damage + "%" : "", h.status || ""].filter(Boolean).join(" · ") || "hit",
+    body: (h) => record(h, S.schema.keys.hit.filter(x => !(sp.noAt && x === "at")), SPEC.hit, { always: sp.noAt ? ["radius", "damage"] : ["at", "radius", "damage"] }),
+    make: () => sp.noAt ? { radius: 3, damage: 100 } : { at: 0.3, radius: 3, damage: 100 }, add: "+ hit" });
+  if (sp.t === "steps") return stepsEditor(obj[k]);
+  if (sp.t === "stats") return list(obj[k], {
+    title: (s) => s.stat || "bonus", body: (s) => record(s, S.schema.keys.add_stat, SPEC.stat, { always: ["stat", "values"] }),
+    make: () => ({ stat: "", values: [0, 0, 0, 0] }), add: "+ bonus" });
+  if (sp.t === "combo") return list(obj[k], {
+    title: (st, n) => `Step ${n + 1}` + (st.hit_at !== undefined ? ` · hit at ${st.hit_at} s` : ""),
+    body: (st) => record(st, S.schema.keys.combo, SPEC.combo, { always: ["clip", "hit_at", "hits"] }),
+    make: () => ({ clip: "", hit_at: 0.3, link_at: 0.4, exit_at: 0.5, hits: [{ radius: 2.5, damage: 140 }] }),
+    add: "+ combo step", max: S.schema.combo.max });
+  if (sp.t === "list") return list(obj[k], { title: sp.title || (() => "item"),
+    body: (x) => record(x, S.schema.keys[sp.of === "buff" ? "buff" : sp.of], SPEC[sp.of], { always: sp.of === "buff" ? ["stat", "value", "seconds"] : sp.of === "action" ? ["on"] : [] }),
+    make: () => sp.of === "buff" ? { stat: "", value: "+10%", seconds: 5 } : sp.of === "action" ? { on: "power" } : {}, add: "+ " + sp.of });
+  return el("span");
+}
+// Items opened by hand (or just added) stay open when the section redraws:
+// a starter file written into one redraws the page.
+const OPEN = new WeakSet();
+function toggler(item, x) {
+  return () => { item.classList.toggle("closed"); if (x && typeof x === "object") item.classList.contains("closed") ? OPEN.delete(x) : OPEN.add(x); };
+}
+// A list of tables, each collapsible, reorderable and removable.
+function list(arr, o) {
+  const wrap = el("div");
+  const draw = () => {
+    wrap.replaceChildren(...arr.map((x, n) => {
+      const item = el("div", { class: "item" + (o.closed && !OPEN.has(x) ? " closed" : "") });
+      const t = el("span", { class: "t", text: o.title(x, n) });
+      const bar = el("div", { class: "bar" },
+        el("button", { type: "button", title: "Show / hide", text: "▾", onclick: toggler(item, x) }), t,
+        n > 0 ? el("button", { type: "button", title: "Move up", text: "↑", onclick: () => { [arr[n - 1], arr[n]] = [arr[n], arr[n - 1]]; changed(); draw(); } }) : null,
+        el("button", { type: "button", title: "Duplicate", text: "⧉", onclick: () => { arr.splice(n + 1, 0, clone(x)); changed(); draw(); } }),
+        el("button", { type: "button", title: "Remove", text: "×", onclick: () => { arr.splice(n, 1); changed(); draw(); } }));
+      item.append(bar, o.body(x, n, () => { t.textContent = o.title(x, n); }));
+      item.addEventListener("change", () => { t.textContent = o.title(x, n); });
+      return item;
+    }), (o.max && arr.length >= o.max) ? el("div", { class: "note", text: `At most ${o.max}.` })
+      : el("div", { class: "add" }, el("button", { type: "button", class: "small", text: o.add || "+ add",
+        onclick: () => { const x = o.make(); arr.push(x); OPEN.add(x); changed(); draw(); } })));
+  };
+  draw();
+  return wrap;
+}
+// Named tables (projectiles, effects, animations, slots …): rename, remove, add.
+function named(obj, o) {
+  const wrap = el("div");
+  const draw = () => {
+    const names = Object.keys(obj);
+    const choice = o.choices ? o.choices() : null;
+    wrap.replaceChildren(
+      ...(names.length ? [] : [el("div", { class: "empty", text: o.empty || "None yet." })]),
+      ...names.map(name => {
+        if (!obj[name] || typeof obj[name] !== "object") obj[name] = {};
+        const item = el("div", { class: "item" + (o.closed && !OPEN.has(obj[name]) ? " closed" : "") });
+        const bar = el("div", { class: "bar" },
+          el("button", { type: "button", title: "Show / hide", text: "▾", onclick: toggler(item, obj[name]) }),
+          el("span", { class: "t" }, (o.prefix || "") + name, o.note ? el("span", { class: "muted", text: " " + o.note(obj[name]) }) : null),
+          el("button", { type: "button", class: "small", text: "Rename", onclick: () => {
+            const nn = prompt("New name", name); if (!nn || nn === name) return;
+            if (o.valid && !o.valid.test(nn)) { setStatus("bad", o.validMsg || "Not a valid name."); return; }
+            if (nn in obj) { setStatus("bad", `There is already one named ${nn}.`); return; }
+            const out = {}; for (const k of Object.keys(obj)) out[k === name ? nn : k] = obj[k];
+            for (const k of Object.keys(obj)) delete obj[k]; Object.assign(obj, out);
+            if (o.renamed) o.renamed(name, nn);
+            changed(); draw(); } }),
+          el("button", { type: "button", class: "small", title: "Remove", text: "×", onclick: () => { delete obj[name]; changed(); draw(); } }));
+        if (!obj[name] || typeof obj[name] !== "object") obj[name] = {};
+        item.append(bar, o.body(obj[name], name));
+        return item;
+      }),
+      el("div", { class: "add" }, choice,
+        el("button", { type: "button", class: "small", text: o.add || "+ add", onclick: () => {
+          const pick = choice ? choice.value : "";
+          const name = pick || prompt(o.ask || "Name", "");
+          if (!name) return;
+          if (o.valid && !o.valid.test(name)) { setStatus("bad", o.validMsg || "Not a valid name."); return; }
+          if (name in obj) { setStatus("bad", `There is already one named ${name}.`); return; }
+          obj[name] = o.make ? o.make(name) : {}; OPEN.add(obj[name]); changed(); draw(); } })));
+  };
+  draw();
+  return wrap;
+}
+// `steps`: a timeline of blocks (fire, hit, heal, summon, anim, wait, repeat).
+function stepsEditor(arr) {
+  const types = Object.keys(STEP_SPEC);
+  const kindOf = (st) => types.find(t => st && t in st) || "wait";
+  return list(arr, {
+    title: (st) => { const k = kindOf(st), v = st[k];
+      return k + (v === "" || typeof v === "object" ? "" : " " + v) + (k === "fire" && st.angles ? ` ×${st.angles.length}` : ""); },
+    body: (st) => {
+      const k = kindOf(st);
+      const sel = el("select", { "aria-label": "Block" }, ...types.map(t => el("option", { value: t, text: t })));
+      sel.value = k;
+      const box = el("div");
+      const keys = (S.schema.keys.steps[k] || []).filter(x => x !== k);
+      box.append(record(st, [k, ...keys], STEP_SPEC[k], { always: [k] }));
+      sel.addEventListener("change", () => {
+        for (const x of Object.keys(st)) delete st[x];
+        st[sel.value] = clone(STEP_DEFAULT[sel.value]); changed();
+        box.replaceChildren(record(st, [sel.value, ...(S.schema.keys.steps[sel.value] || []).filter(x => x !== sel.value)],
+          STEP_SPEC[sel.value], { always: [sel.value] }));
+      });
+      return el("div", {}, el("div", { class: "add", style: "margin:0 0 6px" }, el("span", { class: "unit", text: "Block" }), sel), box);
+    },
+    make: () => ({ wait: 0.2 }), add: "+ step" });
+}
+
+// ---- sections ------------------------------------------------------------------------------
+const SECTIONS = [
+  ["hero", "Hero"], ["files", "Files"], ["body", "Body & rig"], ["buttons", "Buttons"], ["talents", "Talents"],
+  ["ultimates", "Ultimate cards"], ["projectiles", "Projectiles"], ["effects", "Effects"],
+  ["animations", "Animations"], ["slots", "Animation slots"], ["memoirs", "Memoirs"], ["advanced", "Everything else"],
+];
+// Frame keys each section owns; the rest are "Everything else".
+const OWNS = { hero: ["portrait", "banner", "new_hero", "skin_icon", "sort"], body: ["rig", "mesh", "material", "albedo", "model", "level_up", "weapon"],
+  buttons: ["abilities"], talents: ["talents"], ultimates: ["ultimates"], projectiles: ["projectiles"], effects: ["effects"],
+  animations: ["animations"], slots: ["slots"] };
+const OWNED = new Set(Object.values(OWNS).flat());
+const F = () => S.hero.frame;
+
+function count(sec) {
+  const f = F(); if (!f) return "";
+  const n = { buttons: Object.keys(f.abilities || {}).length, talents: (f.talents || []).length,
+    ultimates: Object.keys(f.ultimates || {}).length, projectiles: Object.keys(f.projectiles || {}).length,
+    effects: Object.keys(f.effects || {}).length, animations: Object.keys(f.animations || {}).length,
+    slots: Object.keys(f.slots || {}).length, memoirs: (S.hero.memoirs || []).length,
+    advanced: Object.keys(f).filter(k => !OWNED.has(k)).length, files: S.files.length }[sec];
+  return n === undefined ? "" : String(n);
+}
+function sectionOf(problem) {
+  const m = problem.match(/^(?:frame\.)?([a-z_]+)/); const k = m ? m[1] : "";
+  if (/^ability (\w+)/.test(problem)) return ["buttons", problem.match(/^ability (\w+)/)[1]];
+  if (k === "abilities") return ["buttons", (problem.match(/^frame\.abilities\.(\w+)/) || [])[1]];
+  if (k === "memoirs") return ["memoirs"];
+  if (k === "id" || k === "a") return ["hero"];
+  for (const [sec, keys] of Object.entries(OWNS)) if (keys.includes(k)) return [sec];
+  return ["advanced"];
+}
+// Updated in place, never rebuilt: an edit commits on blur, and a rebuilt
+// button between mousedown and mouseup swallowed the click that caused it.
+function drawNav() {
+  const bad = new Set(S.problems.map(p => sectionOf(p)[0]));
+  if (!$("nav").childElementCount) {
+    $("nav").append(...SECTIONS.map(([id]) => el("button", { type: "button", "data-id": id,
+      onclick: () => { S.section = id; try { localStorage.setItem("hb-section", id); } catch (e) {} draw(); } },
+      el("span"), el("span", { class: "n" }))));
+  }
+  for (const b of $("nav").children) {
+    const id = b.dataset.id, label = SECTIONS.find(s => s[0] === id)[1];
+    b.className = S.section === id ? "on" : "";
+    b.firstChild.className = bad.has(id) ? "bad" : "";
+    b.firstChild.textContent = (bad.has(id) ? "● " : "") + label;
+    b.lastChild.textContent = S.hero ? count(id) : "";
+  }
+}
+function card(title, lead, ...kids) {
+  return el("section", { class: "card" }, el("h2", {}, el("span", { class: "grow", text: title })), lead ? el("p", { class: "lead", text: lead }) : null, ...kids);
+}
+function draw() {
+  stopViewer();
+  drawNav();
+  if (!S.hero) { $("main").replaceChildren(); return; }
+  const f = F();
+  const body = {
+    hero: () => [
+      problemsCard(),
+      starterCard(),
+      card("Hero", "Who your hero is on the select screen. The id names its files (Hero_<id>) and cannot be a shipped hero's.",
+        record(S.hero, ["id", "name", "description"], {
+          id: { t: "text", hint: "letters and digits (e.g. JackSelf)" }, name: txt("shown in the game"),
+          description: { t: "area", hint: "the select screen's text" } }, { always: ["id", "name", "description"], only: true })),
+      card("Pictures", "Leave one out and the rig's is used. A .png in the mod is cooked as your hero's own.",
+        record(f, ["portrait", "banner", "new_hero", "skin_icon", "sort"], {
+          portrait: UI, banner: { ...UI, hint: "the HUD's ability banner" }, new_hero: { ...UI, hint: "the 'new hero' badge picture" },
+          skin_icon: { ...UI, hint: "the default skin's icon" }, sort: { t: "int", hint: "its place on the select screen" } }, { only: true })),
+    ],
+    body: () => [
+      card("Rig and body", "Nothing of any hero is copied: the rig lends assets only (a skeleton, on-foot clips, UI art) until your hero has its own.",
+        rigPicker(),
+        record(f, ["mesh", "material", "albedo", "model", "level_up"], {
+          mesh: txt("the body mesh (a shipped …_GEO.fbx)"), material: txt("its material (a shipped M_….mat.ot)"),
+          albedo: { ...PNG("art", "your own body texture (.png in the mod)"), starter: "albedo" },
+          model: GLB("art", "your own body (.glb on the rig's armature); its skeleton is written from it", "body"),
+          level_up: { ...FX, hint: "played on level up, beside the shared flash" } }, { always: ["mesh", "material", "albedo", "model"], only: true })),
+      card("Hand weapon", "A weapon in the right hand: a shipped hero lends the layout (bone, hide state), your .glb is the mesh.",
+        f.weapon ? el("div", {}, record(f.weapon, S.schema.keys.weapon, SPEC.weapon, { always: ["from"] }),
+          el("div", { class: "add" }, el("button", { type: "button", class: "small", text: "Remove the weapon", onclick: () => { delete f.weapon; changed(); draw(); } })))
+          : el("button", { type: "button", class: "small", text: "+ a hand weapon", onclick: () => { f.weapon = { from: "Aladdin" }; changed(); draw(); } })),
+    ],
+    buttons: () => [buttonsCard()],
+    talents: () => [talentsCard()],
+    ultimates: () => [card("Ultimate cards", "Hero_Common's six ultimate controllers, as your hero's own cards (left out, a card is blank). An upgrade's bonus hangs off a state of its own.",
+      named(f.ultimates ||= {}, { closed: true, empty: "No cards yet.", add: "+ card",
+        choices: () => el("select", {}, ...S.schema.ultimates.filter(u => !(u in f.ultimates)).map(u => el("option", { value: u, text: u }))),
+        note: (u) => u.title ? "— " + u.title : "",
+        body: (u) => record(u, S.schema.keys.ultimate, SPEC.ultimate, { always: ["title", "description"] }) }))],
+    projectiles: () => [card("Projectiles", "Each its own entity on the engine's generic hero projectile, wearing your mesh. Fire one from a button's steps with fire = \"own:<name>\" (speed, damage, size … set per shot there).",
+      named(f.projectiles ||= {}, { closed: true, prefix: "own:", empty: "No projectiles yet.", add: "+ projectile", ask: "Projectile name (letters and digits)",
+        valid: /^[A-Za-z][A-Za-z0-9]*$/, validMsg: "A name of letters and digits.", renamed: (a, b) => renameRefs("own:" + a, "own:" + b),
+        make: () => ({ model: "", scale: 1, lifetime: 0.8 }),
+        body: (p) => record(p, S.schema.keys.projectile, SPEC.projectile, { always: ["model"] }) }))],
+    effects: () => [card("Effects", "Written from layers, no shipped effect copied: each layer's sprite (a white shape) tinted by its colours over its life. Use one anywhere with fx = \"fx:<name>\" (hits, trails, level up).",
+      named(f.effects ||= {}, { closed: true, prefix: "fx:", empty: "No effects yet.", add: "+ effect", ask: "Effect name (letters and digits)",
+        valid: /^[A-Za-z][A-Za-z0-9]*$/, validMsg: "A name of letters and digits.", renamed: (a, b) => renameRefs("fx:" + a, "fx:" + b),
+        note: (e) => `— ${(e.layers || []).length} layer${(e.layers || []).length === 1 ? "" : "s"}`,
+        make: () => ({ layers: [{ texture: "", burst: 10, lifetime: [0.4, 0.7], size: [0.3, 0.5], speed: 4, colors: [[1, 1, 1, 1], [1, 1, 1, 0]] }] }),
+        body: (e) => el("div", {}, record(e, ["length"], { length: num("s", "the effect's length (default: its layers')") }, { only: true }),
+          list(e.layers ||= [], { add: "+ layer",
+            title: (l, n) => `Layer ${n + 1}: ` + (l.light ? "light" : l.mesh ? "mesh " + l.mesh : l.texture || l.material || "—"),
+            body: (l) => record(l, S.schema.keys.layer, SPEC.layer, { always: ["burst", "lifetime", "size", "colors"] }),
+            make: () => ({ texture: "", burst: 10, lifetime: 0.5, size: 0.5, colors: [[1, 1, 1, 1], [1, 1, 1, 0]] }) })) }))],
+    animations: () => [card("Animations", "Blender clips on the rig's skeleton, cooked into clip files of your hero's own. Use one with clip = \"anim:<name>\" in a slot or a button.",
+      named(f.animations ||= {}, { closed: true, prefix: "anim:", empty: "No animations of its own yet.", add: "+ animation", ask: "Animation name (letters and digits)",
+        valid: /^[A-Za-z0-9_]+$/, validMsg: "A name of letters, digits and _.", renamed: (a, b) => renameRefs("anim:" + a, "anim:" + b),
+        note: (a) => a.source ? "— " + a.source : "",
+        make: () => ({ source: "", template: "" }),
+        body: (a) => record(a, S.schema.keys.animation, SPEC.animation, { always: ["source", "template"] }) }))],
+    slots: () => [card("Animation slots", "The shared hero base's slots (idle, run, deathdoor, select screen …). Left out, the rig's on-foot clip plays; name one to give it your own.",
+      named(f.slots ||= {}, { closed: false, empty: "Every slot is the rig's.", add: "+ slot",
+        choices: () => { const s = el("select", {}, el("option", { value: "", text: "pick a slot or type one…" }),
+          ...(S.rig?.slots || []).filter(x => !(x in f.slots)).map(x => el("option", { value: x, text: x })),
+          ...["Preview Camera Distance", "Preview Camera Y Translate", "Locator Torso"].filter(x => !(x in f.slots)).map(x => el("option", { value: x, text: x })));
+          return s; },
+        note: (s) => s.clip ? "— " + s.clip : s.value !== undefined ? "— " + s.value : s.bone ? "— " + s.bone : "",
+        body: (s) => record(s, S.schema.keys.slot, SPEC.slot) }))],
+    files: () => [filesCard()],
+    memoirs: () => [card("Memoirs", "The pages of your hero's book, in order.",
+      list(S.hero.memoirs ||= [], { add: "+ page", title: (m, n) => `${n + 1}. ${m.title || "untitled"}`,
+        body: (m) => record(m, S.schema.keys.memoir, SPEC.memoir, { always: ["title", "text"] }), make: () => ({ title: "", text: "" }) }))],
+    advanced: () => [card("Everything else", "Frame keys with no form of their own (sounds, entities, pets, edits, book, codex …), as JSON. They are saved exactly as written here.",
+      record(f, S.schema.keys.frame.filter(k => !OWNED.has(k)),
+        Object.fromEntries(S.schema.keys.frame.map(k => [k, { t: "json" }])), { skip: [...OWNED] }))],
+  }[S.section]();
+  $("main").replaceChildren(...body.filter(Boolean));
+}
+// New to this: a whole hero that builds, on any rig, to change bit by bit.
+function starterCard() {
+  const f = F();
+  if (Object.keys(f.abilities || {}).length && S.block !== NEW) return null;
+  const sel = el("select", { "aria-label": "Hero to start from" },
+    ...S.schema.rigs.map(r => el("option", { value: r, text: r.replace(/^Hero_/, "").replace(/_/g, " ") })));
+  sel.value = f.rig || (S.schema.rigs.includes("Hero_Kintaro") ? "Hero_Kintaro" : S.schema.rigs[0]);
+  const heroName = () => sel.selectedOptions[0]?.text || "the hero";
+  // `route` writes the hero; `whole` = the game's hero rebuilt, not the plain starter.
+  const fill = async (route, whole, btns) => {
+    if (Object.keys(f.abilities || {}).length && !confirm("Replace this hero's buttons, talents and effects?")) return;
+    btns.forEach(b => b.disabled = true);
+    setStatus("muted", whole ? `Rebuilding ${heroName()} from scratch: copying its body, moves, icons, talents and book into the mod, then building it once to be sure (up to a minute in the browser)…`
+      : "Writing a starter hero (its effect pictures go in art/)…");
+    try {
+      const r = await api(route, { ...where(), rig: sel.value });
+      S.hero.frame = r.frame; S.hero.memoirs = r.memoirs;
+      const h = r.hero || { name: "My Hero", id: "MyHero", description: "A hero of my own." };
+      for (const k of ["name", "id", "description"]) if (!S.hero[k] && h[k]) S.hero[k] = h[k];
+      S.rig = await api("api/rig?rig=" + encodeURIComponent(sel.value)).catch(() => null);
+      opts("dl-slot", S.rig?.slots || []); opts("dl-bone", S.rig?.bones || []);
+      changed(); await loadFiles(); await loadClips(); draw();
+      setStatus("ok", whole
+        ? `✓ ${heroName()}, rebuilt from scratch: ${S.files.length} files of its own in Files (body, moves, icons), its 6 buttons, ${(r.frame.talents || []).length} talents and its book. `
+          + "Its moves are rebuilt as hits on its real animations, so they are close to the game's, not the same. Save, then Build check, then change one thing at a time."
+          + (r.notes?.length ? " Kept from the game: " + r.notes.join("; ") : "")
+        : "✓ A starter hero: every button, a few talents, two effects and its portrait. Rename it, press Save, then Build check. Then change one thing at a time.");
+    } catch (e) { setStatus("bad", e.message); }
+    btns.forEach(b => b.disabled = false);
+  };
+  const whole = el("button", { type: "button", class: "primary", text: "Rebuild it from scratch" });
+  const plain = el("button", { type: "button", text: "Simple starter instead" });
+  whole.addEventListener("click", () => fill("api/recreate_hero", true, [whole, plain]));
+  plain.addEventListener("click", () => fill("api/starter_hero", false, [whole, plain]));
+  return el("section", { class: "card" }, el("h2", {}, el("span", { class: "grow", text: "New to this? Start from a hero of the game" })),
+    el("p", { class: "lead", text: "Pick a hero and the editor rebuilds it as a hero of your own, with nothing to bring: its body and texture, each move it plays, its button and talent icons, portrait, banner and weapon are copied into your mod as files you can open, and its six buttons, 22 talents, ultimate cards and seven book pages are filled in with the game's own names. Every part is written out, so you can see how a whole hero is made and change one thing at a time." }),
+    el("p", { class: "note", text: "The simple starter puts a small made-up kit (Strike, Shockwave …) on the hero's body instead." }),
+    el("div", { class: "add" }, el("span", { class: "unit", text: "Hero" }), sel, whole, plain));
+}
+// ---- Files: the mod's art, shown as it is ----------------------------------------------
+const FOLDERS = ["art", "art/ui", "art/fx", "art/anims", "art/props"];
+const human = (n) => n == null ? "" : n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(0) + " KB" : (n / 1048576).toFixed(1) + " MB";
+// Where the hero names `path` ("frame.abilities.power.icon").
+function usesOf(path) {
+  const out = [];
+  const walk = (v, at) => {
+    if (v === path) out.push(at);
+    else if (Array.isArray(v)) v.forEach((x, i) => walk(x, `${at}[${i}]`));
+    else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) walk(x, at ? `${at}.${k}` : k);
+  };
+  walk(S.hero, "");
+  return out;
+}
+// Files-tab icons: stroke SVGs in the Abilities tab's style (emoji render differently per OS).
+const FILE_SVG = {
+  image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/>',
+  model: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>',
+  file: '<path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z"/><path d="M14 3v6h6"/>',
+  folder: '<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
+  chevron: '<path d="M6 9l6 6 6-6"/>',
+};
+function fileIco(name) {
+  const s = el("span", { class: "ico ico-" + name, "aria-hidden": "true" });
+  s.innerHTML = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${FILE_SVG[name]}</svg>`;
+  return s;
+}
+function filesCard() {
+  const folder = el("select", { "aria-label": "Upload into" }, ...FOLDERS.map(f => el("option", { value: f, text: f + "/" })));
+  folder.value = S.fileFolder || "art";
+  folder.addEventListener("change", () => { S.fileFolder = folder.value; });
+  const upload = el("button", { type: "button", class: "primary", text: "Upload…" });
+  upload.addEventListener("click", async () => {
+    const path = await uploadFile(".png,.glb,.gltf,.blend,.fbx", folder.value);
+    if (path) { S.fileSel = path; draw(); }
+  });
+  const grid = el("div", { class: "files" });
+  const tree = el("div", { class: "tree", role: "tree" });
+  const preview = el("div", { class: "preview" });
+  if (!S.files.includes(S.fileSel)) S.fileSel = S.files[0] || "";
+  const byDir = {};
+  for (const f of S.files) (byDir[f.includes("/") ? f.slice(0, f.lastIndexOf("/")) : "."] ||= []).push(f);
+  S.closedDirs ||= new Set();
+  for (const dir of Object.keys(byDir).sort()) {
+    const closed = S.closedDirs.has(dir);
+    const head = el("div", { class: "dir" + (closed ? " closed" : "") }, fileIco("chevron"), fileIco("folder"), el("span", { text: dir + "/" }));
+    head.addEventListener("click", () => { S.closedDirs.has(dir) ? S.closedDirs.delete(dir) : S.closedDirs.add(dir); draw(); });
+    tree.append(head);
+    if (S.closedDirs.has(dir)) continue;
+    for (const f of byDir[dir]) {
+      const icon = /\.png$/i.test(f) ? "image" : /\.(glb|gltf|blend|fbx)$/i.test(f) ? "model" : "file";
+      const used = usesOf(f).length;
+      tree.append(el("button", { type: "button", class: "f" + (f === S.fileSel ? " on" : ""), role: "treeitem",
+        onclick: () => { S.fileSel = f; draw(); } },
+        fileIco(icon), el("span", { class: "nm", text: f.slice(f.lastIndexOf("/") + 1) }),
+        used ? null : el("span", { class: "unused", text: "unused", title: "Nothing in the hero names this file yet" }),
+        el("span", { class: "sz", text: human((S.sizes || {})[f]) })));
+    }
+  }
+  if (!S.files.length) tree.append(el("div", { class: "empty", text: "No files yet. Upload one, drop files here, or use a starter button next to any picture or model field." }));
+  grid.append(tree, preview);
+  if (S.fileSel) showFile(S.fileSel, preview);
+  // Drop files anywhere on the panel.
+  grid.addEventListener("dragover", (e) => { e.preventDefault(); grid.classList.add("drop"); });
+  grid.addEventListener("dragleave", () => grid.classList.remove("drop"));
+  grid.addEventListener("drop", async (e) => {
+    e.preventDefault(); grid.classList.remove("drop");
+    let last = "";
+    for (const file of e.dataTransfer.files) last = (await sendFile(file, folder.value)) || last;
+    if (last) { S.fileSel = last; draw(); }
+  });
+  return card("Files", `Your hero's own files (${S.mod === NEW ? "kept with this hero until you save the mod" : "the mod's art/ folder"}). Pictures and models are shown as they are; drop files on this panel to add them.`,
+    el("div", { class: "add", style: "margin:0 0 10px" }, el("span", { class: "unit", text: "Into" }), folder, upload), grid);
+}
+async function fileBytes(path) {
+  const w = where();
+  const r = await fetch(`api/file?mod=${encodeURIComponent(w.mod)}&draft=${w.draft || ""}&path=${encodeURIComponent(path)}`);
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "could not read " + path);
+  return r.arrayBuffer();
+}
+async function showFile(path, box) {
+  const stage = el("div", { class: "stage" }, el("span", { class: "note", text: "Loading…" }));
+  const uses = usesOf(path);
+  const name = path.slice(path.lastIndexOf("/") + 1), dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "art";
+  const dl = el("button", { type: "button", class: "small", text: "Download" });
+  const rep = el("button", { type: "button", class: "small", text: "Replace…", title: "Upload another file under this name: every field naming it gets the new one" });
+  const del = el("button", { type: "button", class: "small", text: "Delete" });
+  const info = el("div", { class: "note" });
+  box.replaceChildren(el("div", { class: "meta" }, el("span", { class: "grow", text: path }),
+    el("span", { class: "unit", text: human((S.sizes || {})[path]) }), dl, rep, del),
+    stage, info,
+    el("div", { class: "note", style: "margin-top:8px" }, uses.length ? "Used by:" : "Nothing in the hero uses this file yet: put its path in a field (or use View/Upload next to the field)."),
+    uses.length ? el("ul", {}, ...uses.map(u => el("li", { text: u }))) : null);
+  let buf;
+  try { buf = await fileBytes(path); } catch (e) { stage.replaceChildren(el("span", { class: "note", text: e.message })); return; }
+  const type = /\.png$/i.test(path) ? "image/png" : "application/octet-stream";
+  dl.addEventListener("click", () => {
+    const a = el("a", { href: URL.createObjectURL(new Blob([buf], { type })), download: name });
+    document.body.append(a); a.click(); a.remove();
+  });
+  rep.addEventListener("click", () => {
+    const pick = el("input", { type: "file", accept: "." + name.split(".").pop() });
+    pick.addEventListener("change", async () => { if (pick.files[0]) { await sendFile(pick.files[0], dir, name); draw(); } });
+    pick.click();
+  });
+  del.addEventListener("click", async () => {
+    if (!confirm(uses.length ? `${path} is used by ${uses.length} field(s). Delete it anyway?` : `Delete ${path}?`)) return;
+    try { await api("api/delete_file", { ...where(), path }); S.fileSel = ""; await loadFiles(); draw(); setStatus("ok", `Deleted ${path}.`); }
+    catch (e) { setStatus("bad", e.message); }
+  });
+  if (/\.png$/i.test(path)) {
+    const img = el("img", { alt: name });
+    img.addEventListener("load", () => { info.textContent = `${img.naturalWidth} × ${img.naturalHeight} px`; });
+    img.src = URL.createObjectURL(new Blob([buf], { type: "image/png" }));
+    stage.replaceChildren(img);
+  } else if (/\.glb$/i.test(path)) {
+    stage.classList.add("dark");
+    try { await glbView(buf, stage, info); } catch (e) { stage.replaceChildren(el("span", { class: "note", text: "Could not show it: " + e.message })); }
+  } else {
+    stage.replaceChildren(el("span", { class: "note", text: "No preview for this kind of file: open it in Blender." }));
+  }
+}
+
+// ---- 3D: a .glb as it is (mesh, texture, skeleton and its clips) -------------------------
+// three.js is the editor's vendored copy (the Map tab's); the web editor hands
+// this import a blob URL.
+let THREE = null, viewer = null;
+async function loadThree() {
+  if (THREE === null) { try { THREE = await import("./static/three.module.min.js"); } catch (e) { console.error(e); THREE = false; } }
+  return THREE;
+}
+function stopViewer() {
+  if (!viewer) return;
+  cancelAnimationFrame(viewer.raf); viewer.renderer.dispose(); viewer.ro?.disconnect(); viewer = null;
+}
+// A .glb's scene: its nodes (bones named by their own names, made safe for
+// animation tracks), meshes with their embedded texture, skins and clips.
+async function buildGlb(T, buf) {
+  const dv = new DataView(buf);
+  if (dv.getUint32(0, true) !== 0x46546C67) throw new Error("not a .glb");
+  const jsonLen = dv.getUint32(12, true);
+  const json = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 20, jsonLen)));
+  const bin = 20 + jsonLen + 8;
+  const TYPES = { 5126: Float32Array, 5125: Uint32Array, 5123: Uint16Array, 5121: Uint8Array, 5122: Int16Array, 5120: Int8Array };
+  const SIZE = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 };
+  const read = (i) => {
+    const a = json.accessors[i], bv = json.bufferViews[a.bufferView], Ty = TYPES[a.componentType], n = SIZE[a.type];
+    const start = bin + (bv.byteOffset || 0) + (a.byteOffset || 0), size = n * Ty.BYTES_PER_ELEMENT;
+    if (!bv.byteStride || bv.byteStride === size) return new Ty(buf.slice(start, start + a.count * size));
+    const out = new Ty(a.count * n);                     // interleaved: copy element by element
+    for (let k = 0; k < a.count; k++) out.set(new Ty(buf.slice(start + k * bv.byteStride, start + k * bv.byteStride + size)), k * n);
+    return out;
+  };
+  const texCache = {};
+  const texture = async (ti) => {
+    if (ti == null || !json.textures?.[ti]) return null;
+    if (!(ti in texCache)) {
+      const im = json.images[json.textures[ti].source], bv = json.bufferViews[im.bufferView];
+      const blob = new Blob([buf.slice(bin + (bv.byteOffset || 0), bin + (bv.byteOffset || 0) + bv.byteLength)], { type: im.mimeType || "image/png" });
+      const tex = new T.Texture(await createImageBitmap(blob));
+      tex.flipY = false; tex.colorSpace = T.SRGBColorSpace; tex.needsUpdate = true;
+      texCache[ti] = tex;
+    }
+    return texCache[ti];
+  };
+  const joints = new Set((json.skins || []).flatMap(sk => sk.joints));
+  const root = new T.Group();
+  const nodes = (json.nodes || []).map((n, i) => {
+    const o = joints.has(i) ? new T.Bone() : new T.Object3D();
+    o.name = T.PropertyBinding.sanitizeNodeName(n.name || "n" + i);
+    if (n.matrix) new T.Matrix4().fromArray(n.matrix).decompose(o.position, o.quaternion, o.scale);
+    if (n.translation) o.position.fromArray(n.translation);
+    if (n.rotation) o.quaternion.fromArray(n.rotation);
+    if (n.scale) o.scale.fromArray(n.scale);
+    return o;
+  });
+  const hasParent = new Set();
+  (json.nodes || []).forEach((n, i) => (n.children || []).forEach(c => { nodes[i].add(nodes[c]); hasParent.add(c); }));
+  nodes.forEach((o, i) => { if (!hasParent.has(i)) root.add(o); });
+  let verts = 0;
+  const meshes = [];
+  for (const [i, n] of (json.nodes || []).entries()) {
+    if (n.mesh == null || n.name === "AABB") continue;
+    for (const prim of json.meshes[n.mesh].primitives) {
+      const at = prim.attributes;
+      if (at.POSITION == null) continue;
+      const g = new T.BufferGeometry();
+      g.setAttribute("position", new T.BufferAttribute(read(at.POSITION), 3));
+      if (at.NORMAL != null) g.setAttribute("normal", new T.BufferAttribute(read(at.NORMAL), 3));
+      if (at.TEXCOORD_0 != null) g.setAttribute("uv", new T.BufferAttribute(read(at.TEXCOORD_0), 2));
+      if (prim.indices != null) g.setIndex(new T.BufferAttribute(read(prim.indices), 1));
+      if (at.NORMAL == null) g.computeVertexNormals();
+      verts += json.accessors[at.POSITION].count;
+      const mat = json.materials?.[prim.material]?.pbrMetallicRoughness || {};
+      const m = new T.MeshStandardMaterial({ color: new T.Color(...(mat.baseColorFactor || [0.8, 0.8, 0.82]).slice(0, 3)),
+        roughness: 0.8, metalness: 0.0, side: T.DoubleSide, map: await texture(mat.baseColorTexture?.index) });
+      let mesh;
+      if (n.skin != null && at.JOINTS_0 != null && at.WEIGHTS_0 != null) {
+        const wa = json.accessors[at.WEIGHTS_0];
+        g.setAttribute("skinIndex", new T.BufferAttribute(read(at.JOINTS_0), 4));
+        g.setAttribute("skinWeight", new T.BufferAttribute(read(at.WEIGHTS_0), 4, wa.componentType !== 5126));
+        mesh = new T.SkinnedMesh(g, m);
+        mesh.userData.skin = n.skin;
+      } else mesh = new T.Mesh(g, m);
+      nodes[i].add(mesh);
+      meshes.push(mesh);
+    }
+  }
+  root.updateMatrixWorld(true);
+  for (const mesh of meshes) {
+    if (mesh.userData.skin == null) continue;
+    const sk = json.skins[mesh.userData.skin];
+    const ibm = sk.inverseBindMatrices != null ? read(sk.inverseBindMatrices) : null;
+    const bones = sk.joints.map(j => nodes[j]);
+    mesh.bind(new T.Skeleton(bones, bones.map((_, k) => ibm ? new T.Matrix4().fromArray(ibm, k * 16) : new T.Matrix4())), mesh.matrixWorld);
+  }
+  const clips = (json.animations || []).map(a => {
+    const tracks = [];
+    for (const ch of a.channels) {
+      const smp = a.samplers[ch.sampler], o = nodes[ch.target.node];
+      const path = { translation: "position", rotation: "quaternion", scale: "scale" }[ch.target.path];
+      if (!o || !path) continue;
+      const Track = path === "quaternion" ? T.QuaternionKeyframeTrack : T.VectorKeyframeTrack;
+      tracks.push(new Track(`${o.name}.${path}`, read(smp.input), read(smp.output),
+        smp.interpolation === "STEP" ? T.InterpolateDiscrete : T.InterpolateLinear));
+    }
+    return new T.AnimationClip(a.name || "clip", -1, tracks);
+  });
+  return { root, clips, verts, joints: joints.size, textured: Object.keys(texCache).length > 0 };
+}
+async function glbView(buf, stage, info) {
+  const T = await loadThree();
+  if (!T) { stage.replaceChildren(el("span", { class: "note", text: "The 3D preview could not load." })); return; }
+  const main = await buildGlb(T, buf);
+  // A clip with no mesh of its own plays on the hero's body (bones match by
+  // name: both come off the same armature); without one, on its skeleton.
+  let shown = main, on = "";
+  if (!main.verts && main.clips.length) {
+    const body = F().model && S.files.includes(F().model) ? F().model : "";
+    if (body) {
+      try { shown = await buildGlb(T, await fileBytes(body)); on = body; } catch (e) { shown = main; }
+    }
+  }
+  const canvas = el("canvas");
+  stage.replaceChildren(canvas);
+  const renderer = new T.WebGLRenderer({ canvas, antialias: true });
+  renderer.outputColorSpace = T.SRGBColorSpace;
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  const scene = new T.Scene();
+  scene.background = new T.Color(0x1b1b1f);
+  scene.add(new T.HemisphereLight(0xffffff, 0x444450, 2.2));
+  const sun = new T.DirectionalLight(0xffffff, 2.0); sun.position.set(3, 5, 4); scene.add(sun);
+  scene.add(shown.root);
+  if (!shown.verts) {
+    const sk = new T.SkeletonHelper(shown.root);
+    sk.material.linewidth = 2; scene.add(sk);
+  }
+  const box3 = new T.Box3();
+  if (shown.verts) box3.setFromObject(shown.root);
+  else shown.root.traverse(o => { if (o.isBone) box3.expandByPoint(o.getWorldPosition(new T.Vector3())); });
+  const size = box3.getSize(new T.Vector3()), center = box3.getCenter(new T.Vector3());
+  const radius = Math.max(size.length() / 2, 0.01);
+  const grid = new T.GridHelper(radius * 4, 16, 0x555560, 0x333338);
+  grid.position.y = box3.min.y; scene.add(grid);
+  const cam = new T.PerspectiveCamera(35, 1, radius / 100, radius * 100);
+  const view = { yaw: 0.6, pitch: 0.25, dist: radius * 3.2 };
+  const place = () => {
+    cam.position.set(center.x + view.dist * Math.sin(view.yaw) * Math.cos(view.pitch), center.y + view.dist * Math.sin(view.pitch),
+      center.z + view.dist * Math.cos(view.yaw) * Math.cos(view.pitch));
+    cam.lookAt(center);
+  };
+  let drag = null;
+  canvas.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    view.yaw -= (e.clientX - drag.x) * 0.01; view.pitch = Math.max(-1.4, Math.min(1.4, view.pitch + (e.clientY - drag.y) * 0.01));
+    drag = { x: e.clientX, y: e.clientY };
+  });
+  canvas.addEventListener("pointerup", () => { drag = null; });
+  canvas.addEventListener("wheel", (e) => { e.preventDefault(); view.dist *= Math.exp(e.deltaY * 0.001); }, { passive: false });
+  const mixer = new T.AnimationMixer(shown.root);
+  let action = main.clips.length ? mixer.clipAction(main.clips[0]) : null;
+  action?.play();
+  let paused = false;
+  const resize = () => {
+    const w = canvas.clientWidth || 600, h = canvas.clientHeight || 420;
+    renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix();
+  };
+  stopViewer();
+  viewer = { renderer, raf: 0, ro: typeof ResizeObserver !== "undefined" ? new ResizeObserver(resize) : null };
+  viewer.ro?.observe(canvas);
+  resize();
+  const clock = new T.Clock();
+  const tick = () => {
+    if (!viewer || viewer.renderer !== renderer) return;
+    const dt = clock.getDelta();
+    if (!paused) mixer.update(dt);
+    place(); renderer.render(scene, cam);
+    viewer.raf = requestAnimationFrame(tick);
+  };
+  tick();
+  const parts = [main.verts ? `${main.verts.toLocaleString()} vertices` : "no mesh (a clip)",
+    main.joints ? `${main.joints} bones` : "no skeleton", main.verts ? (main.textured ? "textured" : "no texture inside") : null,
+    on ? `played on ${on}` : (!main.verts && main.clips.length ? "shown on its skeleton (give the hero a body model to see it on the body)" : null)].filter(Boolean);
+  info.replaceChildren(document.createTextNode(parts.join(" · ") + ". Drag to turn, scroll to zoom. "));
+  if (main.clips.length) {
+    const sel = el("select", { "aria-label": "Clip" }, ...main.clips.map((c, k) => el("option", { value: String(k), text: `${c.name} (${c.duration.toFixed(2)} s)` })));
+    sel.addEventListener("change", () => { action?.stop(); action = mixer.clipAction(main.clips[+sel.value]); action.play(); });
+    const pause = el("button", { type: "button", class: "small", text: "Pause" });
+    pause.addEventListener("click", () => { paused = !paused; pause.textContent = paused ? "Play" : "Pause"; });
+    info.append(sel, " ", pause);
+  }
+}
+function problemsCard() {
+  if (!S.problems.length) return null;
+  return el("section", { class: "card" }, el("h2", {}, el("span", { class: "grow", text: `${S.problems.length} problem${S.problems.length === 1 ? "" : "s"}` })),
+    el("p", { class: "lead", text: "What rsmm apply would refuse. Click one to go there." }),
+    el("ul", { id: "problems" }, ...S.problems.map(p => el("li", { text: p, onclick: () => {
+      const [sec, slot] = sectionOf(p); S.section = sec; if (slot) S.slot = slot; draw(); } }))));
+}
+// Writes into the hero that is current when the answer comes (F()), never a
+// copy held from when the picker was drawn: a hero loaded meanwhile (a mod
+// switched) would otherwise keep its empty body.
+function rigPicker() {
+  const f = F();
+  const sel = el("select", { "aria-label": "Rig" }, el("option", { value: "", text: "— pick a rig —" }),
+    ...S.schema.rigs.map(r => el("option", { value: r, text: r.replace(/^Hero_/, "").replace(/_/g, " ") })));
+  sel.value = f.rig || "";
+  const fill = el("button", { type: "button", class: "small", text: "Use its body", title: "Set mesh and material to the rig's own" });
+  const note = el("span", { class: "note" });
+  const useBody = async (force) => {
+    if (!sel.value) return;
+    note.textContent = "Reading the rig…";
+    try {
+      const rigName = sel.value;
+      S.rig = await api("api/rig?rig=" + encodeURIComponent(rigName));
+      const cur = F();
+      if (cur.rig !== rigName) return;      // picked again meanwhile, or another hero
+      if (force || !cur.mesh) cur.mesh = S.rig.mesh;
+      if (force || !cur.material) cur.material = S.rig.material;
+      opts("dl-slot", S.rig.slots || []); opts("dl-bone", S.rig.bones || []);
+      changed(); await loadClips(); draw();
+      setStatus("ok", `✓ ${rigName.replace(/^Hero_/, "")} lends its skeleton and ${S.rig.slots.length} animation slots; the body is its own until you set a model.`);
+    } catch (e) { note.textContent = e.message; }
+  };
+  sel.addEventListener("change", () => { const cur = F(); if (sel.value) cur.rig = sel.value; else delete cur.rig; changed(); useBody(false); });
+  fill.addEventListener("click", () => useBody(true));
+  return el("div", { class: "rec", style: "margin-bottom:8px" }, el("label", { text: "rig", title: "the shipped hero that lends a skeleton, clips and UI art" }),
+    el("div", { class: "val" }, sel, fill, note), el("div"));
+}
+function renameRefs(from, to) {
+  const walk = (v) => {
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === "object") { for (const k of Object.keys(v)) v[k] = walk(v[k]); return v; }
+    return v === from ? to : v;
+  };
+  walk(S.hero);
+}
+
+// ---- buttons ---------------------------------------------------------------------------------
+function buttonsCard() {
+  const f = F(); const ab = f.abilities ||= {};
+  const slots = S.schema.slots;
+  if (!slots.includes(S.slot)) S.slot = slots[0];
+  const tabs = el("div", { class: "tabs", role: "tablist" }, ...slots.map(s => el("button", { type: "button",
+    class: (S.slot === s ? "on" : "") + (s in ab ? "" : " off"), title: s in ab ? "" : "Not written: the shared base's empty slot",
+    text: SLOT_LABEL[s] || s, onclick: () => { S.slot = s; draw(); } })));
+  const slot = S.slot, b = ab[slot];
+  const kids = [tabs];
+  if (!b) {
+    kids.push(el("p", { class: "lead", text: `${SLOT_LABEL[slot] || slot} is not written: the button does nothing. Write it from data (a clip, hits at set times, steps), or lend a shipped hero's button whole.` }),
+      el("div", { class: "add" },
+        el("button", { type: "button", class: "primary", text: "Write it from data", onclick: () => {
+          ab[slot] = slot === "attack"
+            ? { cooldown: 0.1, combo: [{ clip: "", hit_at: 0.3, link_at: 0.4, exit_at: 0.5, hits: [{ radius: 2.5, damage: 140 }] },
+                { clip: "", hit_at: 0.3, link_at: 0.4, exit_at: 0.5, hits: [{ radius: 2.8, damage: 180 }] }] }
+            : { clip: "", cooldown: slot.startsWith("ultimate") ? 60 : 6, hits: [{ at: 0.4, radius: 3, damage: 200 }] };
+          changed(); draw(); } }),
+        el("button", { type: "button", text: "Lend a shipped button…", onclick: () => { ab[slot] = { template: "", cooldown: 6 }; changed(); draw(); } })));
+    return card("Buttons", null, ...kids);
+  }
+  const isTpl = b.template !== undefined;
+  let keys = isTpl ? S.schema.keys.template : S.schema.keys.button;
+  const hide = [];
+  if (!S.schema.hold_slots.includes(slot)) hide.push("hold");
+  if (!S.schema.charge_slots.includes(slot)) hide.push("charges");
+  if (slot !== "attack") hide.push("combo");
+  keys = keys.filter(k => !hide.includes(k) || k in b);
+  const always = isTpl ? ["template", "name", "description", "cooldown"]
+    : b.combo ? ["name", "description", "icon", "cooldown", "combo"] : ["name", "description", "icon", "clip", "cooldown", "hits"];
+  kids.push(el("p", { class: "lead", text: isTpl
+      ? "Lent whole: the donor's states, timing, effects and hit logic, exactly as the game plays them. Tune it with values (its parts' numbers) and clips."
+      : slot === "attack" ? "The basic attack as shipped heroes build it: a combo of 2–4 steps, each its own clip whose timeline lands the hit, opens the next press and lets the hero move again."
+      : "A clip, how long it holds the hero, its cooldown, and hits: bursts of radius m around the hero at set times. Steps add projectiles, ground hits, heals and summons on a timeline." }),
+    record(b, keys, SPEC.button, { always }),
+    el("div", { class: "add" },
+      isTpl ? null : el("button", { type: "button", class: "small", text: "Switch to a lent button", onclick: () => {
+        if (!confirm("Replace this button with a shipped one, lent whole? Its clip, hits and the rest go.")) return;
+        const keep = {}; for (const k of ["name", "description", "icon", "cooldown", "steps"]) if (k in b) keep[k] = b[k];
+        ab[slot] = { template: "", ...keep }; changed(); draw(); } }),
+      el("button", { type: "button", class: "small", text: `Remove ${SLOT_LABEL[slot] || slot}`, onclick: () => {
+        if (!confirm(`Remove ${SLOT_LABEL[slot] || slot}? The button will do nothing.`)) return;
+        delete ab[slot]; changed(); draw(); } })));
+  return card("Buttons", null, ...kids);
+}
+
+// ---- talents ---------------------------------------------------------------------------------
+function talentsCard() {
+  const f = F(); const ts = f.talents ||= [];
+  const cols = S.schema.columns;
+  const colOf = (t) => (String(t.name || "").split(" ")[0]);
+  const byCol = {}; for (const t of ts) byCol[colOf(t)] = (byCol[colOf(t)] || 0) + 1;
+  return card("Talents", "Your hero's own list. The name's first word is its column in the book; add_stats are numbers per rarity ({0} on the card), actions hits or steps each time something happens while it is owned.",
+    el("div", { class: "chips note", style: "margin-bottom:6px" }, ...cols.map(c => el("span", { text: `${c}: ${byCol[c] || 0}` })),
+      el("span", { text: `· ${ts.filter(t => t.starter).length} in the starting pick` })),
+    list(ts, { closed: true, add: "+ talent",
+      title: (t) => `${t.name || "unnamed"}` + (t.title ? ` — ${t.title}` : "") + (t.starter ? " ★" : ""),
+      body: (t) => {
+        const parts = String(t.name || "").split(" ");
+        const col = el("select", { "aria-label": "Column" }, ...cols.map(c => el("option", { value: c, text: c })));
+        col.value = cols.includes(parts[0]) ? parts[0] : cols[0];
+        const rest = el("input", { value: cols.includes(parts[0]) ? parts.slice(1).join(" ") : String(t.name || ""), placeholder: "its name (e.g. Sharp Axe)" });
+        const set = () => { t.name = `${col.value} ${rest.value.trim()}`.trim(); changed(); };
+        col.addEventListener("change", set); rest.addEventListener("change", set);
+        return el("div", {}, el("div", { class: "rec", style: "margin-bottom:7px" }, el("label", { text: "name", title: "column + name: unique; it names the talent's parts" }),
+          el("div", { class: "val" }, col, rest), el("div")),
+          record(t, S.schema.keys.talent.filter(k => k !== "name"), SPEC.talent, { always: ["title", "description"], skip: ["name"] }));
+      },
+      make: () => ({ name: "Attack New Talent", title: "", description: "" }) }));
+}
+
+// ---- lists the inputs suggest from --------------------------------------------------------
+// Rebuilt only when the list changed: shipped lists run to thousands of names.
+function opts(id, values) {
+  const list = [...new Set(values)], key = list.join("\n"), dl = $(id);
+  if (dl.dataset.key === key) return;
+  dl.dataset.key = key;
+  dl.replaceChildren(...list.map(v => el("option", { value: v })));
+}
+function refreshLists() {
+  if (!S.hero || !S.schema) return;
+  const f = F();
+  opts("dl-anim", [...Object.keys(f.animations || {}).map(n => "anim:" + n), ...(S.clips?.clips || [])]);
+  opts("dl-fx", [...Object.keys(f.effects || {}).map(n => "fx:" + n), ...(S.shipped?.effects || [])]);
+  opts("dl-ui", [...S.files.filter(x => /\.png$/i.test(x)), ...(S.shipped?.pictures || [])]);
+  opts("dl-bone", S.rig?.bones || []);
+  // The clips of every template a button lends: what its `clips` map can swap.
+  const norm = (x) => String(x).replace(/^Hero_/, "").replace(/\s*:\s*/, ": ").trim();
+  const lent = Object.values(f.abilities || {}).map(b => b && b.template).filter(Boolean).map(norm);
+  opts("dl-tclip", (S.templates || []).filter(t => t.names.some(n => lent.includes(n))).flatMap(t => t.clips || []));
+  opts("dl-own", [...Object.keys(f.projectiles || {}).map(n => "own:" + n), ...Object.keys(f.entities || {}).map(n => "own:" + n),
+    ...S.projectiles]);
+}
+async function loadClips() {
+  const f = F();
+  if (!f || !f.mesh) { S.clips = null; opts("dl-tpl", []); return; }
+  try { S.clips = await api("api/clips?mesh=" + encodeURIComponent(f.mesh)); } catch (e) { S.clips = null; }
+  opts("dl-tpl", S.clips?.templates || []);
+  refreshLists();
+}
+async function loadFiles() {
+  S.files = [];
+  const w = where();
+  try {
+    const r = await api(`api/files?mod=${encodeURIComponent(w.mod)}&draft=${w.draft || ""}`);
+    S.files = r.files; S.sizes = r.sizes || {};
+  } catch (e) {}
+  opts("dl-png", S.files.filter(x => /\.png$/i.test(x)));
+  opts("dl-glb", S.files.filter(x => /\.(glb|gltf)$/i.test(x)));
+  refreshLists();
+}
+
+// ---- mods and heroes -------------------------------------------------------------------------
+function blankHero() {
+  return { kind: "hero", id: "", name: "", frame: { rig: "", mesh: "", material: "", abilities: {}, talents: [] }, memoirs: [] };
+}
 async function loadMods() {
   const { mods, tags } = await api("api/mods");
   S.tags = tags || [];
-  $("mod").replaceChildren(el("option", { value: NEW_MOD, text: "New mod…" }),
+  $("mod").replaceChildren(el("option", { value: NEW, text: "New mod…" }),
     ...mods.map(m => el("option", { value: m.id, text: m.name === m.id ? m.id : `${m.name} (${m.id})` })));
-  if (!mods.some(m => m.id === S.mod)) S.mod = NEW_MOD;
+  if (!mods.some(m => m.id === S.mod)) S.mod = NEW;
   $("mod").value = S.mod;
 }
 async function loadHeroes() {
-  S.heroes = S.mod === NEW_MOD ? [] : (await api(`api/heroes?mod=${encodeURIComponent(S.mod)}`)).heroes;
-  $("pick").replaceChildren(el("option", { value: NEW_HERO, text: "+ New hero" }),
-    ...S.heroes.map(h => el("option", { value: h.id, text: `${h.name} (on ${heroName(h.base)})` })));
-  if (!S.heroes.some(h => h.id === S.hero)) S.hero = NEW_HERO;
-  $("pick").value = S.hero;
+  const got = S.mod === NEW ? { heroes: [], others: [] } : await api("api/heroes?mod=" + encodeURIComponent(S.mod));
+  S.heroes = got.heroes; S.others = got.others;
+  $("pick").replaceChildren(el("option", { value: NEW, text: "+ New hero" }),
+    ...S.heroes.map(h => el("option", { value: h.id, text: `${h.name || h.id} (${h.id})` })));
+  if (!S.heroes.some(h => h.id === S.block)) S.block = S.heroes[0]?.id || NEW;
+  $("pick").value = S.block;
+  await loadFiles();
   await openHero();
 }
+let opening = 0;
 async function openHero() {
-  const h = S.heroes.find(x => x.id === S.hero);
-  if (h) {
-    $("base").value = h.base; $("name").value = h.name; $("desc").value = h.description;
-    S.kit = JSON.parse(JSON.stringify(h.kit || {}));
-  } else { S.kit = {}; }
-  $("base").disabled = !!h;     // a hero's base is its body: change it by making a new hero
-  await loadOptions();
+  const ticket = ++opening;
+  const h = S.heroes.find(x => x.id === S.block);
+  S.hero = h ? clone(h) : blankHero();
+  S.hero.frame ||= {};
+  S.dirty = false; S.problems = []; S.rig = null;
+  // A save reopens the same hero: its history is kept, only the saved point moves.
+  const key = S.mod + "/" + S.block;
+  if (S.historyFor === key && S.past) { S.last = S.saved = JSON.stringify(S.hero); historyButtons(); }
+  else { S.historyFor = key; startHistory(); }
+  $("remove").hidden = !h;
+  if (F().rig) { try { S.rig = await api("api/rig?rig=" + encodeURIComponent(F().rig)); } catch (e) { S.rig = null; } }
+  if (ticket !== opening) return;           // another hero was opened meanwhile
+  opts("dl-slot", S.rig?.slots || []); opts("dl-bone", S.rig?.bones || []);
+  await loadClips();
+  if (ticket !== opening) return;
+  refreshLists();
+  draw();
+  const other = S.others.length ? ` This mod also has ${S.others.map(o => `${o.id} (built on ${o.base})`).join(", ")}: heroes built on a shipped one are the Abilities tab's.` : "";
+  setStatus("muted", (h ? `Editing ${h.id}.` : "A new hero: give it an id and a name, pick a rig, then write its buttons.") + other);
+  if (h) runCheck(true);
 }
-async function loadOptions() {
-  S.opts = null; S.optsError = ""; drawSave();
-  $("busy").textContent = "Reading " + heroName($("base").value) + "…";
-  try { S.opts = await api(`api/options?base=${encodeURIComponent($("base").value)}`); }
-  catch (e) { S.optsError = e.message || String(e); }
-  $("busy").textContent = "";
+async function runCheck(quiet) {
+  try {
+    const { problems } = await api("api/check", { ...where(), hero: payload() });
+    S.problems = problems;
+    if (!quiet) setStatus(problems.length ? "bad" : "ok", problems.length ? `${problems.length} problem${problems.length === 1 ? "" : "s"}: see the Hero section.` : "✓ No problems found. Build check makes every file to be sure.");
+  } catch (e) { if (!quiet) setStatus("bad", e.message); }
   draw();
 }
-function draw() {
-  const o = S.opts; if (!o) { drawSave(); return; }
-  $("formCard").hidden = !o.form;
-  if (!o.form) delete S.kit.form;
-  for (const r of document.querySelectorAll("input[name=form]")) r.checked = (r.value === (S.kit.form || ""));
-  $("slots").replaceChildren(...SLOTS.map(([slot, label]) => slotRow(slot, label, o.slots[slot])));
-  drawPets();
-  drawSave();
-}
-function slotRow(slot, label, can) {
-  const cur = S.kit[slot], mode = cur === "none" ? "none" : cur && cur.steps ? "build"
-    : cur && cur.fire !== undefined ? "fire" : "";
-  const sel = el("select", { "aria-label": label },
-    el("option", { value: "", text: "Keep as the original" }),
-    el("option", { value: "none", text: "Remove it", disabled: !can.none && mode !== "none" }),
-    el("option", { value: "fire", text: "Also fire a projectile…", disabled: !can.fire && mode !== "fire" }),
-    el("option", { value: "build", text: "Build a new ability…", disabled: can.build === false && mode !== "build" }));
-  sel.value = mode;
-  const right = el("div", { class: "pick" });
-  if (mode === "fire") {
-    const inp = el("input", { list: "projList", placeholder: "Type to search: laser, rain, fireball…", value: cur.fire ? projName(cur.fire) : "" });
-    inp.addEventListener("change", () => {
-      const p = S.projs.find(x => x.label === inp.value || x.path === inp.value);
-      if (!p) { setStatus("bad", `“${inp.value}” is not in the list: pick one of the suggestions.`); return; }
-      S.kit[slot] = { fire: p.path }; changed();
-    });
-    const when = S.kit.form === "wolf" && can.when_wolf ? can.when_wolf : can.when;
-    right.append(inp, el("div", { class: "why", text: `Fires when “${when}” starts.` }));
-  } else {
-    // Plain words here; the build's own reason is on hover for whoever wants it.
-    const no = [!can.none && "remove", !can.fire && "fire a projectile from",
-      can.build === false && "build a new ability on"].filter(Boolean);
-    if (no.length) right.append(el("div", { class: "why",
-      text: `On ${heroName($("base").value)} you cannot ${no.join(" or ")} this button yet.`,
-      title: [can.none_why, can.fire_why, can.build_why].filter(Boolean).join("\n") }));
-  }
-  sel.addEventListener("change", () => {
-    if (sel.value === "") delete S.kit[slot];
-    else if (sel.value === "none") S.kit[slot] = "none";
-    else if (sel.value === "build") S.kit[slot] = { replace: true, steps: [] };
-    else S.kit[slot] = { fire: "" };
-    changed(); draw();
-  });
-  const row = el("div", { class: "slot" }, el("b", { text: label }), sel, right);
-  if (mode === "build") {
-    right.replaceChildren(el("label", { class: "why" },
-      el("input", { type: "checkbox", checked: cur.replace !== false || null,
-        onchange: (e) => { cur.replace = e.target.checked; changed(); } }),
-      " Replace the original's hits (keep only what you build)"));
-    row.append(el("div", { class: "tl" }, blocks(cur.steps, true, can),
-      el("div", { class: "why", text: `Starts when “${S.kit.form === "wolf" && can.when_wolf ? can.when_wolf : can.when || "the ability"}” starts. Blocks run top to bottom; Wait moves time on.` })));
-  }
-  return row;
-}
-// A built ability: blocks run top to bottom, `wait` moves time on, `repeat` runs
-// its own blocks N times `every` seconds apart. Saved as the kit's `steps`.
-const BLOCK = {
-  anim: ["Play animation", () => ({ anim: (S.opts.clips[0] || {}).path || "" })],
-  fire: ["Fire projectile", () => ({ fire: "", angles: [0] })],
-  hit: ["Hit area", () => ({ hit: { radius: 4, damage: 100 } })],
-  heal: ["Heal", () => ({ heal: 20 })],
-  summon: ["Summon an ally", () => ({ summon: "", lifetime: 20 })],
-  wait: ["Wait", () => ({ wait: 0.3 })],
-  repeat: ["Repeat", () => ({ repeat: 3, every: 0.2, steps: [] })],
-};
-// Why a block cannot build on this slot, or "" when it can: the server tried
-// each block alone (api/options), exactly as a save would. Fire and Hit area
-// both spawn from the base's aimed spawner (Carmilla and Sun Wukong have none).
-function blockWhy(kind, can) {
-  const hero = heroName($("base").value);
-  if (!can) return "";
-  if ((kind === "fire" || kind === "hit" || kind === "summon") && !can.fire)
-    return `${hero} has nothing to launch projectiles, hit areas or allies from yet.`;
-  if (kind === "anim" && can.anim === false) return `This button has no animation of ${hero}'s to swap.`;
-  if (kind === "heal" && can.heal === false) return `${hero} has no heal to copy.`;
-  return "";
-}
-function blocks(list, top, can) {
-  const box = el("div");
-  list.forEach((b, i) => box.append(blockRow(list, i, top, can)));
-  box.append(el("div", { class: "adds" }, ...Object.entries(BLOCK)
-    .filter(([k]) => top || k !== "repeat")
-    .map(([k, [label, make]]) => {
-      const why = blockWhy(k, can);
-      return el("button", { type: "button", text: "+ " + label, disabled: !!why, title: why || null,
-        onclick: () => { list.push(make()); changed(); draw(); } });
-    })));
-  const why = ["fire", "hit", "anim", "heal", "summon"].map(k => blockWhy(k, can)).filter(Boolean);
-  if (why.length && top) box.append(el("div", { class: "why", text: [...new Set(why)].join(" ") }));
-  return box;
-}
-function blockRow(list, i, top, can) {
-  const b = list[i], kind = Object.keys(BLOCK).find(k => k in b);
-  const num = (key, step, min, max) => el("input", { type: "number", step, min, max, value: b[key],
-    onchange: (e) => { const n = parseFloat(e.target.value); if (Number.isFinite(n)) { b[key] = n; changed(); } } });
-  const body = [];
-  if (kind === "anim") {
-    const sel = el("select", { class: "grow", onchange: (e) => { b.anim = e.target.value; changed(); } },
-      ...S.opts.clips.map(c => el("option", { value: c.path, text: c.name })));
-    sel.value = b.anim; body.push(sel, el("span", { class: "why", text: "plays instead of the button's own animation" }));
-  } else if (kind === "fire") {
-    const inp = el("input", { class: "grow", list: "projList", placeholder: "Type to search: laser, rain, fireball…",
-      value: b.fire ? projName(b.fire) : "" });
-    inp.addEventListener("change", () => {
-      const p = S.projs.find(x => x.label === inp.value || x.path === inp.value);
-      if (!p) { setStatus("bad", `“${inp.value}” is not in the list: pick one of the suggestions.`); return; }
-      b.fire = p.path; changed(); draw();
-    });
-    const ang = el("input", { value: (b.angles || [0]).join(", "), style: "width:120px",
-      title: "Directions in degrees, 0 = where the hero faces. Several make a fan: -20, 0, 20" });
-    ang.addEventListener("change", () => {
-      const v = ang.value.split(/[ ,]+/).filter(Boolean).map(Number);
-      if (!v.length || !v.every(Number.isFinite)) { setStatus("bad", "Directions are numbers in degrees, e.g. -20, 0, 20"); return; }
-      b.angles = v; changed();
-    });
-    body.push(inp, el("span", { class: "why", text: "directions" }), ang);
-    const proj = S.projs.find(x => x.path === b.fire);
-    if (proj && proj.tags.length) body.push(el("span", { class: "why", text: proj.tags.join(" · ") }));
-    body.push(el("div", { class: "inner" }, ...shotOptions(b, proj)));
-  } else if (kind === "heal") {
-    body.push(num("heal", "1", 1, 10000), el("span", { class: "why", text: "health (in the units of the hero's own heals)" }));
-  } else if (kind === "summon") {
-    body.push(...allyFields(b, "summon"));
-  } else if (kind === "hit") {
-    const h = b.hit, hn = (key, step, unit) => el("label", {}, el("input", { type: "number", step, value: h[key] ?? "",
-      placeholder: key === "delay" ? "0" : "", style: "width:70px",
-      onchange: (e) => { const n = parseFloat(e.target.value); if (Number.isFinite(n)) h[key] = n; else delete h[key]; changed(); } }), " " + unit);
-    body.push(hn("radius", "0.5", "m around"), hn("damage", "10", "% damage"), hn("delay", "0.1", "s delay"));
-  } else if (kind === "wait") {
-    body.push(num("wait", "0.05", 0, 30), el("span", { text: "seconds" }));
-  } else {
-    body.push(num("repeat", "1", 1, 20), el("span", { text: "times, every" }), num("every", "0.05", 0, 10),
-      el("span", { text: "seconds" }), el("div", { class: "inner" }, blocks(b.steps, false, can)));
-  }
-  const move = (d) => { const j = i + d; if (j < 0 || j >= list.length) return; [list[i], list[j]] = [list[j], list[i]]; changed(); draw(); };
-  const bad = blockWhy(kind, can);
-  if (bad) body.push(el("div", { class: "why", style: "color:var(--bad, #c33)", text: `⚠ This block will not save: ${bad} Remove it.` }));
-  return el("div", { class: "blk" }, el("span", { class: "k", text: BLOCK[kind][0] }), ...body,
-    el("span", { class: "x" },
-      el("button", { type: "button", text: "↑", title: "Move up", onclick: () => move(-1) }),
-      el("button", { type: "button", text: "↓", title: "Move down", onclick: () => move(1) }),
-      el("button", { type: "button", text: "✕", title: "Remove", onclick: () => { list.splice(i, 1); changed(); draw(); } })));
-}
-// Per-shot options a projectile takes (Projectile_Model's own numbers and
-// status flags, set per spawn). An entity that is not a projectile takes none.
-const SHOT = [["damage", "% damage", "10"], ["speed", "speed", "1"], ["lifetime", "s lifetime", "0.1"],
-  ["size", "× size", "0.1"], ["knockback", "knockback", "1"], ["explode", "m explosion", "0.5"]];
-const STATUS = [["burn", "Burn"], ["poison", "Poison"], ["root", "Root"], ["curse", "Curse", true], ["vulnerable", "Vulnerable", true]];
-function shotOptions(b, proj) {
-  if (proj && !proj.options) return [el("span", { class: "why", text: "Not a generic projectile: no damage or effect options." }), ...readRows(b)];
-  const opt = (key, unit, step) => el("label", {}, el("input", { type: "number", step, value: b[key] ?? "", placeholder: "–", style: "width:64px",
-    onchange: (e) => { const n = parseFloat(e.target.value); if (Number.isFinite(n)) b[key] = n; else delete b[key]; changed(); } }), " " + unit);
-  const offs = el("input", { value: (b.offsets || []).join(", "), placeholder: "e.g. -1, 0, 1", style: "width:110px",
-    title: "Side offsets in metres: shots side by side instead of fanned out" });
-  offs.addEventListener("change", () => {
-    const v = offs.value.split(/[ ,]+/).filter(Boolean).map(Number);
-    if (v.some(x => !Number.isFinite(x))) { setStatus("bad", "Offsets are numbers in metres, e.g. -1, 0, 1"); return; }
-    if (v.length) b.offsets = v; else delete b.offsets; changed();
-  });
-  const st = STATUS.map(([key, label, flag]) => {
-    const on = b[key] !== undefined;
-    const box = el("input", { type: "checkbox", checked: on || null, onchange: (e) => {
-      if (e.target.checked) b[key] = flag ? true : 3; else delete b[key]; changed(); draw(); } });
-    const secs = !flag && on ? el("input", { type: "number", step: "0.5", value: b[key], style: "width:52px",
-      onchange: (e) => { const n = parseFloat(e.target.value); if (n > 0) { b[key] = n; changed(); } } }) : null;
-    return el("label", {}, box, " " + label, ...(secs ? [" ", secs, " s"] : []));
-  });
-  // Juliet's projectiles bounce on to the next enemy as often as the spawn says.
-  const bounce = proj && proj.tags.includes("ricochet")
-    ? [el("div", { class: "adds" }, el("span", { class: "why", text: "ricochet:" }),
-        opt("ricochet", "bounces", "1"), opt("ricochet_damage", "% per bounce", "10"))] : [];
-  return [el("div", { class: "adds" }, ...SHOT.map(([k, u, s]) => opt(k, u, s))), ...bounce, ...readRows(b),
-    el("div", { class: "adds" }, el("span", { class: "why", text: "side by side:" }), offs),
-    el("div", { class: "adds" }, el("span", { class: "why", text: "on hit:" }), ...st)];
-}
-// A projectile that reads its own hero (Kintaro's axe: rebounds; the Snow Queen's
-// shard: seeking) fires as a copy of yours, reading these numbers instead.
-const READS = {};
-function readRows(b) {
-  if (!b.fire) return [];
-  const r = READS[b.fire];
-  if (r === undefined) {
-    READS[b.fire] = null;
-    api(`api/reads?path=${encodeURIComponent(b.fire)}`).then(j => { READS[b.fire] = j.reads; draw(); })
-      .catch(() => { READS[b.fire] = []; });
-    return [];
-  }
-  if (!r || !r.length) return [];
-  b.reads = b.reads || {};
-  const rows = r.map(x => {
-    const cur = x.label in b.reads ? b.reads[x.label] : x.default;
-    const set = (v) => { if (v === x.default) delete b.reads[x.label]; else b.reads[x.label] = v;
-      if (!Object.keys(b.reads).length) delete b.reads; changed(); };
-    const inp = x.type === "bool"
-      ? el("input", { type: "checkbox", checked: cur || null, onchange: (e) => { b.reads = b.reads || {}; set(e.target.checked); } })
-      : el("input", { type: "number", step: x.type === "int" ? "1" : "0.1", value: cur, style: "width:64px",
-          onchange: (e) => { const n = x.type === "int" ? parseInt(e.target.value, 10) : parseFloat(e.target.value);
-            if (Number.isFinite(n)) { b.reads = b.reads || {}; set(n); } } });
-    return el("label", { title: `Its own hero's value: ${x.default}` }, inp, " " + x.label);
-  });
-  return [el("div", { class: "adds" }, el("span", { class: "why",
-    text: "fires as your own copy, reading:" }), ...rows)];
-}
-const projName = (path) => (S.projs.find(x => x.path === path) || { label: path }).label;
-const enemyName = (path) => (S.enemies.find(x => x.path === path) || { label: path }).label;
-
-// An enemy's attacks and clips (api/enemy), fetched once each.
-const ENEMY = {};
-function enemyInfo(path) {
-  if (!path) return null;
-  if (ENEMY[path] === undefined) {
-    ENEMY[path] = null;
-    api(`api/enemy?path=${encodeURIComponent(path)}`).then(j => { ENEMY[path] = j; draw(); })
-      .catch(() => { ENEMY[path] = { attacks: [], clips: [] }; });
-  }
-  return ENEMY[path];
-}
-// A number field writing o[key] (cleared when left empty).
-function optNum(o, key, unit, step, title) {
-  return el("label", { title: title || null }, el("input", { type: "number", step, value: o[key] ?? "", placeholder: "–", style: "width:64px",
-    onchange: (e) => { const n = parseFloat(e.target.value); if (Number.isFinite(n)) o[key] = n; else delete o[key]; changed(); } }), " " + unit);
-}
-// What a summoned ally and a pet share (engine/hero_kit.py `_summon_for`): the
-// enemy (`key`: "summon" in a block, "entity" for pets), how long it lives, what
-// it bursts into, the clip it appears with, and the attack it fights with, tuned
-// for a moving target.
-function allyFields(o, key) {
-  const out = [];
-  const inp = el("input", { class: "grow", list: "enemyList", placeholder: "Type to search: wolf, ghoul, treant…",
-    value: o[key] ? enemyName(o[key]) : "" });
-  inp.addEventListener("change", () => {
-    const p = S.enemies.find(x => x.label === inp.value || x.path === inp.value);
-    if (!p) { setStatus("bad", `“${inp.value}” is not in the list: pick one of the suggestions.`); return; }
-    o[key] = p.path; delete o.attack; delete o.appear; changed(); draw();
-  });
-  out.push(inp);
-  const info = enemyInfo(o[key]) || { attacks: [], clips: [] };
-  const own = (S.opts.own_entities || []);
-  const burst = el("select", { onchange: (e) => { if (e.target.value) o.burst = e.target.value; else { delete o.burst; delete o.burst_on_hit; } changed(); draw(); } },
-    el("option", { value: "", text: "nothing" }),
-    ...own.map(p => el("option", { value: p, text: p.split("/").pop().replace(/_/g, " ") })));
-  burst.value = o.burst || "";
-  const appear = el("select", { onchange: (e) => { if (e.target.value) o.appear = e.target.value; else delete o.appear; changed(); } },
-    el("option", { value: "", text: "its own spawn" }),
-    ...info.clips.map(c => el("option", { value: c.path, text: c.name })));
-  appear.value = o.appear || "";
-  out.push(el("div", { class: "inner" },
-    el("div", { class: "adds" }, optNum(o, "lifetime", "s lifetime", "1", "It dies on its own after this long"),
-      el("label", {}, "bursts into ", burst),
-      o.burst ? el("label", { title: "Its first attack that lands ends it there" },
-        el("input", { type: "checkbox", checked: o.burst_on_hit || null,
-          onchange: (e) => { if (e.target.checked) o.burst_on_hit = true; else delete o.burst_on_hit; changed(); } }),
-        " on its first hit") : null,
-      el("label", {}, "appears with ", appear)),
-    ...attackFields(o, info)));
-  return out;
-}
-// The attack it fights with, and how that attack is tuned (`attack_*`).
-function attackFields(o, info) {
-  const sel = el("select", { onchange: (e) => {
-      if (e.target.value) o.attack = e.target.value;
-      else for (const k of Object.keys(o)) if (k === "attack" || k.startsWith("attack_")) delete o[k];
-      changed(); draw(); } },
-    el("option", { value: "", text: "its usual attacks" }),
-    ...info.attacks.map(a => el("option", { value: a, text: a })));
-  sel.value = o.attack || "";
-  const rows = [el("div", { class: "adds" }, el("span", { class: "why", text: "fights with:" }), sel)];
-  if (o.attack) {
-    rows.push(el("div", { class: "adds" },
-      el("span", { class: "why", text: "tuned for a moving target:" }),
-      optNum(o, "attack_area", "× width", "0.25", "Its hit cone this many times wider; the reach stays"),
-      optNum(o, "attack_reach", "× reach", "0.25", "Its hit shape's radius this many times longer"),
-      optNum(o, "attack_range", "m to commit", "0.5", "How close it gets before it starts the attack (a dire wolf: 4.5)"),
-      optNum(o, "attack_targets", "targets (0 = all)", "1", "How many one hit takes: 0 = everything in its shape (a wolf's bite: 1, the best-scored)"),
-      optNum(o, "attack_speed", "× speed", "0.05", "Its clips play this much faster"),
-      optNum(o, "attack_cooldown", "s between tries", "0.25", "How soon it tries the attack again (a wolf: 2–4 s)"),
-      el("label", { title: "The statuses the attack applies (a wolf's bite roots)" },
-        el("input", { type: "checkbox", checked: o.attack_debuffs === false || null,
-          onchange: (e) => { if (e.target.checked) o.attack_debuffs = false; else delete o.attack_debuffs; changed(); } }),
-        " no statuses")));
-  }
-  return rows;
-}
-// The Pets card: kit `pets` (engine/hero_kit.py `_pets`).
-function drawPets() {
-  const p = S.kit.pets;
-  $("petsOn").checked = !!p;
-  if (!p) { $("pets").replaceChildren(); return; }
-  const o = S.opts, slotOpts = SLOTS.map(([s, l]) => el("option", { value: s, text: l }));
-  const sel = (key, def, opts, after) => { const s = el("select", { onchange: (e) => {
-      if (e.target.value === def) delete p[key]; else p[key] = e.target.value; changed(); if (after) draw(); } }, ...opts);
-    s.value = p[key] || def; return s; };
-  const button = p.button || "trait";
-  const when = el("select", { onchange: (e) => { if (e.target.value) p.when = e.target.value; else delete p.when; changed(); } },
-    el("option", { value: "", text: "automatic" }),
-    ...((o.slots[button] || {}).states || []).map(s => el("option", { value: s, text: s })));
-  when.value = p.when || "";
-  const counter = sel("counter", button, [el("option", { value: "none", text: "no counter" }),
-    ...SLOTS.map(([s, l]) => el("option", { value: s, text: `over ${l}` }))]);
-  const spawn = sel("spawn", "start", [el("option", { value: "start", text: "at the start of a run" }),
-    el("option", { value: "button", text: "one batch per press (its own cooldown)" })], true);
-  const card = el("select", { onchange: (e) => { if (e.target.value) p.count_card = e.target.value; else delete p.count_card; changed(); } },
-    el("option", { value: "", text: "no card" }),
-    ...(o.cards || []).map(c => el("option", { value: c.part, text: c.part.replace(/ Desc Format$/, "") })));
-  card.value = p.count_card || "";
-  const talents = p.count_talents || {};
-  const tRows = Object.entries(talents).map(([t, n]) => el("div", { class: "adds" },
-    el("span", {}, t), el("span", { class: "why", text: "adds" }),
-    el("input", { type: "number", step: "1", min: 1, max: 4, value: n, style: "width:52px",
-      onchange: (e) => { const v = parseInt(e.target.value, 10); if (v >= 1 && v <= 4) { talents[t] = v; changed(); } } }),
-    el("button", { type: "button", text: "✕", onclick: () => { delete talents[t];
-      if (!Object.keys(talents).length) delete p.count_talents; changed(); draw(); } })));
-  const addT = el("select", { onchange: (e) => { if (!e.target.value) return;
-      p.count_talents = { ...talents, [e.target.value]: 1 }; changed(); draw(); } },
-    el("option", { value: "", text: "+ a talent that adds pets…" }),
-    ...(o.talents || []).filter(t => !(t in talents)).map(t => el("option", { value: t, text: t })));
-  $("pets").replaceChildren(el("div", { class: "blk" },
-    el("span", { class: "k", text: "Creature" }), ...allyFields(p, "entity")),
-    el("div", { class: "blk" }, el("span", { class: "k", text: "How many" }),
-      el("input", { type: "number", step: "1", min: 1, max: 4, value: p.count ?? 1, style: "width:52px",
-        onchange: (e) => { const v = parseInt(e.target.value, 10); if (v >= 1 && v <= 4) { if (v === 1) delete p.count; else p.count = v; changed(); } } }),
-      el("span", { class: "why", text: p.spawn === "button" ? "per press" : "at the start" }),
-      el("div", { class: "inner" }, ...tRows, addT,
-        el("div", { class: "adds" }, el("span", { class: "why", text: "the count shows in the {0} of" }), card))),
-    el("div", { class: "blk" }, el("span", { class: "k", text: "Button" }),
-      sel("button", "trait", slotOpts, true), el("span", { class: "why", text: "on its state" }), when,
-      el("div", { class: "inner" },
-        el("div", { class: "adds" }, el("span", { class: "why", text: "they come" }), spawn),
-        el("div", { class: "adds" }, el("span", { class: "why", text: "counter:" }), counter,
-          optNum(p, "hold", "s the button stays on", "0.1", "How long the button's state lasts (what it holds while on runs that long)"),
-          el("label", { title: "They join a fight on their own as it starts, and again every 1.5 s while it lasts" },
-            el("input", { type: "checkbox", checked: p.aggro || null,
-              onchange: (e) => { if (e.target.checked) p.aggro = true; else delete p.aggro; changed(); } }),
-            " fight on their own")))));
-}
-$("petsOn").addEventListener("change", (e) => {
-  if (e.target.checked) S.kit.pets = { entity: "", button: "trait" }; else delete S.kit.pets;
-  changed(); draw();
-});
-function changed() { S.dirty = true; drawSave(); tellShell(); }
-function drawSave() {
-  const named = !!$("name").value.trim();
-  $("save").disabled = !named || !S.opts;
-  $("save").textContent = S.mod === NEW_MOD ? "Create mod…" : S.hero === NEW_HERO ? "Add hero to mod" : "Save hero";
-  // A greyed-out button always says why (a user read it as "broken").
-  const hero = heroName($("base").value || "");
-  if (S.optsError) setStatus("bad", `Could not read ${hero}: ${S.optsError} Pick the base again to retry.`);
-  else if (!S.opts) setStatus("muted", `Reading ${hero}… Save unlocks when it is done.`);
-  else if (!named) setStatus("muted", "Give your hero a name (top of the page) to enable saving.");
-  else if (S.dirty) setStatus("muted", "Not saved yet.");
-}
 window.rsmmUnsaved = () => S.dirty ? { count: 1, kept: false } : null;
+// What is sent: the hero, less the empty tables and lists the page made just
+// by showing a section (an empty one the manifest already had stays).
+function payload() {
+  const h = clone(S.hero), had = S.heroes.find(x => x.id === S.block) || { frame: {} };
+  const empty = (v) => v && typeof v === "object" && !Object.keys(v).length;
+  for (const k of Object.keys(h.frame || {})) if (empty(h.frame[k]) && !(k in (had.frame || {}))) delete h.frame[k];
+  if (empty(h.memoirs) && !("memoirs" in had)) delete h.memoirs;
+  return h;
+}
 
 $("mod").addEventListener("change", async () => {
-  S.mod = $("mod").value; S.hero = NEW_HERO;
+  if (S.dirty && !confirm("Leave this hero? Its changes are not saved.")) { $("mod").value = S.mod; return; }
+  S.mod = $("mod").value; S.block = NEW;
   try { localStorage.setItem("hb-mod", S.mod); } catch (e) {}
-  await loadHeroes();
+  await loadHeroes(); tellShell();
 });
-$("pick").addEventListener("change", async () => { S.hero = $("pick").value; S.dirty = false; await openHero(); });
-$("base").addEventListener("change", () => { S.kit = {}; changed(); loadOptions(); });
-for (const id of ["name", "desc"]) $(id).addEventListener("input", changed);
-for (const r of document.querySelectorAll("input[name=form]")) r.addEventListener("change", () => {
-  if (r.value) S.kit.form = r.value; else delete S.kit.form; changed(); draw();
+$("pick").addEventListener("change", async () => {
+  if (S.dirty && !confirm("Leave this hero? Its changes are not saved.")) { $("pick").value = S.block; return; }
+  S.block = $("pick").value; await openHero(); tellShell();
 });
-$("advanced").addEventListener("click", () => {
-  try { if (window.parent.rsmmOpen && window.parent.rsmmOpen("abilities", { hero: $("base").value })) return; } catch (e) {}
-  setStatus("muted", "Open the Abilities tab at the top.");
+$("check").addEventListener("click", () => runCheck(false));
+$("undo").addEventListener("click", undo);
+$("redo").addEventListener("click", redo);
+$("reset").addEventListener("click", resetHero);
+// Ctrl+Z / Ctrl+Shift+Z (Ctrl+Y): the hero's history, except while typing,
+// where the field's own undo is the one meant.
+document.addEventListener("keydown", (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  const t = e.target, typing = t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+  if (typing) return;
+  const k = e.key.toLowerCase();
+  if (k === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
+  else if ((k === "z" && e.shiftKey) || k === "y") { e.preventDefault(); redo(); }
 });
 $("save").addEventListener("click", async () => {
-  // A fire with no projectile picked yet would build nothing.
-  const empty = (steps) => (steps || []).some(b => b.fire === "" || b.summon === "" || (b.steps && empty(b.steps)));
-  const bad = SLOTS.find(([s]) => S.kit[s] && (S.kit[s].fire === "" || empty(S.kit[s].steps)));
-  if (bad) { setStatus("bad", `${bad[1]}: pick a projectile or creature first.`); return; }
-  if (S.kit.pets && !S.kit.pets.entity) { setStatus("bad", "Pets: pick a creature first."); return; }
-  const body = { base: $("base").value, hero_name: $("name").value.trim(),
-    hero_description: $("desc").value.trim(), kit: S.kit,
-    block: S.hero === NEW_HERO ? "" : S.hero };
+  if (!/^[A-Za-z][A-Za-z0-9]*$/.test(S.hero.id || "")) { S.section = "hero"; draw(); setStatus("bad", "Give your hero an id: letters and digits, starting with a letter."); return; }
+  const body = { hero: payload(), block: S.block === NEW ? "" : S.block, draft: DRAFT };
   let error = "";
   try {
     for (;;) {
       let got = null;
-      if (S.mod === NEW_MOD) { got = await askNewModDialog(S.tags, error); if (!got) return; }
+      if (S.mod === NEW) { got = await askNewModDialog(S.tags, error); if (!got) return; }
       try {
         const j = await api("api/save", got ? { ...body, create: true, mod: got.id, meta: got.meta } : { ...body, mod: S.mod });
-        S.mod = j.mod; S.hero = j.block; S.dirty = false;
+        S.mod = j.mod; S.block = j.block; S.dirty = false; S.historyFor = j.mod + "/" + j.block;
         try { localStorage.setItem("hb-mod", S.mod); } catch (e) {}
-        await loadMods(); await loadHeroes(); tellShell();
-        setStatus("ok", `✓ Saved ${j.block} in ${j.mod}. Run rsmm restore --all, rsmm apply, rsmm install-loader, then find it on the hero select screen.`);
+        const section = S.section, slot = S.slot;
+        await loadMods(); await loadHeroes(); S.section = section; S.slot = slot;
+        S.problems = j.problems; draw(); tellShell();
+        setStatus(j.problems.length ? "bad" : "ok", j.problems.length
+          ? `Saved ${j.block} in ${j.mod}, with ${j.problems.length} problem${j.problems.length === 1 ? "" : "s"} rsmm apply will refuse (see the Hero section).`
+          : `✓ Saved ${j.block} in ${j.mod}. Then: rsmm restore --all, rsmm apply, rsmm install-loader, and find it on the hero select screen.`);
         return;
       } catch (e) { if (!got) throw e; error = e.message; }
     }
   } catch (e) { setStatus("bad", e.message); }
 });
+$("build").addEventListener("click", async () => {
+  $("build").disabled = true; setStatus("muted", "Building every file of the hero (about half a minute)…");
+  try {
+    const r = await api("api/build", { ...where(), hero: payload() });
+    $("buildTitle").textContent = r.ok ? `✓ It builds: ${r.files} files in ${r.seconds} s` : "✗ It does not build";
+    $("buildBody").replaceChildren(r.ok ? el("p", { class: "lead", text: "Nothing was written to the game or the mod. What the build said:" })
+      : el("p", { class: "warn", text: r.error }), r.notes.length ? el("pre", { text: r.notes.join("\n") }) : null);
+    $("buildDlg").showModal();
+    setStatus(r.ok ? "ok" : "bad", r.ok ? `✓ Build check passed (${r.files} files).` : "Build check failed: " + r.error);
+  } catch (e) { setStatus("bad", e.message); }
+  $("build").disabled = false;
+});
+$("remove").addEventListener("click", async () => {
+  if (!confirm(`Remove ${S.block} from ${S.mod}'s manifest.toml? Its art files stay in the mod folder.`)) return;
+  try { await api("api/delete", { mod: S.mod, block: S.block }); S.block = NEW; S.dirty = false; await loadHeroes(); tellShell(); setStatus("ok", "Removed."); }
+  catch (e) { setStatus("bad", e.message); }
+});
 
 (async () => {
   try {
-    const [{ heroes }, { projectiles }, { enemies }] = await Promise.all([api("api/bases"),
-      api("api/projectiles"), api("api/summonables")]);
-    S.enemies = enemies.map(p => ({ ...p, label: `${p.name} — ${p.group}` }));
-    $("enemyList").replaceChildren(...S.enemies.map(p => el("option", { value: p.label })));
-    $("base").replaceChildren(...heroes.map(h => el("option", { value: h, text: heroName(h) })));
-    $("base").value = heroes.includes("Red") ? "Red" : heroes[0];
-    S.projs = projectiles.map(p => ({ ...p, label: `${p.name} — ${p.group}` + (p.tags.length ? ` (${p.tags.join(", ")})` : "") }));
-    $("projList").replaceChildren(...S.projs.map(p => el("option", { value: p.label })));
-    try { S.mod = localStorage.getItem("hb-mod") || NEW_MOD; } catch (e) {}
+    try { S.section = localStorage.getItem("hb-section") || "hero"; } catch (e) {}
+    if (!SECTIONS.some(([id]) => id === S.section)) S.section = "hero";
+    S.schema = await api("api/schema");
+    opts("dl-stat", S.schema.enums.stat);
+    try { S.mod = localStorage.getItem("hb-mod") || NEW; } catch (e) {}
     await loadMods();
     await loadHeroes();
+    // Slower lists, after the page is up.
+    api("api/templates").then(({ templates }) => { S.templates = templates; opts("dl-template", templates.map(t => t.name)); }).catch(() => {});
+    api("api/projectiles").then(({ projectiles }) => { S.projectiles = projectiles; refreshLists(); }).catch(() => {});
+    api("api/shipped").then((sh) => {
+      S.shipped = sh;
+      opts("dl-enemy", sh.enemies); opts("dl-fxmesh", sh.fx_meshes); opts("dl-fxmat", sh.fx_materials);
+      opts("dl-wmesh", sh.weapon_meshes); opts("dl-wmat", sh.weapon_materials); opts("dl-sound", sh.sounds);
+      refreshLists();
+    }).catch(() => {});
   } catch (e) { setStatus("bad", e.message); }
-  try { if (window.parent !== window && window.parent.rsmmReady) window.parent.rsmmReady("hero", () => $("name").focus()); } catch (e) {}
+  try {
+    if (window.parent !== window && window.parent.rsmmReady) window.parent.rsmmReady("hero", async (t) => {
+      if (t && t.newHero) { S.block = NEW; $("pick").value = NEW; await openHero(); S.section = "hero"; draw(); }
+    });
+  } catch (e) { /* not our shell */ }
 })();
 </script>
 </body>

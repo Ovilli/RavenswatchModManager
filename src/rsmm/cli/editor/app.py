@@ -30,6 +30,14 @@ from urllib.parse import parse_qs, urlparse
 
 #: Largest POST body accepted, in bytes.
 MAX_BODY = 1 << 20
+#: ... and for a file sent whole (a route ending in /api/upload): a body .glb
+#: with its textures runs to tens of MB, and base64 adds a third.
+MAX_UPLOAD = 96 << 20
+
+
+def body_limit(target: str) -> int:
+    """The largest POST body ``target`` takes."""
+    return MAX_UPLOAD if urlparse(target).path.endswith("/api/upload") else MAX_BODY
 
 #: Shell tab -> (label, frame URL). Items and Talents are one page on two tabs.
 TABS = {
@@ -250,7 +258,7 @@ def handle(ctx: Context, method: str, target: str, headers: Mapping[str, str],
             return _fail(403, "missing or wrong editor token")
         if not _header(headers, "Content-Type").startswith(JSON):
             return _fail(415, "expected application/json")
-        if not 0 < len(body) <= MAX_BODY:
+        if not 0 < len(body) <= body_limit(target):
             return _fail(413, "request body missing or too large")
         try:
             data = json.loads(body)

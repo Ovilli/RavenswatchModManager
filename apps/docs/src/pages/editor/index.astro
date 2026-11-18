@@ -562,7 +562,7 @@ async function pageFor(key) {
     + `window.RSMM_TAB = ${JSON.stringify(tab)};`
     + `window.fetch = (u, o) => parent.rsmmFetch(u, o, document.baseURI);<\/script>`;
   html = html.replace("<head>", "<head>" + shim);
-  if (mount === "map") {
+  if (html.includes('import("./static/three.module.min.js")')) {
     // three.js is a module import, which fetch cannot serve: give it a blob URL.
     if (!three) {
       const js = await (await engineFetch("/map/static/three.module.min.js", {})).blob();

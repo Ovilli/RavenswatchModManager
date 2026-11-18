@@ -1298,8 +1298,9 @@ hero is assembled from data".
 
 ### Building abilities from blocks (`kit`)
 
-The editor's **Hero** tab writes a `[content.kit]` table: a hero's form and,
-per button (`attack`, `power`, `special`, `defense`, `ultimate`, `ultimate2`,
+A hero built on a shipped one can take a `[content.kit]` table (written in
+`manifest.toml`; the editor's **Hero** tab edits heroes written from scratch,
+below): a hero's form and, per button (`attack`, `power`, `special`, `defense`, `ultimate`, `ultimate2`,
 `trait`, `dash`), `"none"` or a new ability made of blocks that run top to
 bottom:
 
@@ -1361,6 +1362,23 @@ questions are whether enemy projectiles fired by a hero hurt enemies, and
 whether the status flags take effect.
 
 #### Buttons of a hero written from scratch
+
+:::tip[In the editor]
+`rsmm editor --tab hero` (and the web editor's **Hero** tab) edits every part
+of a hero written from scratch: rig and body, buttons (hits, combos, steps,
+buffs, hold, charges, lent templates), talents, ultimate cards, projectiles,
+effects, animations, animation slots and memoirs. Keys without a form of their
+own (`sounds`, `entities`, `pets`, `edits` ...) are edited as JSON. New to it?
+*Fill in a starter hero* writes a whole hero on the rig you pick (every button
+on the rig's moves, effects, talents, a portrait) that builds as it is. Every
+file field has *Upload…* (copies a `.png`/`.glb` into the mod's `art/`) and a
+starter: the rig's body or texture, a rig clip as a `.glb` to re-pose, a drawn
+effect shape, the game's own picture to paint over, a dagger or a hand weapon.
+They are written from your own install; nothing is downloaded. Saving
+rewrites only what changed, so your comments in `manifest.toml` stay. **Check**
+runs the fast checks `rsmm apply` makes; **Build check** builds every file into
+a throwaway folder (about half a minute) and shows what the build said.
+:::
 
 A hero with no `base` (`[content.frame]`) writes each button from data,
 `[content.frame.abilities.<button>]`: its `clip`, `duration`, `cooldown`,
