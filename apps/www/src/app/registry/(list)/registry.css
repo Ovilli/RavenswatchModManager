@@ -44,16 +44,6 @@
 .registry-toolbar-controls-placeholder {
   height: 44px;
 }
-.registry-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 60px 40px;
-}
-.registry-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
 .registry-pagination {
   display: flex;
   flex-wrap: wrap;
@@ -74,7 +64,6 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.registry-loading,
 .registry-empty {
   display: flex;
   flex-direction: column;
@@ -89,22 +78,10 @@
   font-size: 1.75rem;
   font-weight: 700;
 }
-.registry-empty p,
-.registry-loading {
+.registry-empty p {
   color: var(--registry-muted);
 }
 
-@media (max-width: 1199px) {
-  .registry-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 52px 28px;
-  }
-}
-@media (max-width: 900px) {
-  .registry-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
 @media (max-width: 1100px) {
   .registry-explore {
     --registry-browse-height: 141px;
@@ -135,10 +112,6 @@
   }
   .registry-browse-bar h1 {
     font-size: 1.125rem;
-  }
-  .registry-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 52px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
