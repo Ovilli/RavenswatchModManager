@@ -10,8 +10,8 @@ produces that capability and how to regenerate after a game patch.
 ## Inputs
 
 ```
-~/Documents/Programming/ghidra_11.3_PUBLIC/      Ghidra install
-~/.var/app/.../Ravenswatch/Ravenswatch.exe       target binary (~22 MB)
+$GHIDRA_INSTALL_DIR                                     Ghidra install
+<game dir>/Ravenswatch.exe                       target binary (~22 MB; RSMM_GAME_DIR)
 ```
 
 ## Stages
@@ -134,7 +134,7 @@ rebuild the loader, or publish.
 First run (imports + analyzes the exe; ~10–20 min):
 
 ```sh
-export GHIDRA_HOME=/path/to/ghidra          # every run_*.sh needs it
+export GHIDRA_INSTALL_DIR=/path/to/ghidra          # every run_*.sh needs it
 export RAVENSWATCH_EXE=/path/to/Ravenswatch.exe   # run_analysis.sh only
 bash docs/_re/run_analysis.sh        # creates project, auto-analyzes
 bash docs/_re/run_dump_symbols.sh    # symbols.json + strings.json
@@ -142,9 +142,9 @@ bash docs/_re/run_decompile_all.sh   # full pseudo-C corpus
 python3 scripts/gen_function_patterns.py
 ```
 
-The Ghidra project (`docs/_re/project/RSMM.gpr` + `.rep/`) is
-committed. The big derivatives (`out/`, `data/function_patterns.json`)
-are local — see `.gitignore`.
+The Ghidra project and the dumps under `docs/_re/out*/` are local (see
+`.gitignore`). `data/function_patterns.json` is committed, so a checkout
+has the DB for the current game build.
 
 ## Recovering the symbol map after a game patch
 
@@ -155,40 +155,30 @@ loader's typed API, events, and hooks reference) and the semantic pattern
 entries the loader resolves by name. This is what the remap pipeline does —
 no hand-RE of every address.
 
-Run the stages **in this order** (the old build's `.text` must be dumped
-*before* the exe is re-imported, because the project is overwritten):
+The full runbook, with the checks for each stage, is the `update-symbols`
+skill in the repo (`.claude/skills/update-symbols/SKILL.md`). In short:
 
 ```sh
-# 1. Dump the OLD build's .text from the still-current project (pre-import).
-bash docs/_re/scripts/run_dump_text.sh          # -> docs/_re/out/text_section.{bin,json}
-#    (or: analyzeHeadless ... -process Ravenswatch.exe -postScript dump_text_section.py)
+# Snapshot the new build (outside the repo); the previous snapshot is the old build.
+python tools/update_symbols.py preflight
+python tools/update_symbols.py snapshot --out <snapshots>
 
-# 2. Re-import + analyze the NEW exe into a fresh project (RSMM2), dumping
-#    symbols, strings, xrefs, .text, and vftables of the new build.
-bash docs/_re/run_analysis.sh                    # imports new exe
-#    also run ExportVftables.java -> docs/_re/out_new/vftables.jsonl
+# Remap function symbols: old prologue pattern -> scan new .text, then audit
+# every match (prologues are not unique) and relocate the flagged ones by hand.
+python scripts/remap_symbols.py --old-exe <old Ravenswatch.exe> --update-symbols
+python tools/update_symbols.py audit --old-exe <old> --new-exe <new> --old-symbols <old symbols.json>
 
-# 3. Remap function symbols: old prologue pattern -> scan new .text.
-python3 scripts/remap_symbols.py --update-symbols
+# Relocate va data globals by locator vote, then capture locators on the new build.
+python tools/va_locators.py recover --apply
 
-# 4. Rewire va data symbols: vftables by RTTI name, globals by data-ref vote.
-python3 scripts/rewire_va_globals.py --remap data/.symbol_remap.json \
-    --vftables data/vftables.jsonl docs/_re/out_new/vftables.jsonl --update-symbols
-
-# 5. Downgrade any symbol whose pattern is unbuildable/ambiguous to
-#    status=unverified (loader skips these — fails safe vs. calling a wrong
-#    address). Then regenerate the DB from the NEW exe and inject the stable
-#    semantic-named entries + legacy FUN_ aliases.
-python3 scripts/gen_function_patterns.py --symbols docs/_re/out_new/symbols.json
-python3 scripts/sync_symbol_patterns.py --legacy-map data/.symbol_remap.json
-
-# 6. Regenerate all six symbol artifacts, verify, rebuild the loader.
+# Rebuild the DB from the new exe's own .pdata, sync the named entries, verify.
 ./rsmm symbols gen
-python3 -m pytest tests/test_symbols.py scripts/test_pattern_resolve.py
-bash src/loader/build.sh
+./rsmm rebuild-fn-patterns --force
+python scripts/verify_symbol_resolve.py
 
-# 7. Publish so every user picks it up without an app release.
-bash scripts/publish_pattern_db.sh
+# Struct fields that moved: diff displacements per struct family, then update
+# the Lua SDK, the loader hooks and the spec mocks.
+python tools/update_symbols.py fields --old-exe <old> --new-exe <new> --old-symbols <old> --family ...
 ```
 
 **Why semantic pattern names matter.** The loader bakes pattern *names*
@@ -200,7 +190,7 @@ exe each regen, plus legacy `FUN_<oldaddr>` aliases so already-shipped
 DLLs keep resolving.
 
 **Delivery without an app release.** `data/function_patterns.json` is
-gitignored (game-derived); it ships as assets on the rolling `pattern-db`
+committed for contributors; players get it as assets on the rolling `pattern-db`
 GitHub release (`scripts/publish_pattern_db.sh`). Users pull it with
 `rsmm update-data`, which the desktop app runs silently on startup —
 so a republished DB reaches every install without a Tauri update. See

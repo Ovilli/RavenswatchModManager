@@ -2,7 +2,7 @@
 # Run target-function decompiler on existing Ghidra project.
 set -e
 
-GHIDRA=${GHIDRA_HOME:?set GHIDRA_HOME to your Ghidra install}
+GHIDRA=${GHIDRA_INSTALL_DIR:?set GHIDRA_INSTALL_DIR to your Ghidra install}
 RE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$RE/project"
 SCRIPT_DIR="$RE/scripts"

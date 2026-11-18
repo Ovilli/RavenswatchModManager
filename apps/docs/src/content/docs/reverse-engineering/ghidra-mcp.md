@@ -22,9 +22,13 @@ CodeBrowser.
 ## Inputs
 
 ```
-~/Documents/Programming/ghidra_12.1.4_PUBLIC/    Ghidra install (>= 12.0 required)
-./ghidra_project/Ravenswatch-New.gpr             pre-analyzed project
+$GHIDRA_INSTALL_DIR      Ghidra install (>= 12.0 required)
+$RSMM_GHIDRA_PROJECT     folder holding the pre-analyzed project's .gpr
+                         (default: ./ghidra_project/)
 ```
+
+Both are per machine. `serve.sh` exits unless `GHIDRA_INSTALL_DIR` is set,
+and serves the one `.gpr` it finds in the project folder.
 
 pyghidra refuses Ghidra 11.x. Opening the project in Ghidra 12 upgrades it,
 and 11.x cannot open it afterwards — back the project up first (outside the
@@ -39,10 +43,10 @@ repo; `ghidra_project/` is gitignored, a copy elsewhere in the tree is not).
    ```
 
    It listens on `http://127.0.0.1:8765/mcp` (`RSMM_GHIDRA_MCP_PORT` changes
-   the port, `GHIDRA_INSTALL_DIR` the Ghidra install). It opens the project
-   without re-analyzing it; the first start also builds a search index of
-   the decompiled code in the background, saved beside the project in
-   `Ravenswatch-New-pyghidra-mcp/`, so later starts reuse it. Ctrl+C saves and
+   the port). It opens the project without re-analyzing it; the first start
+   also builds a search index of the decompiled code in the background,
+   saved beside the project in `<project name>-pyghidra-mcp/`, so later
+   starts reuse it. Ctrl+C saves and
    closes the project.
 
 2. **Connect** — `.mcp.json` (Claude Code) and `opencode.json` register the
@@ -86,7 +90,7 @@ uvx --with mcp==1.30.0 pyghidra-mcp-cli@0.2.7 --port 8765 \
 |---|---|
 | `Ghidra version 11.3 is not supported` | Point `GHIDRA_INSTALL_DIR` at a Ghidra 12 install. |
 | `/mcp` shows `ghidra: failed` | The server is not running. Start `serve.sh`, then reconnect. |
-| Project is locked | Another Ghidra (GUI, headless, or a second `serve.sh`) has it open. Close that; delete `ghidra_project/*.lock*` only when no Ghidra process is running. |
+| Project is locked | Another Ghidra (GUI, headless, or a second `serve.sh`) has it open. Close that; delete the `*.lock*` files in the project folder only when no Ghidra process is running. |
 | `search_code` returns nothing yet | The background index is still building; decompile and symbol search work meanwhile. |
 | Ctrl+C does not stop `serve.sh` | While the first index is building it can ignore SIGINT for minutes. `kill -TERM` it; read-only lookups leave nothing unsaved, but save any renames first. |
 | CLI: `not enough values to unpack` | The client picked up a newer `mcp`; pin it as shown above. |

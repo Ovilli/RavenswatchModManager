@@ -202,7 +202,7 @@ def _shape(insn: bytes, disp_off: int) -> str:
 
 
 def _va_symbols() -> tuple[dict, list[dict]]:
-    doc = json.loads(SYM.read_text())
+    doc = json.loads(SYM.read_text(encoding="utf-8"))
     return doc, [s for s in doc["symbols"] if s.get("status") == "va"]
 
 
@@ -400,7 +400,9 @@ def recover(exe: Exe, apply: bool, quiet_same: bool = False) -> int:
             if s and int(s["va"], 16) != va:
                 s["va"] = hex(va)
                 changed += 1
-        SYM.write_text(json.dumps(doc, indent=1, ensure_ascii=False) + "\n")
+        # Explicit utf-8: through the locale codec (cp1252) this write truncated
+        # the file on 2026-11-17.
+        SYM.write_text(json.dumps(doc, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
         print(f"applied {changed} new va(s) to {SYM.relative_to(REPO)} — now run "
               "`rsmm symbols gen` and prove them in a launch")
     return 0 if not problems else 1

@@ -131,6 +131,23 @@ def _tally(text: str) -> tuple[int, int] | None:
     return None
 
 
+#: A rebuild with this much less than the previous DB was made from a stale function list.
+COUNT_DROP_WARN = 0.05
+
+
+def _count_drop(before, after) -> str | None:
+    """A warning when the new DB is much smaller than the one it replaced. Patches add
+    or remove a few hundred functions; a big drop means the generator read a function
+    list from another build (2026-11-17: 65,328 -> 50,085)."""
+    if not isinstance(before, int) or not isinstance(after, int) or before <= 0:
+        return None
+    if after < before * (1 - COUNT_DROP_WARN):
+        return (f"\nWARNING: {after:,} entries, down from {before:,} "
+                f"({(before - after) / before:.0%}). Check that the function list matches "
+                "this exe before committing the DB.")
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="rsmm rebuild-fn-patterns",
                                  description=__doc__.split("\n\n")[0])
@@ -232,6 +249,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  exe       {str(meta.get('game_exe_sha256', ''))[:16]}…")
     if tally is not None:
         print(f"  resolve   all {tally[0]} entries, to their recorded address")
+    warning = _count_drop(old.get("pattern_count"), meta.get("pattern_count"))
+    if warning:
+        print(warning, file=sys.stderr)
     print("Not done by this command: remapping data/symbols.json after a patch, "
           "`rsmm symbols gen`, rebuilding the loader, and publishing "
           "(scripts/publish_pattern_db.sh). The previous DB is kept as *.prev (gitignored).")

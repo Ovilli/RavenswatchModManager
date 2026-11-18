@@ -8,22 +8,39 @@
 #
 # Needs Ghidra >= 12.0 (pyghidra refuses 11.x) and uv. Opening the project in
 # Ghidra 12 upgrades it; 11.x cannot open it afterwards.
+#
+# GHIDRA_INSTALL_DIR (required) is a Ghidra 12 install. RSMM_GHIDRA_PROJECT is
+# the folder holding the project's .gpr, and defaults to the gitignored
+# ghidra_project/ in the repo.
 set -eu
 cd "$(dirname "$0")/../.."
 
-# Default: the newest Ghidra 12 install beside the repo's parent directory. A
-# pinned version here broke the script the day the pin named a release that
-# was not installed (12.2 while only 12.1.4 was on disk).
-if [ -z "${GHIDRA_INSTALL_DIR:-}" ]; then
-  GHIDRA_INSTALL_DIR="$(ls -d "$HOME"/Documents/Programming/ghidra_12*_PUBLIC 2>/dev/null \
-    | sort -V | tail -n 1)"
-fi
 PORT="${RSMM_GHIDRA_MCP_PORT:-8765}"
-export GHIDRA_INSTALL_DIR
+export GHIDRA_INSTALL_DIR="${GHIDRA_INSTALL_DIR:-}"
 PATH="$HOME/.local/bin:$PATH"
 
-if [ ! -x "$GHIDRA_INSTALL_DIR/support/analyzeHeadless" ]; then
-  echo "no Ghidra at ${GHIDRA_INSTALL_DIR:-~/Documents/Programming/ghidra_12*_PUBLIC} — set GHIDRA_INSTALL_DIR to a Ghidra 12 install" >&2
+if [ -z "$GHIDRA_INSTALL_DIR" ]; then
+  echo "GHIDRA_INSTALL_DIR is not set — set it to a Ghidra 12 install" >&2
+  exit 1
+fi
+if [ ! -x "$GHIDRA_INSTALL_DIR/support/analyzeHeadless" ] \
+   && [ ! -f "$GHIDRA_INSTALL_DIR/support/analyzeHeadless.bat" ]; then
+  echo "no Ghidra at '$GHIDRA_INSTALL_DIR' — set GHIDRA_INSTALL_DIR to a Ghidra 12 install" >&2
+  exit 1
+fi
+
+PROJECT_DIR="${RSMM_GHIDRA_PROJECT:-$PWD/ghidra_project}"
+GPR=""
+for f in "$PROJECT_DIR"/*.gpr; do
+  [ -f "$f" ] || continue
+  if [ -n "$GPR" ]; then
+    echo "more than one .gpr in '$PROJECT_DIR'" >&2
+    exit 1
+  fi
+  GPR="$f"
+done
+if [ -z "$GPR" ]; then
+  echo "no .gpr in '$PROJECT_DIR' — set RSMM_GHIDRA_PROJECT to the project folder" >&2
   exit 1
 fi
 
@@ -31,4 +48,4 @@ fi
 # unpinned upgrade can change what works. Bump deliberately.
 exec uvx --python 3.12 pyghidra-mcp@0.2.7 \
   --transport streamable-http --host 127.0.0.1 --port "$PORT" \
-  --project-path "$PWD/ghidra_project/Ravenswatch-New.gpr" "$@"
+  --project-path "$GPR" "$@"
