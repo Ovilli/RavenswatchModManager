@@ -381,11 +381,13 @@ export function SectionHeader({
   subtitle,
   right,
   compact = false,
+  className,
 }: {
   title: string;
   subtitle?: string;
   right?: ReactNode;
   compact?: boolean;
+  className?: string;
 }) {
   return (
     <header
@@ -398,6 +400,7 @@ export function SectionHeader({
         // fires because breakpoints watch the VIEWPORT, not this column.
         'rsmm-section-header flex flex-wrap items-end justify-between gap-x-6 gap-y-3',
         compact ? 'gap-3 pb-2' : 'pb-4',
+        className,
       )}
     >
       <div className="min-w-0 flex-1">

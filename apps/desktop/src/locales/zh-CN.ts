@@ -803,7 +803,6 @@ export const zhCN: Record<string, string> = {
   "What's new": '更新内容',
   'When the app hits an unexpected error, send the error type, message, stack trace, RSMM version and OS to the RSMM API so it can be fixed. No mod list, no file paths, no account details. Turning this off keeps crashes in your local launcher log only.':
     '当本程序遇到意外错误时，把错误类型、错误信息、堆栈、RSMM 版本和操作系统发送到 RSMM API，以便修复。不含模组列表、文件路径和账户信息。关掉之后，崩溃信息只会留在本地启动器日志里。',
-  'Where things live. How they look.': '各种东西放在哪里，界面又是什么样子。',
   'Which run to read': '要查看哪一次运行',
   'Working…': '处理中…',
   'Write the current profile into the game install without launching.':
