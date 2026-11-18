@@ -115,7 +115,7 @@ def submesh_albedo_refs(cf: cooked.CookedFile) -> list[str | None]:
     return out
 
 
-def texture_png(ref: str | None, mode: str = "color") -> bytes | None:
+def texture_png(ref: str | None, mode: str = "color", root: str = "3D") -> bytes | None:
     """PNG of the texture ``ref`` names, or None when unreadable/undecodable.
 
     ``mode="orm"`` converts the game's MRA map (R metal, G roughness, B AO) to
@@ -128,7 +128,7 @@ def texture_png(ref: str | None, mode: str = "color") -> bytes | None:
     from . import corpus, dds, image
     from .cooked_schemas import texture as T
     # Normal maps cook as `.Texture.nrm`; everything else as `.Texture.dxt`.
-    base = "3D/" + ref.replace("\\", "/")
+    base = f"{root}/" + ref.replace("\\", "/")      # "Ui" for a UI picture
     raw = corpus.read(base + ".Texture.dxt") or corpus.read(base + ".Texture.nrm")
     if raw is None:
         return None

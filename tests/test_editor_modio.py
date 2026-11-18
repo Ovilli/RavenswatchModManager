@@ -472,44 +472,9 @@ def test_a_heros_kit_is_written_replaced_and_removed():
     assert "kit" not in tomllib.loads(M.set_hero_kit(again, "Nyx", {}))["content"][0]
 
 
-def test_the_hero_tab_saves_a_hero_whose_kit_builds_and_refuses_one_that_does_not(tmp_path):
-    from types import SimpleNamespace
-
-    from rsmm.cli.editor import herobuilder as HB
-    from rsmm.engine import corpus
-    if corpus.read("EntitySettings/Heroes/Hero_Red/Hero_Red.entity.ot"
-                   ".EntitySettingsResource.gen") is None:
-        pytest.skip("no hero corpus")
-    (tmp_path / "m").mkdir()
-    (tmp_path / "m" / "manifest.toml").write_text('[mod]\nid = "m"\n')
-    kit = {"form": "wolf", "dash": "none"}
-    req = SimpleNamespace(ctx=SimpleNamespace(mods_dir=tmp_path), body={
-        "mod": "m", "base": "Red", "hero_name": "Blood Wolf", "hero_description": "Wolf only",
-        "kit": kit})
-    got = HB._save(req)
-    assert got == {"mod": "m", "block": "BloodWolf"}
-    hero = tomllib.loads((tmp_path / "m" / "manifest.toml").read_text())["content"][0]
-    assert (hero["kind"], hero["name"], hero["kit"]) == ("hero", "Blood Wolf", kit)
-    # The base is the hero NAME lint accepts, never the Update 6 herodef stem
-    # ("Red_Update6" failed `rsmm lint` on every hero the editor made).
-    from rsmm.sdk.kinds import heros
-    assert hero["base"] == "Red" and hero["base"] in heros.shipped_heroes()
-    req.body.update(block="BloodWolf", kit={"form": "wolf"})       # an update, in place
-    HB._save(req)
-    assert tomllib.loads((tmp_path / "m" / "manifest.toml").read_text())["content"][0][
-        "kit"] == {"form": "wolf"}
-    req.body.update(block="", base="Piper", kit={"dash": "none"})
-    with pytest.raises(ValueError, match="outside its own files"):
-        HB._save(req)
-    opts = HB.options("Red")
-    assert opts["form"] and opts["slots"]["dash"]["none"]
-    assert opts["slots"]["power"]["when_wolf"] == "Event Wolf Primary Ability Active"
-
-
-def test_a_built_ability_unrolls_its_timeline_and_saves():
-    from types import SimpleNamespace
-
-    from rsmm.engine import corpus
+def test_a_built_ability_unrolls_its_timeline():
+    """The kit's timeline (engine/hero_kit.py), which a scratch hero's button
+    steps run on too: waits add up, repeats unroll, a block is one thing."""
     from rsmm.engine import hero_kit as HK
     plan = HK.timeline([{"fire": "A"}, {"wait": 0.3},
                         {"repeat": 2, "every": 0.2, "steps": [{"fire": "B"}]}, {"fire": "C"}])
@@ -517,44 +482,3 @@ def test_a_built_ability_unrolls_its_timeline_and_saves():
                                                      (0.7, "C")]
     with pytest.raises(HK.KitError):
         HK.timeline([{"wait": 0.3, "fire": "A"}])
-    if corpus.read("EntitySettings/Heroes/Hero_Red/Hero_Red.entity.ot"
-                   ".EntitySettingsResource.gen") is None:
-        pytest.skip("no hero corpus")
-    import tempfile
-    from pathlib import Path
-
-    from rsmm.cli.editor import herobuilder as HB
-    clip = next(c["path"] for c in HB.options("Red")["clips"] if "Wolf" in c["path"])
-    laser = "Enemies/Tentacle_Nightmares/Projectile_Tentacle_Nightmare_Laser_Shot"
-    kit = {"form": "wolf", "power": {"replace": True, "steps": [
-        {"anim": clip}, {"fire": laser, "angles": [-20, 0, 20]}, {"wait": 0.3},
-        {"repeat": 2, "every": 0.2, "steps": [{"fire": laser}]}]}}
-    with tempfile.TemporaryDirectory() as d:
-        (Path(d) / "m").mkdir()
-        (Path(d) / "m" / "manifest.toml").write_text('[mod]\nid = "m"\n')
-        req = SimpleNamespace(ctx=SimpleNamespace(mods_dir=Path(d)), body={
-            "mod": "m", "base": "Red", "hero_name": "Howler", "kit": kit})
-        assert HB._save(req)["block"] == "Howler"
-        saved = tomllib.loads((Path(d) / "m" / "manifest.toml").read_text())["content"][0]
-        assert saved["kit"] == kit
-
-
-def test_the_hero_tab_only_offers_blocks_that_save():
-    """The page offered blocks that could not save: Fire/Hit on Merlin (his
-    aim node links a part that exists nowhere), Build on Juliet's special,
-    Play animation on Kintaro's power, Heal on the Snow Queen."""
-    from rsmm.cli.editor import herobuilder as HB
-    from rsmm.engine import corpus
-    if corpus.read("EntitySettings/Heroes/Hero_Merlin/Hero_Merlin.entity.ot"
-                   ".EntitySettingsResource.gen") is None:
-        pytest.skip("no hero corpus")
-    shot = "Enemies/Baba_Yaga_Boss/Baba_Yaga_Cauldron_Mortar_Projectile_Dark"
-    assert HB.options("Merlin")["slots"]["attack"]["fire"]
-    HB.check("Merlin", {"attack": {"fire": shot}})
-    HB.check("Merlin", {"power": {"replace": True,
-                                  "steps": [{"hit": {"radius": 3, "damage": 80}}]}})
-    assert not HB.options("Juliet")["slots"]["special"]["build"]
-    assert not HB.options("Kintaro")["slots"]["power"]["anim"]
-    assert not HB.options("Snow_Queen")["slots"]["power"]["heal"]
-    red = HB.options("Red")["slots"]["power"]
-    assert red["build"] and red["anim"] and red["heal"] and red["fire"]

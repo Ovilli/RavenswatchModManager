@@ -245,11 +245,7 @@ class Ability:
             raise AbilityError(f"ability {slot}: passive is true or false")
         if not isinstance(raw, dict) or (not passive and not raw.get("clip")):
             raise AbilityError(f"ability {slot}: needs clip = <animation>")
-        unknown = set(raw) - {"clip", "cooldown", "duration", "hits", "bank", "name_key",
-                              "desc_key", "indicator", "sound", "variant", "combo",
-                              "icon", "icon_disabled", "root_motion", "moving",
-                              "intangible", "strike", "passive", "loop", "charges",
-                              "buffs", "hold"}
+        unknown = set(raw) - ABILITY_KEYS
         if unknown:
             raise AbilityError(f"ability {slot}: no {', '.join(sorted(unknown))}")
         bad = {v for v in str(raw.get("variant", "")).split("+") if v} - _VARIANTS
@@ -359,6 +355,13 @@ class Ability:
 
 
 BUFF_KEYS = {"stat", "value", "seconds"}
+#: What a button written from data takes (``Ability.parse``); a lent one
+#: (``template``) takes TEMPLATE_KEYS instead.
+ABILITY_KEYS = frozenset({"clip", "cooldown", "duration", "hits", "bank", "name_key",
+                          "desc_key", "indicator", "sound", "variant", "combo",
+                          "icon", "icon_disabled", "root_motion", "moving",
+                          "intangible", "strike", "passive", "loop", "charges",
+                          "buffs", "hold"})
 
 #: The Hero Controller's per-button input signal, read through these
 #: accessors (its accessor table, FUN_14039f0f0: one bool each, 0x20 apart at
