@@ -64,14 +64,14 @@ written, so disabling the mod restores the stock picker with no cleanup.
 
 ```bash
 python3 scripts/ghidra_export.py \
-    --ghidra  /path/to/ghidra_11.3_PUBLIC \
+    --ghidra  "$GHIDRA_INSTALL_DIR" \
     --exe     "$GAME/Ravenswatch.exe" \
-    --project ghidra_project \
+    --project "$RSMM_GHIDRA_PROJECT" \
     --out     data/decompiled.jsonl
 ```
 
 * First pass imports the PE and runs full auto-analysis; later passes reuse
-  `ghidra_project/Ravenswatch.gpr`, so only the export repeats.
+  the `Ravenswatch.gpr` it created there, so only the export repeats.
 * Output is JSON-Lines, one function per line:
   `{"addr":"0x140abc...","name":"...","sig":"...","size":N,"code":"<C source>"}`.
 * Wall time on the 22 MB PE: **30–90 min** (`_JAVA_OPTIONS=-Xmx8G` is set by

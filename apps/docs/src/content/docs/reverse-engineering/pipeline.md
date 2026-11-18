@@ -10,7 +10,7 @@ produces that capability and how to regenerate after a game patch.
 ## Inputs
 
 ```
-$GHIDRA_HOME                                     Ghidra install
+$GHIDRA_INSTALL_DIR                                     Ghidra install
 <game dir>/Ravenswatch.exe                       target binary (~22 MB; RSMM_GAME_DIR)
 ```
 
@@ -134,7 +134,7 @@ rebuild the loader, or publish.
 First run (imports + analyzes the exe; ~10–20 min):
 
 ```sh
-export GHIDRA_HOME=/path/to/ghidra          # every run_*.sh needs it
+export GHIDRA_INSTALL_DIR=/path/to/ghidra          # every run_*.sh needs it
 export RAVENSWATCH_EXE=/path/to/Ravenswatch.exe   # run_analysis.sh only
 bash docs/_re/run_analysis.sh        # creates project, auto-analyzes
 bash docs/_re/run_dump_symbols.sh    # symbols.json + strings.json

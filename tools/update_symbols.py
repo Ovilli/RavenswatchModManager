@@ -149,8 +149,8 @@ def preflight(game: Path, ghidra: Path | None = None) -> int:
         problems += 1
         print(f"ghidra     not found: {project}")
     else:
-        state = "LOCKED (" + locks[0].name + ")" if locks else "unlocked"
-        print(f"ghidra     {project}: {state}")
+        lock = "LOCKED (" + locks[0].name + ")" if locks else "unlocked"
+        print(f"ghidra     {project}: {lock}")
     if locks:
         problems += 1
         print("  STOP: stop the Ghidra GUI / tools/ghidra_mcp/serve.sh first.")
@@ -321,7 +321,15 @@ def callers(exe: Path, syms: Path | None, targets: list[str]) -> int:
     names = function_addrs(_load_symbols(syms)) if syms else {}
     by_addr = {v: k for k, v in names.items()}
     for t in targets:
-        va = names[t] if t in names else int(t, 16)
+        if t in names:
+            va = names[t]
+        else:
+            try:
+                va = int(t, 16)
+            except ValueError:
+                print(f"{t}: unknown symbol (not in the symbol map, not a hex address)",
+                      file=sys.stderr)
+                return 1
         sites = call_sites(img, va)
         fns = sorted({img.containing(s) for s, _ in sites} - {None})
         print(f"{t} ({va:#x}): {len(sites)} site(s) in {len(fns)} function(s)")

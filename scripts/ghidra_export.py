@@ -52,7 +52,8 @@ def _default_exe() -> str | None:
 
 DEFAULT_GHIDRA  = _default_ghidra()
 DEFAULT_EXE     = _default_exe()
-DEFAULT_PROJECT = str(Path(__file__).resolve().parent.parent / "ghidra_project")
+DEFAULT_PROJECT = (os.environ.get("RSMM_GHIDRA_PROJECT")
+                   or str(Path(__file__).resolve().parent.parent / "ghidra_project"))
 DEFAULT_OUT     = str(Path(__file__).resolve().parent.parent / "data" / "decompiled.jsonl")
 PROJECT_NAME    = "Ravenswatch"
 

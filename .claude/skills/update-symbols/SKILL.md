@@ -20,7 +20,7 @@ Every path below is per machine; nothing in the repo knows them. Before step 0, 
 | Path | Env var / flag | Used by |
 |---|---|---|
 | Game install | `RSMM_GAME_DIR` / `--game` | every step |
-| Ghidra 12 install | `GHIDRA_INSTALL_DIR` (`GHIDRA_HOME` in older scripts) | step 1 fallback, `serve.sh` |
+| Ghidra 12 install | `GHIDRA_INSTALL_DIR` | step 1 fallback, `serve.sh` |
 | Ghidra project (folder holding the `.gpr`) and its program name | `RSMM_GHIDRA_PROJECT` / `--ghidra-project` | step 0, step 1 fallback, `serve.sh` |
 | Snapshots folder (outside the clone) | `snapshot --out` | steps 1-3, 6, 7 |
 | Previous build's exe, if not in the snapshots folder | `--old-exe` | steps 2, 3, 6 |
@@ -49,7 +49,9 @@ Writes `<snapshots>/<sha12>/`: `Ravenswatch-<sha12>.exe`, the Steam `appmanifest
 You need the **previous** build's exe too: the snapshot from last patch day. If there is none, recover it from the Ghidra project, which stores the imported file's original bytes, before importing the new exe. Work on a copy of the project (a GUI project may hold the lock) and open it `-readOnly`:
 
 ```
-$GHIDRA_INSTALL_DIR/support/analyzeHeadless[.bat] <project copy dir> <project name>     -process <old program, e.g. Ravenswatch.exe> -noanalysis -readOnly     -scriptPath tools/ghidra_scripts -postScript DumpOriginalBytes.java <snap>/Ravenswatch-old.exe
+$GHIDRA_INSTALL_DIR/support/analyzeHeadless[.bat] <project copy dir> <project name> \
+    -process <old program, e.g. Ravenswatch.exe> -noanalysis -readOnly \
+    -scriptPath tools/ghidra_scripts -postScript DumpOriginalBytes.java <snap>/Ravenswatch-old.exe
 ```
 
 On Linux the default `MAXMEM=2G` OOMs on this exe: use the 6G `support/launch.sh … AnalyzeHeadless` form from `re-workflow`.
@@ -95,7 +97,7 @@ Put the address in `raw` and add a sentence to that symbol's `note` saying how i
 python tools/va_locators.py recover --exe <game>/Ravenswatch.exe --apply
 ```
 
-Applies globals with ≥2 agreeing votes and no dissent. Check each single-vote one by hand (the same string table / the same first read at the new VA). For any left unplaced, show nothing in `src/loader` reads it by name before demoting it to `unverified` with a note naming the build it was last valid on. 
+Applies globals with ≥2 agreeing votes and no dissent. Check each single-vote one by hand (the same string table / the same first read at the new VA). For any left unplaced, show nothing in `src/loader` reads it by name before demoting it to `unverified` with a note naming the build it was last valid on.
 
 Then capture locators **on the new build**, so next patch's `recover` works:
 

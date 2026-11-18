@@ -18,7 +18,7 @@ from two sources, strongest first:
 Then (project UNLOCKED: stop tools/ghidra_mcp/serve.sh first)::
 
     support/launch.sh fg jdk Ghidra-Headless 6G "" \\
-        ghidra.app.util.headless.AnalyzeHeadless ghidra_project Ravenswatch-New \\
+        ghidra.app.util.headless.AnalyzeHeadless "$RSMM_GHIDRA_PROJECT" <project name> \\
         -process <program> -noanalysis -scriptPath tools/ghidra_scripts \\
         -postScript ApplyRsmmKnowledge.java <knowledge.json> [dry]
 

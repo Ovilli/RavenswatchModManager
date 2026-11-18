@@ -19,8 +19,7 @@ Patch-day recipe (three steps, this tool is the third)::
     # 1. export both builds — the OLD project must be UNLOCKED, so close the
     #    Ghidra GUI and the MCP bridge first (CLAUDE.md says the same thing
     #    about tools/gen_ghidra_vtables.py, for the same reason).
-    GH=~/Documents/Programming/ghidra_11.3_PUBLIC
-    $GH/support/analyzeHeadless <projdir> <proj> -process Ravenswatch.exe \
+    $GHIDRA_INSTALL_DIR/support/analyzeHeadless <projdir> <proj> -process Ravenswatch.exe \
         -noanalysis -scriptPath tools/ghidra_scripts \
         -postScript BinExportHeadless.java /tmp/old.BinExport
     # ...import the patched exe, analyze it, then the same call -> /tmp/new.BinExport

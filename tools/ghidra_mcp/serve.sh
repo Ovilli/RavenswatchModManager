@@ -9,8 +9,9 @@
 # Needs Ghidra >= 12.0 (pyghidra refuses 11.x) and uv. Opening the project in
 # Ghidra 12 upgrades it; 11.x cannot open it afterwards.
 #
-# Both locations are per machine: GHIDRA_INSTALL_DIR is a Ghidra 12 install,
-# RSMM_GHIDRA_PROJECT the folder holding the project's .gpr.
+# GHIDRA_INSTALL_DIR (required) is a Ghidra 12 install. RSMM_GHIDRA_PROJECT is
+# the folder holding the project's .gpr, and defaults to the gitignored
+# ghidra_project/ in the repo.
 set -eu
 cd "$(dirname "$0")/../.."
 
@@ -18,25 +19,28 @@ PORT="${RSMM_GHIDRA_MCP_PORT:-8765}"
 export GHIDRA_INSTALL_DIR="${GHIDRA_INSTALL_DIR:-}"
 PATH="$HOME/.local/bin:$PATH"
 
+if [ -z "$GHIDRA_INSTALL_DIR" ]; then
+  echo "GHIDRA_INSTALL_DIR is not set — set it to a Ghidra 12 install" >&2
+  exit 1
+fi
 if [ ! -x "$GHIDRA_INSTALL_DIR/support/analyzeHeadless" ] \
    && [ ! -f "$GHIDRA_INSTALL_DIR/support/analyzeHeadless.bat" ]; then
   echo "no Ghidra at '$GHIDRA_INSTALL_DIR' — set GHIDRA_INSTALL_DIR to a Ghidra 12 install" >&2
   exit 1
 fi
 
+PROJECT_DIR="${RSMM_GHIDRA_PROJECT:-$PWD/ghidra_project}"
 GPR=""
-if [ -n "${RSMM_GHIDRA_PROJECT:-}" ]; then
-  for f in "$RSMM_GHIDRA_PROJECT"/*.gpr; do
-    [ -f "$f" ] || continue
-    if [ -n "$GPR" ]; then
-      echo "more than one .gpr in '$RSMM_GHIDRA_PROJECT'" >&2
-      exit 1
-    fi
-    GPR="$f"
-  done
-fi
+for f in "$PROJECT_DIR"/*.gpr; do
+  [ -f "$f" ] || continue
+  if [ -n "$GPR" ]; then
+    echo "more than one .gpr in '$PROJECT_DIR'" >&2
+    exit 1
+  fi
+  GPR="$f"
+done
 if [ -z "$GPR" ]; then
-  echo "no .gpr in '${RSMM_GHIDRA_PROJECT:-}' — set RSMM_GHIDRA_PROJECT to the project folder" >&2
+  echo "no .gpr in '$PROJECT_DIR' — set RSMM_GHIDRA_PROJECT to the project folder" >&2
   exit 1
 fi
 
