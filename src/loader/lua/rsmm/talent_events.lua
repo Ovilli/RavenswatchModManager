@@ -144,5 +144,11 @@ return function(env)
         return send("ADD_RANDOM_ULTI_SKILL", NE.T_BOOL, true)
     end
 
+    --- Dispatch a bare named event to the local hero (call via R.schedule.next_main).
+    function M.emit(name)
+        assert(type(name) == "string" and #name > 0, "R.talent.emit: name must be a non-empty string")
+        return send(name, NE.T_BOOL, true)
+    end
+
     return M
 end

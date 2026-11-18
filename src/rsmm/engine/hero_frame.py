@@ -578,7 +578,7 @@ def set_starts_active(ef: EntityFile, name: str, on: bool = True) -> None:
 
 def add_talent(ef: EntityFile, hero_common: EntityFile, talent: str, *, bank: str,
                name_key: str, desc_key: str, icon: str, seed: str = "",
-               pool: int = POOL_LEVEL_UP) -> str:
+               pool: int = POOL_LEVEL_UP, show_counter: bool = False) -> str:
     """One talent card of the hero's own: its owned state (``Skill <T>``, what
     the talent's effect hangs off; ``talent_add_stat`` builds on it), its
     controller (``Skill Controller <T>``: the row the herodef lists, by GUID)
@@ -605,6 +605,10 @@ def add_talent(ef: EntityFile, hero_common: EntityFile, talent: str, *, bank: st
             raise FrameError("the base talent card has no icon to replace")
         old_icon = found.group(0).decode()
         replace_in_slot(ef, ctl, old_icon, icon)
+        if show_counter:
+            p = ef.objects[ef.component(ctl).index - 1]
+            at = bytes(p).find(icon.encode()) + len(icon)
+            p[at] = 1
     except EntityEditError as e:
         raise FrameError(f"talent {talent!r}: {e}") from e
     return ctl

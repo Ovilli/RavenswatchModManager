@@ -29,6 +29,7 @@ import struct
 from dataclasses import dataclass, field
 
 from . import entity_fields as EF
+from . import entity_graph as EG
 from . import entity_parts as P
 from . import hero_frame as HF
 from . import talent_writer as TW
@@ -1533,8 +1534,10 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
             ef.set_external_ref(f"{tag} Anim", "ref_2", top.guid,
                                 f"[{HF.kind_label(top.cls)}] {hero_common.name}\\{top.path}")
             if snd:
+                ef.set_flags(snd, ef.component(snd).flags | EG.EVENT_FLAG)
                 ef.add_ref(state, "activates", snd)
         elif ab.loop and snd:
+            ef.set_flags(snd, ef.component(snd).flags | EG.EVENT_FLAG)
             ef.add_ref(state, "activates", snd)
         for t in [*timers, f"{tag} End Timer"]:
             ef.add_ref(state, "activates", t)
