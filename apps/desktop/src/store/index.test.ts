@@ -16,7 +16,7 @@ import {
 function freshDefault(): Profile {
   return {
     id: 'default',
-    name: 'Default',
+    name: 'My mods',
     loadOrder: [],
     disabled: new Set<string>(),
     createdAt: new Date().toISOString(),
@@ -57,6 +57,122 @@ function profileById(id: string): Profile {
 }
 
 beforeEach(resetStore);
+
+describe('starter profile and saved profiles', () => {
+  it('starts with one empty My mods list and no Chaos Run', () => {
+    const state = useApp.getInitialState();
+    expect(state.profiles).toEqual([
+      expect.objectContaining({
+        id: 'default',
+        name: 'My mods',
+        loadOrder: [],
+        disabled: new Set(),
+      }),
+    ]);
+    expect(state.activeProfileId).toBe(state.profiles[0]?.id);
+    expect(state.installed).toEqual([]);
+    expect(state.localMods).toEqual({});
+  });
+
+  it('upgrades the legacy label without moving, merging or clearing saved lists', async () => {
+    const profiles = [
+      { ...freshDefault(), name: 'Default', loadOrder: ['starter-mod'], disabled: ['starter-mod'] },
+      {
+        ...freshDefault(),
+        id: 'chaos',
+        name: 'Chaos Run',
+        loadOrder: ['hyper-aggro'],
+        disabled: [],
+      },
+      {
+        ...freshDefault(),
+        id: 'personal',
+        name: 'My mods',
+        loadOrder: ['own-mod'],
+        disabled: ['own-mod'],
+      },
+    ];
+    localStorage.setItem(
+      'rsmm-grimoire',
+      JSON.stringify({
+        state: { profiles, activeProfileId: 'chaos' },
+        version: 0,
+      }),
+    );
+
+    await useApp.persist.rehydrate();
+
+    const state = useApp.getState();
+    expect(state.profiles.map((p) => p.id)).toEqual(['default', 'chaos', 'personal']);
+    expect(state.activeProfileId).toBe('chaos');
+    expect(profileById('default')).toMatchObject({
+      name: 'My mods',
+      loadOrder: ['starter-mod'],
+      disabled: new Set(['starter-mod']),
+    });
+    expect(profileById('chaos')).toMatchObject({ name: 'Chaos Run', loadOrder: ['hyper-aggro'] });
+    expect(profileById('personal')).toMatchObject({
+      name: 'My mods',
+      loadOrder: ['own-mod'],
+      disabled: new Set(['own-mod']),
+    });
+
+    // A save and another launch retain the same profile identities and mods.
+    state.updateSettings({ browseView: 'list' });
+    await useApp.persist.rehydrate();
+    expect(useApp.getState().profiles).toEqual(state.profiles);
+    expect(useApp.getState().activeProfileId).toBe('chaos');
+  });
+
+  it('keeps a custom starter name and selection when restoring an older backup', () => {
+    const code = btoa(
+      JSON.stringify({
+        kind: 'rsmm-backup',
+        profiles: [{ ...freshDefault(), name: 'Solo run', loadOrder: ['a'], disabled: ['a'] }],
+        activeProfileId: 'default',
+      }),
+    );
+    expect(useApp.getState().importBackup(code).ok).toBe(true);
+    expect(profileById('default')).toMatchObject({
+      name: 'Solo run',
+      loadOrder: ['a'],
+      disabled: new Set(['a']),
+    });
+    expect(useApp.getState().activeProfileId).toBe('default');
+  });
+
+  it('does not recreate a deleted starter profile on the next launch', async () => {
+    const id = useApp.getState().createProfile('Keep this list');
+    useApp.getState().installMod('kept-mod', id);
+    useApp.getState().deleteProfile('default');
+
+    await useApp.persist.rehydrate();
+
+    expect(useApp.getState().profiles).toEqual([
+      expect.objectContaining({ id, loadOrder: ['kept-mod'] }),
+    ]);
+    expect(useApp.getState().activeProfileId).toBe(id);
+  });
+
+  it('falls back to a saved list when a backup has no valid active selection', () => {
+    const code = btoa(
+      JSON.stringify({
+        kind: 'rsmm-backup',
+        profiles: [{ ...freshDefault(), id: 'keeper', name: 'Keep this list', disabled: [] }],
+        activeProfileId: 'gone',
+      }),
+    );
+    expect(useApp.getState().importBackup(code).ok).toBe(true);
+    expect(useApp.getState().profiles.map((p) => p.id)).toEqual(['keeper']);
+    expect(useApp.getState().activeProfileId).toBe('keeper');
+  });
+
+  it('keeps the last profile available', () => {
+    useApp.getState().deleteProfile('default');
+    expect(useApp.getState().profiles).toHaveLength(1);
+    expect(useApp.getState().activeProfileId).toBe('default');
+  });
+});
 
 describe('sidebar collapse setting', () => {
   it('defaults to expanded', () => {
@@ -284,16 +400,16 @@ describe('hydrateSettings sanitizes a persisted blob', () => {
 });
 
 describe('install / uninstall / toggle / reorder', () => {
-  it('routes installs targeting the default profile into a new "My Mods" profile', () => {
+  it('adds the first and subsequent installs to My mods without creating a profile', () => {
     const s = useApp.getState();
-    s.installMod('mod-a', 'default');
+    s.installMod('mod-a');
+    s.installMod('mod-b');
     const state = useApp.getState();
-    expect(state.activeProfileId).not.toBe('default');
+    expect(state.activeProfileId).toBe('default');
+    expect(state.profiles).toHaveLength(1);
     const active = profileById(state.activeProfileId);
-    expect(active.name).toBe('My Mods');
-    expect(active.loadOrder).toEqual(['mod-a']);
-    // Default profile stays the vanilla load — never holds mods.
-    expect(profileById('default').loadOrder).toEqual([]);
+    expect(active.name).toBe('My mods');
+    expect(active.loadOrder).toEqual(['mod-a', 'mod-b']);
   });
 
   it('re-installing a disabled mod re-enables it instead of duplicating', () => {
@@ -391,11 +507,13 @@ describe('syncLocalMods reconcile (the documented data-loss guard)', () => {
     expect(profileById(pid).loadOrder).toEqual(['keep']);
   });
 
-  it('always clears the default profile and tracks installed from disk', () => {
+  it('preserves My mods and its disabled state while tracking files on disk', () => {
     const s = useApp.getState();
-    s.installMod('m', 'default'); // creates My Mods, m on disk
+    s.installMod('m');
+    s.toggleMod('m');
     useApp.getState().syncLocalMods([localMod({ id: 'm' }), localMod({ id: 'n' })]);
-    expect(profileById('default').loadOrder).toEqual([]);
+    expect(profileById('default').loadOrder).toEqual(['m']);
+    expect(profileById('default').disabled).toEqual(new Set(['m']));
     expect(useApp.getState().installed.sort()).toEqual(['m', 'n']);
   });
 });
@@ -570,12 +688,12 @@ describe('profile state vs. what is actually on disk', () => {
     expect(profileById('p1').loadOrder).toEqual(['dropped-in']);
   });
 
-  it('adoptMods refuses the default profile, which is the vanilla load', () => {
+  it('adoptMods adds disk mods to My mods', () => {
     useApp.setState({ profiles: [freshDefault()], activeProfileId: 'default' });
     useApp.getState().syncLocalMods([localMod({ id: 'dropped-in' })]);
 
     useApp.getState().adoptMods(['dropped-in']);
-    expect(profileById('default').loadOrder).toEqual([]);
+    expect(profileById('default').loadOrder).toEqual(['dropped-in']);
   });
 
   it('installed reflects the latest listing, not a stale snapshot', () => {

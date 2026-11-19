@@ -110,9 +110,8 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
       setVersionError(null);
       try {
         if (addToProfile) {
-          // Into the profile it is being added to — settled before the
-          // download, since Default reroutes to a new profile — and with the
-          // result checked: a failed install is `ok: false`, not a throw.
+          // Capture the profile before downloading and check the result:
+          // a failed install is `ok: false`, not a throw.
           await installModIntoProfile(slug, resolveInstallTarget(), { version });
         } else {
           const result = await installModVersion(slug, version);
@@ -325,7 +324,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
               disabled={versionBusy !== null}
               onClick={() => {
                 const ver = apiLatest ?? latestVersion?.version;
-                if ((!liveBySlug || profile.id === 'default') && ver && inTauri()) {
+                if (!liveBySlug && ver && inTauri()) {
                   void installVersion(ver, true);
                   return;
                 }

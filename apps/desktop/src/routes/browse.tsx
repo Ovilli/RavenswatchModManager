@@ -1,9 +1,4 @@
-import {
-  type Collection,
-  type ModListItem,
-  hasPrivateOnlyTag,
-  isPrivateOnlyTag,
-} from '@rsmm/schemas';
+import { type ModListItem, hasPrivateOnlyTag, isPrivateOnlyTag } from '@rsmm/schemas';
 import {
   RegistryFilterDialog,
   RegistryGridSkeleton,
@@ -14,12 +9,10 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { ExternalLink, Loader2, Plus, WifiOff, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Button, CopyButton, Cover, Panel, StatPill, useModalChrome } from '../components/chrome';
+import { useEffect, useMemo, useState } from 'react';
+import { Button, CopyButton, Cover, Panel } from '../components/chrome';
 import { InstalledState } from '../components/installed-state';
 import { ModDetail } from '../components/mod-detail';
-import { PrivateGamesOnlyBadge } from '../components/private-games-only-badge';
 import { useToast } from '../components/toast';
 import { api, describeApiError, getApiBaseUrl, logApiError } from '../lib/api';
 import {
@@ -29,9 +22,8 @@ import {
   filterCollections,
   filterMods,
 } from '../lib/browse-filter';
-import { TParts, useT } from '../lib/i18n-react';
-import { installModIntoProfile } from '../lib/profile-mods';
-import { validateProfileName } from '../lib/profile-name';
+import { useT } from '../lib/i18n-react';
+import { installModIntoProfile, resolveInstallTarget } from '../lib/profile-mods';
 import { registryCardLabels } from '../lib/registry-labels';
 import { activeProfile, useApp } from '../store';
 import type { Profile } from '../store';
@@ -61,8 +53,6 @@ function BrowsePage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [minRating, setMinRating] = useState(0);
   const installed = useApp((s) => s.installed);
-  const profiles = useApp((s) => s.profiles);
-  const createProfile = useApp((s) => s.createProfile);
   const profile = useApp(activeProfile);
   const showNsfw = useApp((s) => s.settings.showNsfw);
   const view = useApp((s) => s.settings.browseView);
@@ -72,22 +62,16 @@ function BrowsePage() {
   // Per-slug install state so each card spins independently.
   const [installing, setInstalling] = useState<Record<string, boolean>>({});
   const [installError, setInstallError] = useState<string | null>(null);
-  // Profile-picker modal state: when set, user picked Install on a
-  // card and needs to choose which profile to drop it into.
-  const [pickerSlug, setPickerSlug] = useState<string | null>(null);
 
-  async function handleInstall(slug: string, targetProfileId: string) {
+  async function handleInstall(slug: string) {
     setInstallError(null);
     setInstalling((m) => ({ ...m, [slug]: true }));
     try {
-      // Downloads into the TARGET profile's folder unless that folder already
-      // has the mod. `installed` describes the active profile, which the
-      // target often is not (the picker offers every profile).
+      // Capture the active profile before downloading into its folder.
+      const targetProfileId = resolveInstallTarget();
       await installModIntoProfile(slug, targetProfileId);
-      // Default profile installs create a new "My Mods" profile — read the
-      // active profile after installMod, not the requested id.
-      const { profiles, activeProfileId } = useApp.getState();
-      const profileName = profiles.find((p) => p.id === activeProfileId)?.name ?? t('profile');
+      const profileName =
+        useApp.getState().profiles.find((p) => p.id === targetProfileId)?.name ?? t('profile');
       toast.push(t('Added {slug} to “{profile}”.', { slug, profile: profileName }), 'success');
       // Bust the list cache so download counts refresh.
       await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
@@ -96,33 +80,6 @@ function BrowsePage() {
     } finally {
       setInstalling((m) => ({ ...m, [slug]: false }));
     }
-  }
-
-  function openPicker(slug: string) {
-    setInstallError(null);
-    setPickerSlug(slug);
-  }
-
-  function pickProfile(profileId: string) {
-    const slug = pickerSlug;
-    setPickerSlug(null);
-    if (!slug) return;
-    void handleInstall(slug, profileId);
-  }
-
-  function pickNewProfile(name: string) {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    const err = validateProfileName(trimmed);
-    if (err) {
-      toast.push(err, 'error');
-      return;
-    }
-    const slug = pickerSlug;
-    setPickerSlug(null);
-    if (!slug) return;
-    const newId = createProfile(trimmed);
-    void handleInstall(slug, newId);
   }
 
   // Mods query
@@ -417,7 +374,7 @@ function BrowsePage() {
                             installed={installed}
                             profile={profile}
                             installing={installing}
-                            onPick={openPicker}
+                            onInstall={handleInstall}
                           />
                         }
                       />
@@ -435,7 +392,7 @@ function BrowsePage() {
                             installed={installed}
                             profile={profile}
                             installing={installing}
-                            onPick={openPicker}
+                            onInstall={handleInstall}
                           />
                         }
                         locale={t.tag}
@@ -455,15 +412,6 @@ function BrowsePage() {
         </div>
       </div>
 
-      {pickerSlug ? (
-        <ProfilePicker
-          slug={pickerSlug}
-          profiles={profiles}
-          onPick={pickProfile}
-          onCreate={pickNewProfile}
-          onCancel={() => setPickerSlug(null)}
-        />
-      ) : null}
       {filtersOpen && tab === 'mods' ? (
         <RegistryFilterDialog
           value={{
@@ -530,7 +478,7 @@ interface InstallButtonProps {
   installed: string[];
   profile: Profile;
   installing: Record<string, boolean>;
-  onPick: (slug: string) => void;
+  onInstall: (slug: string) => void;
 }
 
 /**
@@ -541,7 +489,7 @@ interface InstallButtonProps {
  * resizing mid-download, and two copies of that would drift apart the first
  * time one of them was touched.
  */
-function InstallButton({ m, installed, profile, installing, onPick }: InstallButtonProps) {
+function InstallButton({ m, installed, profile, installing, onInstall }: InstallButtonProps) {
   const t = useT();
   const onDisk = installed.includes(m.slug);
   // "In profile" must mean the mod is BOTH listed by the profile and
@@ -557,7 +505,7 @@ function InstallButton({ m, installed, profile, installing, onPick }: InstallBut
       type="button"
       onClick={(e) => {
         e.stopPropagation();
-        onPick(m.slug);
+        onInstall(m.slug);
       }}
       disabled={installing[m.slug]}
       variant="primary"
@@ -629,134 +577,5 @@ function ModRow({
       locale={t.tag}
       labels={registryCardLabels(t, m)}
     />
-  );
-}
-
-function ProfilePicker({
-  slug,
-  profiles,
-  onPick,
-  onCreate,
-  onCancel,
-}: {
-  slug: string;
-  profiles: Profile[];
-  onPick: (profileId: string) => void;
-  onCreate: (name: string) => void;
-  onCancel: () => void;
-}) {
-  const t = useT();
-  const selectable = profiles.filter((p) => p.id !== 'default');
-  const [creating, setCreating] = useState(selectable.length === 0);
-  const nameRef = useRef<HTMLInputElement>(null);
-  const rootRef = useRef<HTMLDialogElement>(null);
-  // Focus starts on the dialog (nothing in the profile list is focused when it
-  // renders, so Escape would never reach onKeyDown) and returns to Install on
-  // close. Declared before the effect below so a create form opening on mount
-  // still ends up with focus in its field.
-  const onKeyDown = useModalChrome(rootRef, onCancel);
-
-  // Focus the field ONCE, when the create form appears. An inline
-  // `ref={(el) => el?.focus()}` has a new identity every render, so React
-  // detached and reattached it and re-ran `focus()` on every keystroke and
-  // every parent re-render.
-  useEffect(() => {
-    if (creating) nameRef.current?.focus();
-  }, [creating]);
-  const [name, setName] = useState('');
-
-  // Portalled to <body> on purpose. Rendered in place, this lands inside
-  // `main > .animate-page-in`, whose transform animation makes it the
-  // containing block for `position: fixed` descendants — so `fixed inset-0`
-  // pinned itself to the *page* box, not the viewport, and the picker opened
-  // off-screen above the fold whenever the user hit Install after scrolling.
-  // Same reason the quit prompt and the mod config dialog portal.
-  return createPortal(
-    <dialog
-      open
-      ref={rootRef}
-      tabIndex={-1}
-      aria-label={t('Choose profile')}
-      className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in outline-none"
-      onKeyDown={onKeyDown}
-    >
-      <div className="absolute inset-0 bg-pitch/80" onClick={onCancel} />
-      <div className="grimoire-card grimoire-card--raised relative w-[min(480px,92vw)] p-5">
-        <h3 className="font-fraktur text-xl text-parchment">{t('Install to profile')}</h3>
-        <p className="font-serif-italic text-ash mt-2">
-          <TParts
-            text={t('Pick which profile receives {slug}.')}
-            parts={{ slug: <span className="font-data">{slug}</span> }}
-          />
-        </p>
-        {!creating && selectable.length > 0 ? (
-          <ul className="mt-4 space-y-2">
-            {selectable.map((p) => (
-              <li key={p.id}>
-                <button
-                  type="button"
-                  onClick={() => onPick(p.id)}
-                  className="grimoire-card w-full px-4 py-3 text-left hover:border-gilt/40 transition-colors"
-                >
-                  <div className="truncate font-serif-italic text-parchment" title={p.name}>
-                    {p.name}
-                  </div>
-                  <div className="font-mono text-xs text-ash">
-                    {t.n(p.loadOrder.length, '{n} mod', '{n} mods')}
-                  </div>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        {creating ? (
-          <div className="mt-4 space-y-2">
-            <label htmlFor="new-profile-name" className="font-mono block text-ash">
-              {t('New profile name')}
-            </label>
-            <input
-              id="new-profile-name"
-              ref={nameRef}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  if (name.trim()) onCreate(name);
-                }
-              }}
-              placeholder={t('My Mods')}
-              className="input-grim w-full"
-            />
-          </div>
-        ) : null}
-        <div className="mt-5 flex items-center justify-between gap-2">
-          {selectable.length > 0 ? (
-            <Button type="button" size="sm" onClick={() => setCreating((c) => !c)}>
-              {creating ? t('pick existing') : t('create new')}
-            </Button>
-          ) : (
-            <span />
-          )}
-          <div className="flex gap-2">
-            <Button type="button" size="sm" onClick={onCancel}>
-              {t('cancel')}
-            </Button>
-            {creating ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="primary"
-                onClick={() => onCreate(name)}
-                disabled={!name.trim()}
-              >
-                {t('create + install')}
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      </div>
-    </dialog>,
-    document.body,
   );
 }

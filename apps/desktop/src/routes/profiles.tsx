@@ -54,7 +54,7 @@ function ProfilesPage() {
    * is not active — judging those against it painted every one of their mods
    * "not on disk". Each is asked for its own directory instead.
    */
-  const otherProfiles = profiles.filter((p) => p.id !== activeId && p.id !== 'default');
+  const otherProfiles = profiles.filter((p) => p.id !== activeId);
   const otherIds = otherProfiles.map((p) => p.id);
   // ONE sidecar process for all of them. This used to be a query per profile, so
   // opening this screen started one cold sidecar for each inactive profile.
@@ -183,11 +183,8 @@ function ProfilesPage() {
           // The active profile is judged against the live registry; any other
           // against the list read from its own directory (see above).
           const listed = isActive ? undefined : listedByProfile.get(p.id);
-          const known = isActive ? modsKnown : p.id === 'default' || listed !== undefined;
-          const split =
-            isActive || p.id === 'default'
-              ? splitProfileMods(p)
-              : splitProfileModsAgainst(p, listed ?? []);
+          const known = isActive ? modsKnown : listed !== undefined;
+          const split = isActive ? splitProfileMods(p) : splitProfileModsAgainst(p, listed ?? []);
           const listedById = new Map(
             (listed ?? []).flatMap(
               (m) =>

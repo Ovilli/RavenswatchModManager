@@ -82,9 +82,7 @@ function CollectionDetailPage() {
     setInstallError(null);
     setInstalling((m) => ({ ...m, [modSlug]: true }));
     try {
-      // Default never carries mods: settle the real target BEFORE the
-      // download, or the files land in Default's folder while the mod is
-      // listed under the "My Mods" profile `installMod` creates.
+      // Capture the target so the download and profile entry use one folder.
       await installModIntoProfile(modSlug, resolveInstallTarget(profile.id));
       await queryClient.invalidateQueries({ queryKey: ['mods', 'list'] });
       toast.push(t('Added {slug} to profile', { slug: modSlug }), 'success');
@@ -107,15 +105,8 @@ function CollectionDetailPage() {
     setInstallAllRunning(true);
     setInstallError(null);
     setInstallProgress({ value: 0, max: data.mods.length });
-    // The default profile is the vanilla load and never carries mods, so
-    // installing into it lands every mod in a freshly-invented "My Mods"
-    // profile (see `installMod`) — a collection arriving under a name that has
-    // nothing to do with it. Name the profile after the collection instead,
-    // which is what installing a collection means.
-    const targetProfileId = profile.id === 'default' ? createProfile(data.name) : profile.id;
-    // The target's OWN folder, listed once. The store's `installed` described
-    // the profile active when the page opened — after `createProfile` that is
-    // no longer the target, and every mod it happened to hold was skipped.
+    const targetProfileId = resolveInstallTarget(profile.id);
+    // List the target's own folder once and keep the whole batch in it.
     let onDisk: Map<string, string>;
     try {
       onDisk = modIdsOf(await listLocalModsForProfile(targetProfileId));
@@ -153,18 +144,11 @@ function CollectionDetailPage() {
     setInstallAllRunning(false);
     setInstallProgress({ value: 0, max: 0 });
     toast.push(
-      profile.id === 'default'
-        ? t.n(
-            data.mods.length,
-            'Created profile "{name}" with {n} mod',
-            'Created profile "{name}" with {n} mods',
-            { name: data.name },
-          )
-        : t.n(
-            data.mods.length,
-            'Installed {n} mod to current profile',
-            'Installed {n} mods to current profile',
-          ),
+      t.n(
+        data.mods.length,
+        'Installed {n} mod to current profile',
+        'Installed {n} mods to current profile',
+      ),
       'success',
     );
   }

@@ -1413,14 +1413,13 @@ export const clearBackend = () => rsmm<BackendState>(['backend', 'off']);
  * mod's `manifest.toml`, so a mod switched off here used to be installed anyway
  * (bug report 2026-10-06). `apply` now gets this list (`--enabled-json`) and
  * makes the manifests match it first. Undefined, leaving the manifests as they
- * are, when the profile is unknown or is `default`: the store forces default's
- * load order empty on every sync ("the vanilla load"), so it says nothing about
- * the files in that folder and would switch every one of them off.
+ * are, only when the profile is unknown. The starter profile is a normal mod
+ * list, so its enabled state must be forwarded too, including an empty list.
  */
 export function profileEnabledMods(profileId?: string): string[] | undefined {
   const s = useApp.getState();
   const profile = s.profiles.find((p) => p.id === (profileId ?? s.activeProfileId));
-  if (!profile || profile.id === 'default') return undefined;
+  if (!profile) return undefined;
   return profile.loadOrder.filter((id) => isEnabledIn(profile, id));
 }
 
