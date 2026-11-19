@@ -32,6 +32,8 @@ on:
     branches: [main]
     # ready_for_review: a draft gets no previews (every push to a long-lived
     # draft such as testing would spend deployments); marking it ready deploys.
+    # bot/* PRs (publish-loader / publish-cli version stamps: two data files)
+    # get no preview either; production deploys after they merge, as always.
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
@@ -68,7 +70,8 @@ jobs:
        && github.event.workflow_run.event == 'push')
       || (github.event_name == 'pull_request'
           && github.event.pull_request.head.repo.full_name == github.repository
-          && !github.event.pull_request.draft)
+          && !github.event.pull_request.draft
+          && !startsWith(github.head_ref, 'bot/'))
       || github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
