@@ -44,6 +44,10 @@ jobs:
       contents: write     # create/upload the release AND push the version bump branch
       pull-requests: write # open and auto-merge the bump PR
       actions: write      # dispatch CI on the bump branch
+    env:
+      # Optional bot GitHub App (vars.RSMM_BOT_APP_ID + secrets.RSMM_BOT_PRIVATE_KEY).
+      # See "Mint the bot token" below for why; unset, the old path runs.
+      HAS_BOT_APP: ${{ vars.RSMM_BOT_APP_ID != '' && secrets.RSMM_BOT_PRIVATE_KEY != '' }}
 
     steps:
       - uses: actions/checkout@v5
@@ -162,10 +166,29 @@ jobs:
       # starts no workflows, so CI is dispatched on the branch to produce the
       # check. The bump touches two files nothing else writes, so it merges
       # cleanly whatever lands on main during the build.
+      # A branch pushed and a PR opened with the default GITHUB_TOKEN do not
+      # start the PR's own CI the normal way: GitHub holds those runs as
+      # "action_required" until a person approves them, and `main`'s required
+      # `ci ok` check is read from them. Loader v63's stamp PR (#206) sat
+      # BLOCKED with every dispatched check green until someone clicked
+      # "Approve and run workflows". A GitHub App token is an ordinary actor,
+      # so with it the PR runs CI by itself and auto-merge finishes the job.
+      # Needs contents + pull-requests write on this repo. Without the app
+      # configured this step is skipped and the step below keeps the old
+      # github.token + `gh workflow run ci.yml` path.
+      - name: Mint the bot token
+        id: bot
+        if: ${{ !inputs.dry_run && env.HAS_BOT_APP == 'true' }}
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.RSMM_BOT_APP_ID }}
+          private-key: ${{ secrets.RSMM_BOT_PRIVATE_KEY }}
+
       - name: Open the loader version bump PR
         if: ${{ !inputs.dry_run }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.bot.outputs.token || github.token }}
+          BOT_TOKEN: ${{ steps.bot.outputs.token }}
         run: |
           if git diff --quiet -- data/loader_version.json data/changelog.json; then
             echo "nothing to commit"
@@ -178,11 +201,17 @@ jobs:
           TITLE="chore(loader): publish loader channel v${VERSION}"
           git add data/loader_version.json data/changelog.json
           git commit -m "$TITLE"
+          if [ -n "$BOT_TOKEN" ]; then
+            # Push as the app too: checkout's persisted credential is the
+            # GITHUB_TOKEN, and a push made with it is what gets held.
+            git config --unset-all http.https://github.com/.extraheader || true
+            git remote set-url origin "https://x-access-token:${BOT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          fi
           if ! git push origin "HEAD:refs/heads/${BRANCH}" \
             || ! gh pr create --base main --head "$BRANCH" --title "$TITLE" \
                  --body "Sets \`data/loader_version.json\` to v${VERSION} and adds its \`data/changelog.json\` entry." \
             || ! gh pr merge "$BRANCH" --auto --squash \
-            || ! gh workflow run ci.yml --ref "$BRANCH"; then
+            || { [ -z "$BOT_TOKEN" ] && ! gh workflow run ci.yml --ref "$BRANCH"; }; then
             echo "::error::v${VERSION} is published but its stamp PR did not go up."
             echo "Repair the repo by setting data/loader_version.json to ${VERSION}"
             echo "and committing data/changelog.json as published, or main will"
