@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LOCALES, LOCALE_CHOICES } from '../lib/i18n';
-import { extractMessages } from './extract';
+import { readFileSync } from 'node:fs';
+import { extractFromSource, extractMessages } from './extract';
 import { zhCN } from './zh-CN';
 
 const SRC = new URL('..', import.meta.url).pathname;
@@ -16,7 +17,19 @@ const CATALOGS: Record<string, Record<string, string> | null> = {
  * nothing complains. These tests are the thing that complains.
  */
 describe('translation coverage', () => {
-  const messages = extractMessages(SRC);
+  const messages = [
+    ...new Set([
+      ...extractMessages(SRC),
+      ...['listing-reviews.tsx', 'review-reply.tsx'].flatMap((file) =>
+        extractFromSource(
+          readFileSync(
+            new URL(`../../../../packages/ui/src/components/${file}`, import.meta.url),
+            'utf8',
+          ),
+        ),
+      ),
+    ]),
+  ];
 
   it('finds the UI messages in the source tree', () => {
     // A guard against the extractor silently matching nothing (a moved source

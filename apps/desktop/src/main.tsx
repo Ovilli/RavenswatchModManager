@@ -12,7 +12,7 @@ import '@rsmm/ui/styles.css';
 import '@rsmm/ui/registry.css';
 import '@rsmm/ui/registry-detail.css';
 import './desktop.css';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrent as getCurrentDeepLink, onOpenUrl } from '@tauri-apps/plugin-deep-link';
@@ -180,6 +180,22 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, staleTime: 30_000 },
   },
+});
+
+// A desktop WebView can stay visible while the user edits a review in their
+// browser. React Query's default visibility listener alone misses that return.
+focusManager.setEventListener((setFocused) => {
+  const onFocus = () => setFocused(true);
+  const onBlur = () => setFocused(false);
+  const onVisibility = () => setFocused(document.visibilityState === 'visible');
+  window.addEventListener('focus', onFocus);
+  window.addEventListener('blur', onBlur);
+  document.addEventListener('visibilitychange', onVisibility);
+  return () => {
+    window.removeEventListener('focus', onFocus);
+    window.removeEventListener('blur', onBlur);
+    document.removeEventListener('visibilitychange', onVisibility);
+  };
 });
 
 // An install, apply or config write changes what `rsmm overlays` reports, and

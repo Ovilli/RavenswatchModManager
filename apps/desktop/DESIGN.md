@@ -177,3 +177,12 @@ Overlay z-index, lowest to highest:
 | 90 | Screenshot viewer |
 
 A new overlay takes its place in this order.
+
+### Registry reviews
+
+Mod and collection detail pages use `ListingReviews` and `ListingRatingSummary`
+from `@rsmm/ui/reviews`, the same components used by the web registry. This entry
+point owns the form, review list, author replies, loading/error states, and query
+refresh behavior. The desktop adapter supplies its session, navigation, translated
+strings, and delete-confirmation dialog. Keep styling and interactions in the
+shared components; the API remains the single source of review data.

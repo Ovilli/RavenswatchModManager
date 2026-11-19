@@ -11,23 +11,28 @@
     "./registry.css": "./src/registry.css",
     "./registry-detail.css": "./src/registry-detail.css",
     "./registry-media": "./src/lib/registry-media.ts",
-    "./tailwind-preset": "./tailwind.preset.cjs"
+    "./tailwind-preset": "./tailwind.preset.cjs",
+    "./reviews": "./src/reviews.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
+    "@rsmm/api-client": "workspace:*",
+    "@rsmm/schemas": "workspace:*",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "lucide-react": "0.469.0",
     "tailwind-merge": "2.6.0"
   },
   "peerDependencies": {
+    "@tanstack/react-query": "^5.62.11",
     "react": "^18.3.0 || ^19.0.0",
     "react-dom": "^18.3.0 || ^19.0.0"
   },
   "devDependencies": {
     "@rsmm/tsconfig": "workspace:*",
+    "@tanstack/react-query": "5.62.11",
     "@types/react": "19.0.2",
     "@types/react-dom": "19.0.2",
     "react": "19.0.0",
