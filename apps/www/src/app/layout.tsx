@@ -4,7 +4,7 @@ import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { Coffee, Github } from 'lucide-react';
 import type { Metadata, Viewport } from 'next';
-import { Alegreya, Alegreya_Sans, JetBrains_Mono, UnifrakturCook } from 'next/font/google';
+import localFont from 'next/font/local';
 import Link from 'next/link';
 import Script from 'next/script';
 import { BanGate } from './components/ban-gate';
@@ -16,9 +16,21 @@ import './globals.css';
 // Self-hosted + preloaded via next/font (was a render-blocking CSS @import of
 // Google Fonts that serialised the load waterfall). `swap` avoids invisible
 // text; each exposes a CSS var consumed by globals.css.
-const fraktur = UnifrakturCook({
-  weight: '700',
-  subsets: ['latin'],
+//
+// Local files from @fontsource, not next/font/google: that one downloads the
+// fonts from Google during `next build`, and when the request hiccups the build
+// dies in next/font ("Cannot read properties of null (reading '1')"), which
+// failed production deploys on 2026-11-16 and 11-17. Same families, weights and
+// styles as before; the latin subset is what the site used. next/font needs
+// literal arguments here, so the file lists are written out.
+const fraktur = localFont({
+  src: [
+    {
+      path: '../../node_modules/@fontsource/unifrakturcook/files/unifrakturcook-latin-700-normal.woff2',
+      weight: '700',
+      style: 'normal',
+    },
+  ],
   display: 'swap',
   variable: '--font-fraktur',
 });
@@ -26,23 +38,96 @@ const fraktur = UnifrakturCook({
 // legible at size. Text and UI: Alegreya Sans, its sans companion, which holds
 // up at small sizes on a dark background where the old Garamond went thin.
 // Blackletter is kept for the wordmark only.
-const display = Alegreya({
-  weight: ['500', '700', '800'],
-  style: ['normal', 'italic'],
-  subsets: ['latin'],
+const display = localFont({
+  src: [
+    {
+      path: '../../node_modules/@fontsource/alegreya/files/alegreya-latin-500-normal.woff2',
+      weight: '500',
+      style: 'normal',
+    },
+    {
+      path: '../../node_modules/@fontsource/alegreya/files/alegreya-latin-500-italic.woff2',
+      weight: '500',
+      style: 'italic',
+    },
+    {
+      path: '../../node_modules/@fontsource/alegreya/files/alegreya-latin-700-normal.woff2',
+      weight: '700',
+      style: 'normal',
+    },
+    {
+      path: '../../node_modules/@fontsource/alegreya/files/alegreya-latin-700-italic.woff2',
+      weight: '700',
+      style: 'italic',
+    },
+    {
+      path: '../../node_modules/@fontsource/alegreya/files/alegreya-latin-800-normal.woff2',
+      weight: '800',
+      style: 'normal',
+    },
+    {
+      path: '../../node_modules/@fontsource/alegreya/files/alegreya-latin-800-italic.woff2',
+      weight: '800',
+      style: 'italic',
+    },
+  ],
   display: 'swap',
   variable: '--font-display',
 });
-const body = Alegreya_Sans({
-  weight: ['400', '500', '700'],
-  style: ['normal', 'italic'],
-  subsets: ['latin'],
+const body = localFont({
+  src: [
+    {
+      path: '../../node_modules/@fontsource/alegreya-sans/files/alegreya-sans-latin-400-normal.woff2',
+      weight: '400',
+      style: 'normal',
+    },
+    {
+      path: '../../node_modules/@fontsource/alegreya-sans/files/alegreya-sans-latin-400-italic.woff2',
+      weight: '400',
+      style: 'italic',
+    },
+    {
+      path: '../../node_modules/@fontsource/alegreya-sans/files/alegreya-sans-latin-500-normal.woff2',
+      weight: '500',
+      style: 'normal',
+    },
+    {
+      path: '../../node_modules/@fontsource/alegreya-sans/files/alegreya-sans-latin-500-italic.woff2',
+      weight: '500',
+      style: 'italic',
+    },
+    {
+      path: '../../node_modules/@fontsource/alegreya-sans/files/alegreya-sans-latin-700-normal.woff2',
+      weight: '700',
+      style: 'normal',
+    },
+    {
+      path: '../../node_modules/@fontsource/alegreya-sans/files/alegreya-sans-latin-700-italic.woff2',
+      weight: '700',
+      style: 'italic',
+    },
+  ],
   display: 'swap',
   variable: '--font-body',
 });
-const mono = JetBrains_Mono({
-  weight: ['400', '500', '700'],
-  subsets: ['latin'],
+const mono = localFont({
+  src: [
+    {
+      path: '../../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2',
+      weight: '400',
+      style: 'normal',
+    },
+    {
+      path: '../../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2',
+      weight: '500',
+      style: 'normal',
+    },
+    {
+      path: '../../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-700-normal.woff2',
+      weight: '700',
+      style: 'normal',
+    },
+  ],
   display: 'swap',
   variable: '--font-mono',
 });
