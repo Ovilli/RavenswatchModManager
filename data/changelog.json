@@ -4,6 +4,15 @@
     {
       "version": "",
       "date": "2026-11-19",
+      "summary": "Restore vanilla after a modded launch: the restore watcher no longer dies on start in the packaged app, so launching from Steam afterwards is vanilla again (#211)",
+      "highlights": [
+        "Restore vanilla after a modded launch: the restore watcher no longer dies on start in the packaged app, so launching from Steam afterwards is vanilla again (#211)"
+      ],
+      "cli_version": 38
+    },
+    {
+      "version": "",
+      "date": "2026-11-19",
       "summary": "Performance and fixes for the 2026-11-17 game patch: keybind rows (camera zoom/rotate) work again; the camera mod no longer slows down over long sessions; co-op damage-meter name searches run in the background instead of stalling the game; per-mod performance telemetry ([perf] log lines + mods/_perf.json).",
       "highlights": [
         "Performance and fixes for the 2026-11-17 game patch: keybind rows (camera zoom/rotate) work again; the camera mod no longer slows down over long sessions; co-op damage-meter name searches run in the background instead of stalling the game; per-mod performance telemetry ([perf] log lines + mods/_perf.json)."
@@ -496,15 +505,6 @@
         "Talent builder blocks are named, say what they do in plain words, and show each rarity's number as the card shows it"
       ],
       "cli_version": 8
-    },
-    {
-      "version": "5.9.26",
-      "date": "2026-10-20",
-      "summary": "Discord Url Update",
-      "highlights": [
-        "Discord Link Update"
-      ],
-      "loader_version": 46
     }
   ]
 }
