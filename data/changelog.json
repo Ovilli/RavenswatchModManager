@@ -1,6 +1,15 @@
 {
-  "generated": "2026-11-17",
+  "generated": "2026-11-19",
   "entries": [
+    {
+      "version": "",
+      "date": "2026-11-19",
+      "summary": "Performance and fixes for the 2026-11-17 game patch: keybind rows (camera zoom/rotate) work again; the camera mod no longer slows down over long sessions; co-op damage-meter name searches run in the background instead of stalling the game; per-mod performance telemetry ([perf] log lines + mods/_perf.json).",
+      "highlights": [
+        "Performance and fixes for the 2026-11-17 game patch: keybind rows (camera zoom/rotate) work again; the camera mod no longer slows down over long sessions; co-op damage-meter name searches run in the background instead of stalling the game; per-mod performance telemetry ([perf] log lines + mods/_perf.json)."
+      ],
+      "loader_version": 63
+    },
     {
       "version": "5.9.33",
       "date": "2026-11-17",
@@ -496,18 +505,6 @@
         "Discord Link Update"
       ],
       "loader_version": 46
-    },
-    {
-      "version": "",
-      "date": "2026-10-20",
-      "summary": "Item mods: timed effects on any item, build checks, and a real card preview in the editor.",
-      "highlights": [
-        "New item field effect = { stat, amount, seconds, on }: a timed bonus on a trigger (taking damage, dash, special, defense, power, talent picked, item picked up, dream shards, night, and more), with the item icon counting it down",
-        "Copied items get their own identity by default, so picking up another item no longer takes one away",
-        "rsmm lint and the build warn about item traps: bonuses that stack forever, hidden level scaling, a card that reads +0%",
-        "The item editor gets a Timed effect section and a card preview that shows the numbers the game will print"
-      ],
-      "cli_version": 6
     }
   ]
 }
