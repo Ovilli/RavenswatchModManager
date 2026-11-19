@@ -45,9 +45,9 @@ constexpr std::uintptr_t CameraModifier_RemoveChild = 0x140660800ull;
 constexpr const char* CameraModifier_RemoveChild_Pattern = "CameraModifier_RemoveChild";
 constexpr std::uintptr_t TopDownCamera_Activate = 0x1407e6a70ull;
 constexpr const char* TopDownCamera_Activate_Pattern = "TopDownCamera_Activate";
-constexpr std::uintptr_t g_CameraModifier_vftable = 0x140f62ea0ull;
-constexpr std::uintptr_t g_CameraSceneContext_vftable = 0x140f0a910ull;
-constexpr std::uintptr_t g_ZoomCameraModifier_vftable = 0x140f62b38ull;
+constexpr std::uintptr_t g_CameraModifier_vftable = 0x140f67b20ull;
+constexpr std::uintptr_t g_CameraSceneContext_vftable = 0x140f0f6a0ull;
+constexpr std::uintptr_t g_ZoomCameraModifier_vftable = 0x140f678d0ull;
 
 // --- combat ---
 constexpr std::uintptr_t CharacterController_ClearStagger = 0x1403c38a0ull;
@@ -330,14 +330,14 @@ constexpr std::uintptr_t InputActionMap_Add = 0x140471260ull;
 constexpr const char* InputActionMap_Add_Pattern = "InputActionMap_Add";
 constexpr std::uintptr_t Input_Poll = 0x14067e400ull;
 constexpr const char* Input_Poll_Pattern = "Input_Poll";
-constexpr std::uintptr_t g_CursorLockCentre = 0x14146d9c0ull;
-constexpr std::uintptr_t g_CursorLockFlag = 0x141467b67ull;
-constexpr std::uintptr_t g_InputActionMap = 0x141436b68ull;
-constexpr std::uintptr_t g_InputKeyRecords = 0x141466c50ull;
-constexpr std::uintptr_t g_InputManager = 0x14146f8e8ull;
-constexpr std::uintptr_t g_InputMouseWheelDown = 0x1414670acull;
-constexpr std::uintptr_t g_InputMouseWheelUp = 0x1414670a0ull;
-constexpr std::uintptr_t g_MouseState = 0x14146d9c8ull;
+constexpr std::uintptr_t g_CursorLockCentre = 0x141474d00ull;
+constexpr std::uintptr_t g_CursorLockFlag = 0x14146eea7ull;
+constexpr std::uintptr_t g_InputActionMap = 0x14143dea8ull;
+constexpr std::uintptr_t g_InputKeyRecords = 0x14146df90ull;
+constexpr std::uintptr_t g_InputManager = 0x141476c28ull;
+constexpr std::uintptr_t g_InputMouseWheelDown = 0x14146e3ecull;
+constexpr std::uintptr_t g_InputMouseWheelUp = 0x14146e3e0ull;
+constexpr std::uintptr_t g_MouseState = 0x141474d08ull;
 
 // --- items ---
 constexpr std::uintptr_t Entity_GiveHandler = 0x1403bebc0ull;
@@ -424,7 +424,7 @@ constexpr const char* Mem_Alloc16Zeroed_Pattern = "Mem_Alloc16Zeroed";
 constexpr std::uintptr_t PtrVector_Resize = 0x14014db60ull;
 constexpr const char* PtrVector_Resize_Pattern = "PtrVector_Resize";
 constexpr std::uintptr_t Registry_EnemyDefinition_desc = 0x141470208ull;
-constexpr std::uintptr_t Registry_EnemyTribeDefinition_desc = 0x14146f938ull;
+constexpr std::uintptr_t Registry_EnemyTribeDefinition_desc = 0x141476c78ull;
 constexpr std::uintptr_t RewardDef_RegisterAssetLoader = 0x14031fd80ull;
 constexpr const char* RewardDef_RegisterAssetLoader_Pattern = "RewardDef_RegisterAssetLoader";
 constexpr std::uintptr_t Rt_FailFast = 0x140ccb8d4ull;
@@ -517,9 +517,9 @@ constexpr std::uintptr_t GameOptionsManager_Register = 0x14066ab20ull;
 constexpr const char* GameOptionsManager_Register_Pattern = "GameOptionsManager_Register";
 constexpr std::uintptr_t GameOptionsManager_RequestLoad = 0x140691110ull;
 constexpr const char* GameOptionsManager_RequestLoad_Pattern = "GameOptionsManager_RequestLoad";
-constexpr std::uintptr_t InputKeyGameOption_vftable = 0x140efd440ull;
+constexpr std::uintptr_t InputKeyGameOption_vftable = 0x140f021b0ull;
 constexpr std::uintptr_t g_GameOptions = 0x14143dd50ull;
-constexpr std::uintptr_t g_GameOptionsManager = 0x141436a38ull;
+constexpr std::uintptr_t g_GameOptionsManager = 0x14143dd70ull;
 
 // --- progression ---
 constexpr std::uintptr_t GameModifierLock_OnStateChange = 0x140257fc0ull;
@@ -532,8 +532,8 @@ constexpr std::uintptr_t RunRoster_Build = 0x140269260ull;
 constexpr const char* RunRoster_Build_Pattern = "RunRoster_Build";
 
 // --- registry ---
-constexpr std::uintptr_t DefRegistry_Begin = 0x14143a040ull;
-constexpr std::uintptr_t DefRegistry_End = 0x14143a048ull;
+constexpr std::uintptr_t DefRegistry_Begin = 0x141441380ull;
+constexpr std::uintptr_t DefRegistry_End = 0x141441388ull;
 
 // --- resource ---
 constexpr std::uintptr_t BinarySaver_CollectDependencies = 0x1404fcf10ull;
@@ -548,7 +548,7 @@ constexpr std::uintptr_t Definition_PreloadResourceCache = 0x14030bce0ull;
 constexpr const char* Definition_PreloadResourceCache_Pattern = "Definition_PreloadResourceCache";
 constexpr std::uintptr_t Definitions_LoadGroup = 0x14030b030ull;
 constexpr const char* Definitions_LoadGroup_Pattern = "Definitions_LoadGroup";
-constexpr std::uintptr_t EntitySettings_ClassDescDefault = 0x14146fd90ull;
+constexpr std::uintptr_t EntitySettings_ClassDescDefault = 0x1414770d0ull;
 constexpr std::uintptr_t FileStream_Open = 0x14053a1f0ull;
 constexpr const char* FileStream_Open_Pattern = "FileStream_Open";
 constexpr std::uintptr_t InitialLoading_LoadAllDefinitions = 0x14025b1d0ull;
@@ -584,7 +584,7 @@ constexpr std::uintptr_t Registry_RegisterInstance = 0x14030c700ull;
 constexpr const char* Registry_RegisterInstance_Pattern = "Registry_RegisterInstance";
 constexpr std::uintptr_t Registry_UnregisterInstance = 0x14030c780ull;
 constexpr const char* Registry_UnregisterInstance_Pattern = "Registry_UnregisterInstance";
-constexpr std::uintptr_t ResourceArchive_Default = 0x141472240ull;
+constexpr std::uintptr_t ResourceArchive_Default = 0x141479580ull;
 constexpr std::uintptr_t ResourceCache_Parse = 0x140492fa0ull;
 constexpr const char* ResourceCache_Parse_Pattern = "ResourceCache_Parse";
 constexpr std::uintptr_t ResourceCache_Submit = 0x1404aa930ull;
@@ -629,7 +629,7 @@ constexpr std::uintptr_t LobbyMembers_List = 0x1409251a0ull;
 constexpr const char* LobbyMembers_List_Pattern = "LobbyMembers_List";
 constexpr std::uintptr_t LobbyMembers_Local = 0x140925120ull;
 constexpr const char* LobbyMembers_Local_Pattern = "LobbyMembers_Local";
-constexpr std::uintptr_t LobbyPlayerName_Registry = 0x141470268ull;
+constexpr std::uintptr_t LobbyPlayerName_Registry = 0x1414775a8ull;
 constexpr std::uintptr_t Netcode_PeerCount = 0x141440a40ull;
 constexpr std::uintptr_t Netcode_PeerSlots = 0x1414408c0ull;
 constexpr std::uintptr_t Stormancer_StartMatchmaking = 0x140916c30ull;
