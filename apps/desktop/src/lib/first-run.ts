@@ -12,6 +12,8 @@
  * The cost of a failed read is that a dialog shows once more than it should.
  */
 
+import { LIBRARY_PREVIEW } from './browser-preview';
+
 const DISCLOSURE_KEY = 'rsmm:ai-disclosure-ack';
 const CHANGELOG_SEEN_KEY = 'rsmm:changelog-seen';
 /** The zustand persist key. Its presence means this profile has run before. */
@@ -73,5 +75,5 @@ export function markChangelogSeen(version: string): void {
  * nothing on the one upgrade where the notes actually matter.
  */
 export function hasRunBefore(): boolean {
-  return read(STORE_KEY) !== null;
+  return LIBRARY_PREVIEW || read(STORE_KEY) !== null;
 }

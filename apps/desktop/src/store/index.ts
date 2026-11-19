@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
+import { LIBRARY_PREVIEW, previewStorage } from '../lib/browser-preview';
 import {
   DEFAULT_ANIMATIONS,
   DEFAULT_FONT,
@@ -814,7 +815,7 @@ export const useApp = create<State>()(
         const { localMods: _omitMods, installed: _omitInstalled, ...rest } = s;
         return rest;
       },
-      storage: createJSONStorage(() => localStorage, {
+      storage: createJSONStorage(() => (LIBRARY_PREVIEW ? previewStorage : localStorage), {
         replacer: (_k, value) => (value instanceof Set ? { __rsmm_set: [...value] } : value),
         reviver: (_k, value) => {
           if (

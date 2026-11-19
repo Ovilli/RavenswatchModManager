@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { useApp } from '../store';
+import { LIBRARY_PREVIEW } from './browser-preview';
 import { t } from './i18n';
 import {
   type InstallResult,
@@ -35,6 +36,11 @@ export async function duplicateProfileWithMods(
   // The store hands back the source id when there was nothing to duplicate.
   if (id === sourceId) return { id, copyError: null };
   try {
+    if (import.meta.env.DEV && LIBRARY_PREVIEW) {
+      const { copyPreviewProfile } = await import('../dev/library-preview');
+      copyPreviewProfile(sourceId, id);
+      return { id, copyError: null };
+    }
     await invoke('copy_profile_dir', {
       modsRoot: modsRoot(),
       fromProfileId: sourceId,

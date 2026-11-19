@@ -21,8 +21,10 @@ import { Component, type ErrorInfo, type ReactNode, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { OverlayHud } from './components/overlay-hud';
 import { RouteErrorComponent } from './components/route-error';
+import { initializeLibraryPreview } from './dev/library-preview';
 import { applyAppearance } from './lib/appearance';
 import { authClient } from './lib/auth-client';
+import { LIBRARY_PREVIEW } from './lib/browser-preview';
 import { firstSightOfDeepLink, reportDesktopAuthFailure } from './lib/desktop-auth';
 import { setLocale, t } from './lib/i18n';
 import { onGameStateChanged } from './lib/session-cache';
@@ -222,7 +224,14 @@ declare module '@tanstack/react-router' {
 const root = document.getElementById('root');
 if (!root) throw new Error('missing #root');
 
-createRoot(root).render(
+// Reuse the mounted root when an entry dependency changes during development.
+const reactRoot: ReturnType<typeof createRoot> =
+  import.meta.hot?.data.reactRoot ?? createRoot(root);
+if (import.meta.hot) import.meta.hot.data.reactRoot = reactRoot;
+
+if (import.meta.env.DEV && LIBRARY_PREVIEW) initializeLibraryPreview();
+
+reactRoot.render(
   <StrictMode>
     <RootErrorBoundary>
       {IS_OVERLAY_WINDOW ? (

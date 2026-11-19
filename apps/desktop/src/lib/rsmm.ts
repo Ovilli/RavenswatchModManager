@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { type Child, Command } from '@tauri-apps/plugin-shell';
 import { defaultGameDir, isEnabledIn, useApp } from '../store';
+import { LIBRARY_PREVIEW } from './browser-preview';
 import { getLocale } from './i18n';
 import { getPlatform, joinPathEntries } from './platform';
 import { noteGameStateChanged, onGameStateChanged } from './session-cache';
@@ -149,6 +150,10 @@ export function writesGameState(args: string[]): boolean {
 }
 
 async function rsmm<T = unknown>(args: string[], options: RsmmOptions = {}): Promise<T | null> {
+  if (import.meta.env.DEV && LIBRARY_PREVIEW) {
+    const { previewCommand } = await import('../dev/library-preview');
+    return previewCommand(args, options.profileId) as T;
+  }
   const fullArgs = ['json', ...args];
   let result: ExecResult;
   try {

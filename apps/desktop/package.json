@@ -9,6 +9,7 @@
     "dev:linux-soft": "LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 tauri dev",
     "dev:with-cli": "tauri dev",
     "dev:vite": "vite",
+    "dev:library": "vite --open \"/?preview=library\"",
     "build": "tauri build",
     "build:linux": "tauri build --target x86_64-unknown-linux-gnu",
     "build:windows": "tauri build --target x86_64-pc-windows-msvc",

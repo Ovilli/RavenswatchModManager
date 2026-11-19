@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 
 export interface RegistryFilterValue {
   category: string;
+  status?: string;
   tags: string[];
   minRating: number;
   toggles: Record<string, boolean>;
@@ -19,6 +20,7 @@ export interface RegistryFilterOption {
 export function RegistryFilterDialog({
   value,
   categories,
+  statuses = [],
   tags,
   ratings,
   toggles,
@@ -29,6 +31,7 @@ export function RegistryFilterDialog({
 }: {
   value: RegistryFilterValue;
   categories: RegistryFilterOption[];
+  statuses?: RegistryFilterOption[];
   tags: RegistryFilterOption[];
   ratings: { value: number; label: string }[];
   toggles: { id: string; label: string; checked: boolean }[];
@@ -39,6 +42,7 @@ export function RegistryFilterDialog({
     close?: string;
     title?: string;
     category?: string;
+    status?: string;
     tags?: string;
     rating?: string;
     preferences?: string;
@@ -101,6 +105,24 @@ export function RegistryFilterDialog({
           </button>
         </header>
         <div className="registry-filter-body">
+          {statuses.length ? (
+            <fieldset>
+              <legend>{labels.status ?? 'Status'}</legend>
+              <div className="registry-filter-options">
+                {statuses.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className="registry-chip"
+                    aria-pressed={draft.status === option.value}
+                    onClick={() => setDraft({ ...draft, status: option.value })}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          ) : null}
           <fieldset>
             <legend>{labels.category ?? 'Category'}</legend>
             <div className="registry-filter-options">
@@ -152,23 +174,25 @@ export function RegistryFilterDialog({
               </div>
             </fieldset>
           ) : null}
-          <fieldset>
-            <legend>{labels.rating ?? 'Rating'}</legend>
-            <div className="registry-filter-options">
-              {ratings.map((rating) => (
-                <button
-                  key={rating.value}
-                  type="button"
-                  className="registry-chip"
-                  aria-pressed={draft.minRating === rating.value}
-                  onClick={() => setDraft({ ...draft, minRating: rating.value })}
-                >
-                  {rating.value ? <Star size={15} aria-hidden /> : null}
-                  {rating.label}
-                </button>
-              ))}
-            </div>
-          </fieldset>
+          {ratings.length ? (
+            <fieldset>
+              <legend>{labels.rating ?? 'Rating'}</legend>
+              <div className="registry-filter-options">
+                {ratings.map((rating) => (
+                  <button
+                    key={rating.value}
+                    type="button"
+                    className="registry-chip"
+                    aria-pressed={draft.minRating === rating.value}
+                    onClick={() => setDraft({ ...draft, minRating: rating.value })}
+                  >
+                    {rating.value ? <Star size={15} aria-hidden /> : null}
+                    {rating.label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          ) : null}
           {toggles.length ? (
             <fieldset>
               <legend>{labels.preferences ?? 'Preferences'}</legend>
