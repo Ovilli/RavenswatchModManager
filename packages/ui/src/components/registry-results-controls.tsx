@@ -5,6 +5,39 @@ import { ChevronDown, LayoutGrid, Rows3 } from 'lucide-react';
 export type RegistrySortValue = 'popular' | 'recent' | 'rating';
 export type RegistryViewValue = 'grid' | 'list';
 
+/** The registry's sort treatment, with options supplied by the listing. */
+export function RegistrySortControl<Sort extends string>({
+  value,
+  options,
+  onChange,
+  label = 'Sort by',
+  ariaLabel = 'Sort mods',
+}: {
+  value: Sort;
+  options: { value: Sort; label: string }[];
+  onChange: (value: Sort) => void;
+  label?: string;
+  ariaLabel?: string;
+}) {
+  return (
+    <label className="registry-sort">
+      <span>{label}</span>
+      <select
+        aria-label={ariaLabel}
+        value={value}
+        onChange={(event) => onChange(event.target.value as Sort)}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <ChevronDown size={14} aria-hidden />
+    </label>
+  );
+}
+
 export function RegistryResultsControls({
   sort,
   view,
@@ -29,19 +62,17 @@ export function RegistryResultsControls({
 }) {
   return (
     <div className="registry-result-controls">
-      <label className="registry-sort">
-        <span>{labels.sortBy ?? 'Sort by'}</span>
-        <select
-          aria-label={labels.sort ?? 'Sort mods'}
-          value={sort}
-          onChange={(event) => onSortChange(event.target.value as RegistrySortValue)}
-        >
-          <option value="popular">{labels.popular ?? 'Popular'}</option>
-          <option value="recent">{labels.recent ?? 'Recent'}</option>
-          <option value="rating">{labels.rating ?? 'Top rated'}</option>
-        </select>
-        <ChevronDown size={14} aria-hidden />
-      </label>
+      <RegistrySortControl
+        value={sort}
+        onChange={onSortChange}
+        label={labels.sortBy}
+        ariaLabel={labels.sort}
+        options={[
+          { value: 'popular', label: labels.popular ?? 'Popular' },
+          { value: 'recent', label: labels.recent ?? 'Recent' },
+          { value: 'rating', label: labels.rating ?? 'Top rated' },
+        ]}
+      />
       <fieldset className="registry-view-switch">
         <legend className="sr-only">{labels.layout ?? 'Layout'}</legend>
         <button

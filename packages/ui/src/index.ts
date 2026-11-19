@@ -27,6 +27,7 @@ export { RegistryListingGallery, type RegistryMedia } from './components/registr
 export { RegistrySearchBar } from './components/registry-search-bar';
 export {
   RegistryResultsControls,
+  RegistrySortControl,
   type RegistrySortValue,
   type RegistryViewValue,
 } from './components/registry-results-controls';

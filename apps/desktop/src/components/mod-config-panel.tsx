@@ -1,6 +1,7 @@
 import { Input } from '@rsmm/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fragment, type ReactNode, useEffect, useMemo, useState } from 'react';
+import { LIBRARY_PREVIEW } from '../lib/browser-preview';
 import { t as tr } from '../lib/i18n';
 import { useT } from '../lib/i18n-react';
 import { asGridValue } from '../lib/item-grid';
@@ -53,7 +54,7 @@ export function ModConfigPanel({
       }
       return result;
     },
-    enabled: inTauri(),
+    enabled: inTauri() || LIBRARY_PREVIEW,
     staleTime: 30_000,
   });
   const schemaFields = configQuery.data?.schema?.fields;

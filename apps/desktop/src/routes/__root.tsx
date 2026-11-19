@@ -21,6 +21,7 @@ import { SidebarTooltip } from '../components/sidebar-tooltip';
 import { DialogProvider, ToastProvider } from '../components/toast';
 import { UpdaterBanner, VersionFooter } from '../components/updater';
 import { msg } from '../lib/i18n';
+import { LIBRARY_PREVIEW } from '../lib/browser-preview';
 import { useT } from '../lib/i18n-react';
 import { inTauri, shortcutLabel } from '../lib/platform';
 import { quitApp } from '../lib/quit';
@@ -556,6 +557,17 @@ function RootLayout() {
               <WindowControls />
               <UpdaterBanner />
               <ChannelStatusBanner />
+              {LIBRARY_PREVIEW ? (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-6 py-2 text-sm text-ash md:px-8">
+                  <span>Library preview · sample mods · reload to reset</span>
+                  <a
+                    href="/?preview=off"
+                    className="underline underline-offset-4 hover:text-parchment"
+                  >
+                    Exit preview
+                  </a>
+                </div>
+              ) : null}
               <main
                 ref={mainRef}
                 className={`rsmm-main min-h-0 flex-1 overflow-y-auto px-6 pb-12 md:px-8 ${inTauri() ? 'pt-2' : 'pt-6'}`}
@@ -576,7 +588,7 @@ function RootLayout() {
             </div>
 
             <CommandPalette />
-            <FirstRunDialogs />
+            {LIBRARY_PREVIEW ? null : <FirstRunDialogs />}
             <VersionFooter />
           </div>
         </LaunchProvider>

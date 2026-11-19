@@ -103,6 +103,8 @@
 .registry-chip:hover{background:hsl(var(--surface-2));border-color:hsl(var(--parchment)/.5)}
 .registry-chip[aria-pressed="true"]{background:hsl(var(--crimson)/.2);border-color:hsl(var(--crimson-text))}
 .registry-filter-dialog,.registry-search-dialog{--registry-muted:hsl(32 17% 68%);width:min(640px,calc(100vw - 40px));max-height:min(800px,calc(100dvh - 64px));margin:auto;padding:0;overflow:hidden;border:1px solid hsl(var(--char));border-radius:16px;background:hsl(var(--surface-1));color:hsl(var(--foreground))}
+/* Native filter dialogs size to their contents after the desktop dialog reset. */
+.registry-filter-dialog{height:fit-content}
 .registry-filter-dialog::backdrop,.registry-search-backdrop{background:rgb(0 0 0/.72)}
 .registry-filter-dialog>form{display:flex;flex-direction:column;max-height:inherit}
 .registry-filter-header{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:14px 24px;border-bottom:1px solid hsl(var(--border))}

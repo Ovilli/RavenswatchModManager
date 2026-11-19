@@ -1,17 +1,13 @@
+import { RegistryFilterDialog, RegistrySearchBar, RegistrySortControl } from '@rsmm/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import {
   AlertTriangle,
-  ArrowUpDown,
   ExternalLink,
   GripVertical,
-  LayoutGrid,
   List,
-  Plus,
-  Search,
   SlidersHorizontal,
   Trash2,
-  X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -60,9 +56,9 @@ import {
   useApp,
 } from '../store';
 
-type ViewMode = 'cards' | 'list' | 'config';
+type ViewMode = 'list' | 'config';
 
-const VIEW_MODES: ViewMode[] = ['cards', 'list', 'config'];
+const VIEW_MODES: ViewMode[] = ['list', 'config'];
 
 /**
  * The view lives in the URL so the per-mod Configure button can link straight
@@ -75,7 +71,7 @@ export const Route = createFileRoute('/')({
     const v = search.view;
     return typeof v === 'string' && (VIEW_MODES as string[]).includes(v)
       ? { view: v as ViewMode }
-      : {};
+      : { view: 'list' };
   },
 });
 
@@ -103,54 +99,22 @@ const STATUS_LABEL: Record<LibraryStatusFilter, string> = {
   missingDeps: msg('Missing deps'),
 };
 
-/** A facet heading in the filter rail. Sentence case, not tracked-out caps:
- *  the rail is navigation furniture and should sit under the content it
- *  filters, not shout over it. */
-function FacetLabel({ icon, children }: { icon?: ReactNode; children: ReactNode }) {
-  return (
-    <span className="flex items-center gap-2 text-ash text-xs">
-      {icon}
-      {children}
-    </span>
-  );
-}
-
-/** One row in a facet list. Full-width and left-aligned so the rail reads as a
- *  list of choices rather than a heap of chips at three different widths. */
-function FacetRow({
-  active,
-  onClick,
-  children,
+function LibraryHeader({
+  subtitle,
+  controls,
 }: {
-  active: boolean;
-  onClick: () => void;
-  children: ReactNode;
+  subtitle?: string;
+  controls?: ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={[
-        'w-full rounded-sm px-2 py-1 text-left text-sm transition-colors duration-150',
-        active
-          ? 'bg-parchment/10 text-parchment'
-          : 'text-smoke hover:bg-parchment/5 hover:text-parchment',
-      ].join(' ')}
-    >
-      {children}
-    </button>
-  );
-}
-
-function LibraryHeader({ subtitle, children }: { subtitle?: string; children?: ReactNode }) {
-  return (
-    <header className="rsmm-section-header flex flex-wrap items-end justify-between gap-x-6 gap-y-3 pb-4">
-      <div className="min-w-0 flex-1">
-        <ProfilePopover />
-        {subtitle ? <p className="font-serif-italic mt-2 text-base text-ash">{subtitle}</p> : null}
+    <header className="rsmm-section-header space-y-3 pb-4">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <div className="min-w-0 max-w-full shrink-0 sm:max-w-64">
+          <ProfilePopover />
+        </div>
+        {controls}
       </div>
-      {children ? <div className="shrink-0">{children}</div> : null}
+      {subtitle ? <p className="font-serif-italic text-base text-ash">{subtitle}</p> : null}
     </header>
   );
 }
@@ -169,16 +133,9 @@ function LibraryPage() {
   const adoptMods = useApp((s) => s.adoptMods);
   const activeProfileId = useApp((s) => s.activeProfileId);
   const search = Route.useSearch();
-  const [view, setView] = useState<ViewMode>(search.view ?? 'cards');
-  // Following a Configure link while the Library is already open changes the
-  // search param without remounting, so the view has to track it.
-  // `view` is the value being synced, not an input: listing it would re-run
-  // the effect on every local view change and fight the toolbar.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: see above
-  useEffect(() => {
-    if (search.view && search.view !== view) setView(search.view);
-  }, [search.view]);
+  const view = search.view ?? 'list';
   const [query, setQuery] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [category, setCategory] = useState<ModCategory | 'all'>('all');
   const [status, setStatus] = useState<LibraryStatusFilter>('all');
   const [sort, setSort] = useState<LibrarySort>('load-order');
@@ -192,7 +149,7 @@ function LibraryPage() {
 
   const availableCategories = useMemo(() => {
     const cats = new Set(Object.values(localModsState).map((m) => m.category));
-    return ['all' as const, ...cats];
+    return [...cats];
   }, [localModsState]);
 
   const enabledCount = useMemo(
@@ -254,7 +211,8 @@ function LibraryPage() {
 
   const missingDepCounts = useMemo(() => buildMissingDepCounts(filtered), [filtered]);
 
-  const filterCount = countLibraryFilters({ category, status, query });
+  // Search has its own clear control; the badge counts dialog filters only.
+  const filterCount = countLibraryFilters({ category, status, query: '' });
   const hasDirtyConfigs = dirtyConfigs.size > 0;
   const hasSelection = selected.size > 0;
   const markConfigDirty = useCallback((id: string, dirty: boolean) => {
@@ -299,10 +257,9 @@ function LibraryPage() {
       });
       if (!ok) return;
     }
-    setView(next);
     // Keep the URL in step so a Configure link and the toolbar agree, and so
     // the view survives a reload.
-    void navigate({ to: '/', search: next === 'cards' ? {} : { view: next }, replace: true });
+    void navigate({ to: '/', search: next === 'list' ? {} : { view: next }, replace: true });
   };
 
   const clearSelection = useCallback(() => setSelected(new Set()), []);
@@ -370,7 +327,7 @@ function LibraryPage() {
       });
       if (!ok) return;
 
-      // Card/list buttons call this fire-and-forget — catch here or a
+      // List buttons call this fire-and-forget — catch here or a
       // sidecar failure becomes an unhandled rejection the user never sees.
       setUninstalling((cur) => new Set(cur).add(id));
       try {
@@ -530,313 +487,275 @@ function LibraryPage() {
       <SupportNudge />
       <UpdatesPanel />
       <LibraryHeader
+        controls={
+          <>
+            <div className="min-w-[min(100%,14rem)] flex-1">
+              <RegistrySearchBar
+                query={query}
+                onQueryChange={setQuery}
+                placeholder={t('Search installed mods')}
+                searchLabel={t('Search installed mods')}
+                labels={{
+                  clear: t('Clear search'),
+                  filters: t('Filters'),
+                  activeFilters: t('Filters, {n} active', { n: filterCount }),
+                }}
+                activeFilters={filterCount}
+                filtersOpen={filtersOpen}
+                onOpenFilters={() => setFiltersOpen(true)}
+              />
+            </div>
+            <div className="flex shrink-0 items-center gap-4">
+              <RegistrySortControl<LibrarySort>
+                value={sort}
+                onChange={setSort}
+                label={t('Sort by')}
+                ariaLabel={t('Sort mods')}
+                options={[
+                  { value: 'load-order', label: t('Load order') },
+                  { value: 'name', label: t('Name') },
+                  { value: 'author', label: t('Author') },
+                  { value: 'version', label: t('Version') },
+                ]}
+              />
+              <fieldset className="flex shrink-0 items-center gap-2">
+                <legend className="sr-only">{t('Layout')}</legend>
+                <Button
+                  type="button"
+                  onClick={() => void changeView('list')}
+                  aria-pressed={view === 'list'}
+                  variant={view === 'list' ? 'gilt' : 'default'}
+                  size="sm"
+                  aria-label={t('List view')}
+                >
+                  <List className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void changeView('config')}
+                  aria-pressed={view === 'config'}
+                  variant={view === 'config' ? 'gilt' : 'default'}
+                  size="sm"
+                  aria-label={t('Config view')}
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                </Button>
+              </fieldset>
+            </div>
+          </>
+        }
         subtitle={t.n(
           installed.length,
           '{n} mod in the local folder.',
           '{n} mods in the local folder.',
         )}
-      >
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button
-            type="button"
-            onClick={() => void changeView('cards')}
-            aria-pressed={view === 'cards'}
-            variant={view === 'cards' ? 'gilt' : 'default'}
-            size="sm"
-            aria-label={t('Card view')}
-          >
-            <LayoutGrid className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            onClick={() => void changeView('list')}
-            aria-pressed={view === 'list'}
-            variant={view === 'list' ? 'gilt' : 'default'}
-            size="sm"
-            aria-label={t('List view')}
-          >
-            <List className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            onClick={() => void changeView('config')}
-            aria-pressed={view === 'config'}
-            variant={view === 'config' ? 'gilt' : 'default'}
-            size="sm"
-            aria-label={t('Config view')}
-          >
-            <SlidersHorizontal className="h-4 w-4" />
-          </Button>
-          <Link to="/browse" className="btn-grim ml-2" data-variant="primary">
-            <Plus className="h-4 w-4" /> {t('Add mod')}
-          </Link>
-        </div>
-      </LibraryHeader>
+      />
 
-      {/* Filters live in a rail beside the list, not in a bar above it. As a
-          horizontal strip they wrapped onto two or three rows at narrow widths
-          and pushed the mods themselves below the fold. */}
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_15rem]">
-        {/* The rail stays FIRST in the DOM so that on a narrow window — where
-            the grid collapses to one column — the filters are still above the
-            list rather than stranded below it. `order` moves it to the right
-            only once there are two columns to move it between. */}
-        <aside className="space-y-5 lg:sticky lg:top-4 lg:order-2">
-          <div className="relative">
-            <Search
-              className="-translate-y-1/2 absolute top-1/2 left-3 h-4 w-4 text-ash"
-              aria-hidden
-            />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t('Search…')}
-              aria-label={t('Search installed mods')}
-              className="input-grim w-full pl-9"
-            />
+      {filtersOpen ? (
+        <RegistryFilterDialog
+          value={{
+            category: category === 'all' ? '' : category,
+            status,
+            tags: [],
+            minRating: 0,
+            toggles: {},
+          }}
+          statuses={(Object.keys(STATUS_LABEL) as LibraryStatusFilter[]).map((value) => ({
+            value,
+            label: t(STATUS_LABEL[value]),
+          }))}
+          categories={availableCategories.map((value) => ({
+            value,
+            label: t(CATEGORY_LABEL[value]),
+          }))}
+          tags={[]}
+          ratings={[]}
+          toggles={[]}
+          labels={{
+            title: t('Filters'),
+            close: t('Close filters'),
+            status: t('Status'),
+            category: t('Category'),
+            all: t('All'),
+            clear: t('Clear all'),
+            apply: t('Show mods'),
+          }}
+          onApply={(next) => {
+            setCategory((next.category || 'all') as ModCategory | 'all');
+            setStatus((next.status ?? 'all') as LibraryStatusFilter);
+            setFiltersOpen(false);
+          }}
+          onClose={() => setFiltersOpen(false)}
+          onClear={() => ({ category: '', status: 'all', tags: [], minRating: 0, toggles: {} })}
+        />
+      ) : null}
+
+      <div className="min-w-0 space-y-6">
+        {localModsError ? (
+          <div className="ember-banner flex items-center gap-3 px-4 py-3">
+            <AlertTriangle className="h-4 w-4 text-crimson shrink-0" />
+            <span className="font-serif-italic text-base">
+              {t('Couldn’t reach rsmm CLI. Showing cached library only.')}
+            </span>
+            <CopyButton value={(localModsError as Error).message} />
           </div>
+        ) : null}
 
-          <div className="space-y-1">
-            <FacetLabel icon={<SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />}>
-              {t('Status')}
-            </FacetLabel>
-            {(['all', 'enabled', 'disabled', 'outdated', 'missingDeps'] as const).map((item) => (
-              <FacetRow key={item} active={status === item} onClick={() => setStatus(item)}>
-                {t(STATUS_LABEL[item])}
-              </FacetRow>
-            ))}
+        {unadopted.length > 0 ? (
+          <div className="ember-banner flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+            <span className="font-serif-italic text-base">
+              {t.n(
+                unadopted.length,
+                '1 mod is on disk but not in this profile.',
+                '{n} mods are on disk but not in this profile.',
+              )}
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="primary"
+              onClick={() => {
+                adoptMods(unadopted);
+                toast.push(
+                  t.n(
+                    unadopted.length,
+                    'Added 1 mod from disk to this profile',
+                    'Added {n} mods from disk to this profile',
+                  ),
+                  'success',
+                );
+              }}
+            >
+              {t('Add to profile')}
+            </Button>
           </div>
+        ) : null}
 
-          {availableCategories.length > 1 ? (
-            <div className="space-y-1">
-              <FacetLabel>{t('Category')}</FacetLabel>
-              {availableCategories.map((cat) => (
-                <FacetRow key={cat} active={category === cat} onClick={() => setCategory(cat)}>
-                  {cat === 'all' ? t('All') : t(CATEGORY_LABEL[cat])}
-                </FacetRow>
+        {/* Match the default list layout while local mods are loading. */}
+        {localModsLoading && Object.keys(localModsState).length === 0 ? (
+          <section className="space-y-3 animate-pulse" aria-busy="true">
+            <div className="h-6 w-56 rounded bg-oxblood/20" />
+            <Fleuron />
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  // biome-ignore lint/suspicious/noArrayIndexKey: fixed loading placeholders
+                  key={i}
+                  className="grimoire-card h-11"
+                />
               ))}
             </div>
-          ) : null}
+          </section>
+        ) : null}
 
-          <div className="space-y-2">
-            <FacetLabel icon={<ArrowUpDown className="h-3.5 w-3.5" aria-hidden />}>
-              {t('Sort')}
-            </FacetLabel>
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value as LibrarySort)}
-              className="select-grim w-full py-1.5 text-sm"
-              aria-label={t('Sort mods')}
-            >
-              <option value="load-order">{t('Load order')}</option>
-              <option value="name">{t('Name')}</option>
-              <option value="author">{t('Author')}</option>
-              <option value="version">{t('Version')}</option>
-            </select>
-          </div>
-
-          {/* Always mounted, disabled when idle — mounting it on the first
-              filter click re-flowed the rail under the cursor. */}
-          <Button
-            type="button"
-            onClick={() => {
-              setQuery('');
-              setCategory('all');
-              setStatus('all');
-            }}
-            disabled={filterCount === 0}
-            variant="default"
-            size="sm"
-            className="w-full disabled:cursor-default disabled:opacity-40"
+        {conflicts.length > 0 ? (
+          <Link
+            to="/conflicts"
+            className="ember-banner flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3"
           >
-            <X className="h-4 w-4" /> {t('Clear filters')}
-          </Button>
-        </aside>
-
-        <div className="min-w-0 space-y-6 lg:order-1">
-          {localModsError ? (
-            <div className="ember-banner flex items-center gap-3 px-4 py-3">
-              <AlertTriangle className="h-4 w-4 text-crimson shrink-0" />
-              <span className="font-serif-italic text-base">
-                {t('Couldn’t reach rsmm CLI. Showing cached library only.')}
-              </span>
-              <CopyButton value={(localModsError as Error).message} />
-            </div>
-          ) : null}
-
-          {unadopted.length > 0 ? (
-            <div className="ember-banner flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+            <span className="flex items-center gap-3">
+              <AlertTriangle className="h-4 w-4 text-crimson" />
               <span className="font-serif-italic text-base">
                 {t.n(
-                  unadopted.length,
-                  '1 mod is on disk but not in this profile.',
-                  '{n} mods are on disk but not in this profile.',
+                  conflicts.length,
+                  '{n} conflict between enabled mods.',
+                  '{n} conflicts between enabled mods.',
                 )}
               </span>
-              <Button
-                type="button"
-                size="sm"
-                variant="primary"
-                onClick={() => {
-                  adoptMods(unadopted);
-                  toast.push(
-                    t.n(
-                      unadopted.length,
-                      'Added 1 mod from disk to this profile',
-                      'Added {n} mods from disk to this profile',
-                    ),
-                    'success',
-                  );
-                }}
-              >
-                {t('Add to profile')}
-              </Button>
-            </div>
-          ) : null}
+            </span>
+            <span className="font-mono text-ash">{t('Resolve →')}</span>
+          </Link>
+        ) : null}
 
-          {/* Mirrors a real category section — heading, fleuron, then cards at the
-          same min height in the same grid — so the swap to loaded content is a
-          fade in place rather than the page jumping to a new geometry. */}
-          {localModsLoading && Object.keys(localModsState).length === 0 ? (
-            <section className="space-y-3 animate-pulse" aria-busy="true">
-              <div className="h-6 w-56 rounded bg-oxblood/20" />
-              <Fleuron />
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div
-                    // biome-ignore lint/suspicious/noArrayIndexKey: fixed loading placeholders
-                    key={i}
-                    className="grimoire-card min-h-[15rem]"
-                  />
-                ))}
-              </div>
-            </section>
-          ) : null}
-
-          {conflicts.length > 0 ? (
-            <Link
-              to="/conflicts"
-              className="ember-banner flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3"
-            >
-              <span className="flex items-center gap-3">
-                <AlertTriangle className="h-4 w-4 text-crimson" />
-                <span className="font-serif-italic text-base">
-                  {t.n(
-                    conflicts.length,
-                    '{n} conflict between enabled mods.',
-                    '{n} conflicts between enabled mods.',
-                  )}
-                </span>
-              </span>
-              <span className="font-mono text-ash">{t('Resolve →')}</span>
-            </Link>
-          ) : null}
-
-          {grouped.map(([category, items]) => (
-            <section key={category} className="space-y-3">
-              <h3 className="font-fraktur text-xl text-parchment">{t(CATEGORY_LABEL[category])}</h3>
-              <Fleuron />
-              {view === 'cards' ? (
-                <CardGrid
-                  items={items}
-                  profile={profile}
-                  onOpen={(slug) => navigate({ to: '/mod/$slug', params: { slug } })}
-                  onToggle={handleToggle}
-                  onUninstall={uninstall}
-                  uninstalling={uninstalling}
-                  selected={selected}
-                  onSelect={toggleSelected}
-                  conflictCounts={conflictCountByMod}
-                  missingDeps={missingDepCounts}
-                  onEnableDependency={(depId) => void requestEnableMods([depId])}
-                />
-              ) : view === 'list' ? (
-                <ListView
-                  items={items}
-                  profile={profile}
-                  onOpen={(slug) => navigate({ to: '/mod/$slug', params: { slug } })}
-                  onToggle={handleToggle}
-                  onUninstall={uninstall}
-                  uninstalling={uninstalling}
-                  onReorder={reorderMod}
-                  selected={selected}
-                  onSelect={toggleSelected}
-                  conflictCounts={conflictCountByMod}
-                  missingDeps={missingDepCounts}
-                  onEnableDependency={(depId) => void requestEnableMods([depId])}
-                />
-              ) : (
-                <div className="space-y-4">
-                  {/* Only configurable mods appear here. Rendering a full "declares
+        {grouped.map(([category, items]) => (
+          <section key={category} className="space-y-3">
+            <h3 className="font-fraktur text-xl text-parchment">{t(CATEGORY_LABEL[category])}</h3>
+            <Fleuron />
+            {view === 'list' ? (
+              <ListView
+                items={items}
+                profile={profile}
+                onOpen={(slug) => navigate({ to: '/mod/$slug', params: { slug } })}
+                onToggle={handleToggle}
+                onUninstall={uninstall}
+                uninstalling={uninstalling}
+                onReorder={reorderMod}
+                selected={selected}
+                onSelect={toggleSelected}
+                conflictCounts={conflictCountByMod}
+                missingDeps={missingDepCounts}
+              />
+            ) : (
+              <div className="space-y-4">
+                {/* Only configurable mods appear here. Rendering a full "declares
                   no editable config fields" panel for every other mod buried
                   the two that had settings under eighteen that did not. */}
-                  {items.filter(({ id }) => getMod(id)?.hasConfig).length === 0 ? (
-                    <p className="font-mono text-ash">
-                      {t('No mod in this section declares config fields.')}
-                    </p>
-                  ) : null}
-                  {items.map(({ id }) => {
-                    const mod = getMod(id);
-                    if (!mod?.hasConfig) return null;
-                    return (
-                      <div key={id} id={configAnchorId(id)}>
-                        <ModConfigPanel
-                          modId={id}
-                          modName={mod.name}
-                          enabled={isEnabledIn(profile, id)}
-                          onToggleEnabled={() => handleToggle(id)}
-                          onDirtyChange={markConfigDirty}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
+                {items.filter(({ id }) => getMod(id)?.hasConfig).length === 0 ? (
+                  <p className="font-mono text-ash">
+                    {t('No mod in this section declares config fields.')}
+                  </p>
+                ) : null}
+                {items.map(({ id }) => {
+                  const mod = getMod(id);
+                  if (!mod?.hasConfig) return null;
+                  return (
+                    <div key={id} id={configAnchorId(id)}>
+                      <ModConfigPanel
+                        modId={id}
+                        modName={mod.name}
+                        enabled={isEnabledIn(profile, id)}
+                        onToggleEnabled={() => handleToggle(id)}
+                        onDirtyChange={markConfigDirty}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        ))}
+
+        {view === 'config' && hasDirtyConfigs ? (
+          <div className="ember-banner flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3">
+            <span className="font-serif-italic text-base">
+              {t.n(
+                dirtyConfigs.size,
+                '{n} config panel has unsaved changes.',
+                '{n} config panels have unsaved changes.',
               )}
-            </section>
-          ))}
-
-          {view === 'config' && hasDirtyConfigs ? (
-            <div className="ember-banner flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3">
-              <span className="font-serif-italic text-base">
-                {t.n(
-                  dirtyConfigs.size,
-                  '{n} config panel has unsaved changes.',
-                  '{n} config panels have unsaved changes.',
-                )}
-              </span>
-              <span className="font-mono text-ash">{t('Save or reset before leaving.')}</span>
-            </div>
-          ) : null}
-
-          <div className="font-mono pt-6 text-center text-ash">
-            <div className="flex justify-center">
-              <StatPill value={installed.length} label={t('in folder')} />
-              <StatPill value={enabledCount} label={t('enabled in profile')} className="ml-2" />
-            </div>
+            </span>
+            <span className="font-mono text-ash">{t('Save or reset before leaving.')}</span>
           </div>
+        ) : null}
 
-          {!localModsLoading && filtered.length === 0 ? (
-            <EmptyState
-              title={t('No mods match those filters')}
-              body={t(
-                'Try a broader search or clear one of the filters to show more installed mods.',
-              )}
-              action={
-                <Button
-                  type="button"
-                  onClick={() => {
-                    setQuery('');
-                    setCategory('all');
-                    setStatus('all');
-                  }}
-                  variant="primary"
-                >
-                  {t('Reset filters')}
-                </Button>
-              }
-            />
-          ) : null}
+        <div className="font-mono pt-6 text-center text-ash">
+          <div className="flex justify-center">
+            <StatPill value={installed.length} label={t('in folder')} />
+            <StatPill value={enabledCount} label={t('enabled in profile')} className="ml-2" />
+          </div>
         </div>
+
+        {!localModsLoading && filtered.length === 0 ? (
+          <EmptyState
+            title={t('No mods match those filters')}
+            body={t(
+              'Try a broader search or clear one of the filters to show more installed mods.',
+            )}
+            action={
+              <Button
+                type="button"
+                onClick={() => {
+                  setQuery('');
+                  setCategory('all');
+                  setStatus('all');
+                }}
+                variant="primary"
+              >
+                {t('Reset filters')}
+              </Button>
+            }
+          />
+        ) : null}
       </div>
 
       {hasSelection ? (
@@ -899,156 +818,6 @@ interface RowProps {
   onSelect: (id: string) => void;
   conflictCounts: Map<string, number>;
   missingDeps: Map<string, number>;
-  onEnableDependency: (id: string) => void;
-}
-
-function CardGrid({
-  items,
-  profile,
-  onOpen,
-  onToggle,
-  onUninstall,
-  uninstalling,
-  selected,
-  onSelect,
-  conflictCounts,
-  missingDeps,
-  onEnableDependency,
-}: RowProps) {
-  const t = useT();
-  return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-      {items.map(({ id, orderIdx }) => {
-        const mod = getMod(id);
-        if (!mod) return null;
-        const enabled = isEnabledIn(profile, id);
-        const outdated = mod.version !== mod.latestVersion;
-        const selectedHere = selected.has(id);
-        const depCount = missingDeps.get(id) ?? 0;
-        const conflictCount = conflictCounts.get(id) ?? 0;
-        return (
-          <div
-            key={id}
-            // Card click SELECTS, matching the list. It used to navigate to
-            // the store page, so a mis-aimed click left the library entirely.
-            onClick={(e) => {
-              const el = e.target as HTMLElement;
-              if (el.closest('button, a, input, textarea, select, [role="switch"]')) return;
-              e.preventDefault();
-              onSelect(id);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                onSelect(id);
-              }
-            }}
-            // The card itself is the control; see the list row for why.
-            // biome-ignore lint/a11y/useSemanticElements: composite card, see above
-            role="checkbox"
-            aria-checked={selectedHere}
-            tabIndex={0}
-            className={[
-              'grimoire-card flex h-full cursor-pointer flex-col gap-3 p-5',
-              'transition-colors duration-150',
-              selectedHere ? 'border-gilt/60 bg-gilt/10' : 'hover:border-gilt/40',
-            ].join(' ')}
-          >
-            <header className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <span className="font-serif break-words text-xl leading-tight text-parchment">
-                  {mod.name}
-                </span>
-                <p className="font-data mt-1 text-ash">
-                  {mod.author} · v{mod.version}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => onOpen?.(mod.slug)}
-                className="btn-grim shrink-0 px-2 py-1.5"
-                title={t("Open this mod's store page")}
-                aria-label={t('Open the store page for {name}', { name: mod.name })}
-              >
-                <ExternalLink className="h-4 w-4" />
-              </button>
-            </header>
-            {/* Clamped rather than free-length: an eleven-line summary next to a
-                two-line one left half a card of dead space and knocked every
-                row of the grid out of alignment. The full text is on the
-                store page. */}
-            <p className="line-clamp-3 text-sm leading-snug text-smoke">{mod.summary}</p>
-            {/* Status tags mount and unmount as a toggle changes conflict and
-                dependency counts. They get their own reserved-height row so
-                that reflow can never reach the controls below. */}
-            <div className="flex min-h-[1.75rem] flex-wrap items-center gap-2">
-              {outdated ? (
-                <MonoTag tone="gilt">
-                  {t('Update {version}', { version: mod.latestVersion })}
-                </MonoTag>
-              ) : null}
-              {depCount > 0 ? (
-                <MonoTag tone="crimson">
-                  {t.n(depCount, '{n} missing dep', '{n} missing deps')}
-                </MonoTag>
-              ) : null}
-              {conflictCount > 0 ? (
-                <MonoTag tone="crimson">
-                  {t.n(conflictCount, '{n} conflict', '{n} conflicts')}
-                </MonoTag>
-              ) : null}
-              <MonoTag tone="default">{t(CATEGORY_LABEL[mod.category])}</MonoTag>
-              <StatPill value={`#${orderIdx + 1}`} label={t('load')} className="tracking-normal" />
-            </div>
-            <DependencyStrip mod={mod} profile={profile} onEnableDependency={onEnableDependency} />
-            {/* mt-auto pins the actions to the card's bottom edge, so every
-                card in a grid row puts the switch and uninstall button at the
-                same y — and a tag appearing above never moves them. */}
-            {/* flex-wrap because the row's contents are conditional: a mod with
-                both a config schema and an overlay carries four controls, which
-                overflowed the card at a narrow grid width. */}
-            <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
-              <InkSwitch
-                on={enabled}
-                onClick={() => onToggle(id)}
-                label={
-                  enabled
-                    ? t('Disable {name}', { name: mod.name })
-                    : t('Enable {name}', { name: mod.name })
-                }
-              />
-              {/* ml-auto lives on the GROUP, not on the first button: the
-                  overlay button renders only for a mod that declares an
-                  [overlay] block, and hanging the alignment off it would
-                  left-align uninstall on every other card. */}
-              <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-                <ConfigButton
-                  modId={id}
-                  modName={mod.name}
-                  hasConfig={mod.hasConfig}
-                  enabled={enabled}
-                  onToggleEnabled={() => onToggle(id)}
-                />
-                <OverlayButton modId={id} />
-                <Button
-                  type="button"
-                  onClick={() => onUninstall(id)}
-                  disabled={uninstalling.has(id)}
-                  variant="danger"
-                  size="sm"
-                  className="px-2"
-                  title={t('Uninstall this mod')}
-                  aria-label={t('Uninstall {name}', { name: mod.name })}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
 }
 
 function ListView({
@@ -1227,55 +996,5 @@ function ListView({
         );
       })}
     </ul>
-  );
-}
-
-function DependencyStrip({
-  mod,
-  profile,
-  onEnableDependency,
-}: {
-  mod: NonNullable<ReturnType<typeof getMod>>;
-  profile: ReturnType<typeof activeProfile>;
-  onEnableDependency: (id: string) => void;
-}) {
-  const t = useT();
-  if (mod.dependencies.length === 0) return null;
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span className="font-mono text-xs text-ash">{t('Requires')}</span>
-      {mod.dependencies.map((depId) => {
-        const dep = getMod(depId);
-        const enabled = dep ? isEnabledIn(profile, depId) : false;
-        if (!dep) {
-          return (
-            <MonoTag key={depId} tone="crimson">
-              {t('{id} missing', { id: depId })}
-            </MonoTag>
-          );
-        }
-        return enabled ? (
-          <Link key={depId} to="/mod/$slug" params={{ slug: dep.slug }} className="rounded-sm">
-            <MonoTag
-              tone="gilt"
-              className="transition-colors duration-150 hover:border-gilt/80 hover:text-parchment"
-            >
-              {dep.name}
-            </MonoTag>
-          </Link>
-        ) : (
-          <button
-            key={depId}
-            type="button"
-            onClick={() => onEnableDependency(depId)}
-            className="rounded-sm"
-          >
-            <MonoTag className="transition-colors duration-150 hover:border-gilt/50 hover:text-parchment">
-              {dep.name}
-            </MonoTag>
-          </button>
-        );
-      })}
-    </div>
   );
 }
