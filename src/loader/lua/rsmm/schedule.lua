@@ -36,6 +36,8 @@ local _msgh = _G.rsmm and _G.rsmm._internal and _G.rsmm._internal.traceback
 -- timer, drop the noise.
 local LOG_LIMIT = 3
 local SILENCE_AT = 20
+-- A timer callback this long is a dropped frame at 60 fps (see _drain).
+local SLOW_S = 0.016
 
 -- Run one scheduled callback, reporting at most LOG_LIMIT consecutive failures.
 -- `slot` is any table used to hold the streak (the timer entry, or a shared
@@ -74,10 +76,28 @@ local _next_timer = 0
 -- lists by index, so a `table.remove` under it shifts entries past the cursor
 -- and silently drops them.
 local _by_id = {}
+-- Where a repeater was created ("init.lua:150"), so a slow-timer line names it.
+-- Only for repeaters: one-shots are re-armed by the hundred (R.camera's search
+-- pump queues one every 25 ms) and a traceback each would cost more than the
+-- timing saves. The loader's "tick" already reports the mod's total time
+-- (issue #175); this narrows it to the one callback.
+local function _site()
+    local tb_fn = _G.rsmm and _G.rsmm._internal and _G.rsmm._internal.traceback
+    if not tb_fn then return nil end
+    local ok, tb = pcall(tb_fn, "")
+    if not ok or type(tb) ~= "string" then return nil end
+    for line in tb:gmatch("[^\n]+") do
+        local at = line:match("([^/\\%s%[\"]+%.lua:%d+):")
+        if at and not at:find("^schedule%.lua") then return at end
+    end
+    return nil
+end
+
 local function _add(list, seconds, fn, repeating)
     _next_timer = _next_timer + 1
     local t = { id = _next_timer, fire_at = _now() + seconds,
-                every = repeating and seconds or nil, fn = fn }
+                every = repeating and seconds or nil, fn = fn,
+                site = repeating and _site() or nil }
     _by_id[t.id] = t
     table.insert(list, t)
     return t.id
@@ -129,7 +149,21 @@ local function _drain(list, label, store)
         -- entry and would write it straight back, so the timer ran forever.
         if t and not t.cancelled then
             if t.fire_at <= now then
+                local t0 = _now()
                 _run(t, label, t.fn)
+                local took = _now() - t0
+                -- The game waits on this: every Lua callback holds the one
+                -- lock its own hooks need. Once a minute per timer at most.
+                if took >= SLOW_S and _G.rsmm
+                        and (not t.slow_said or t0 - t.slow_said >= 60) then
+                    t.slow_said = t0
+                    _G.rsmm.log(("[perf] schedule.%s%s callback%s took %.1f ms; it holds "
+                        .. "the shared Lua lock, so the game hitches. Spread the work "
+                        .. "over several calls or cache what it looks up.")
+                        :format(t.every and "every" or label,
+                                t.every and ("(" .. t.every .. ")") or "",
+                                t.site and (" at " .. t.site) or "", took * 1000))
+                end
                 -- A repeater survives a raising callback: a transient failure
                 -- (hero not spawned yet, say) shouldn't silently kill it.
                 -- Re-arm off `now`, not fire_at, so a stalled pump doesn't

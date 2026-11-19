@@ -243,6 +243,7 @@ static void loader_thread_cxx() {
                     if (((n + 1) & 1) == 0) {
                         rsmm::script_reload_changed();
                     }
+                    rsmm::perf_report();   // self-paced: a summary every 5 min
                 } catch (const std::exception& e) {
                     rsmm::Loader::get().log(std::string("[tick] aborted: ") + e.what());
                 } catch (...) {

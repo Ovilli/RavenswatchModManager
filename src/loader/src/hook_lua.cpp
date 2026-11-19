@@ -50,6 +50,7 @@ extern "C" {
 #include "hook_util.h"
 #include "lua_err.h"
 #include "mem_safe.h"
+#include "script_lua.h"   // perf_note / perf_note_wait (issue #175)
 
 #include "MinHook.h"
 
@@ -124,6 +125,7 @@ constexpr int kCallbackErrorLimit = 20;
 // read on the error path, where it is fetched under the lock instead, and the
 // signature is bounded at 9 characters by sig_validate so it fits inline.
 struct SlotView {
+    std::uintptr_t target_va = 0;   // perf label only
     void*      trampoline = nullptr;
     lua_State* L = nullptr;
     int        cb_ref = LUA_NOREF;
@@ -137,6 +139,7 @@ struct SlotView {
 // Caller must hold g_slots_mu.
 SlotView view_of_locked(const Slot& s) {
     SlotView v;
+    v.target_va = s.target_va;
     v.trampoline = s.trampoline;
     v.L = s.L;
     v.cb_ref = s.cb_ref;
@@ -302,6 +305,9 @@ std::uint64_t pull_ret(lua_State* L, int idx, char t) {
 // hooked function may itself call another hooked function: the inner
 // dispatch must not consume or clobber the outer frame's flag.
 thread_local bool tl_next_called = false;
+// Time spent in the original via `next` during the current callback, so the
+// perf figure is the mod's own Lua time. Saved/restored like tl_next_called.
+thread_local std::uint64_t tl_next_us = 0;
 
 int lua_hook_next(lua_State* L) {
     const int slot = static_cast<int>(lua_tointeger(L, lua_upvalueindex(1)));
@@ -332,7 +338,9 @@ int lua_hook_next(lua_State* L) {
         a[i] = pull_arg(L, 1 + i, args_sv[i]);
     }
     tl_next_called = true;
+    const auto t0 = perf_now_us();
     const std::uint64_t raw = call_trampoline(snap.shape, snap.trampoline, a);
+    tl_next_us += perf_now_us() - t0;   // the game's time, not the callback's
     push_arg(L, ret_t, raw);
     return ret_t == 'v' ? 0 : 1;
 }
@@ -346,7 +354,9 @@ std::uint64_t dispatch(int slot, std::uint64_t* a) {
     // down (trampoline freed, callback unref'd) while we run below. Lock order
     // is script -> slots everywhere, so this cannot deadlock against install /
     // uninstall / next, all of which are entered from Lua.
+    const auto wait_from = perf_now_us();
     std::lock_guard<std::recursive_mutex> g(script_lua_mutex());
+    perf_note_wait(perf_now_us() - wait_from);
     SlotView snap;
     {
         // One acquisition, not two: snapshot and bump the counter together.
@@ -383,10 +393,22 @@ std::uint64_t dispatch(int slot, std::uint64_t* a) {
     // A hooked function can call another hooked function, so this frame's
     // "did the callback call next?" must not be confused with an inner one's.
     const bool saved_next_called = tl_next_called;
+    const std::uint64_t saved_next_us = tl_next_us;
     tl_next_called = false;
+    tl_next_us = 0;
+    const auto t0 = perf_now_us();
     const int pcall_rc = lua_pcall_traced(L, total, 1);
+    const auto spent = perf_now_us() - t0;
+    {
+        const auto own = spent > tl_next_us ? spent - tl_next_us : 0;
+        char what[32];
+        std::snprintf(what, sizeof(what), "hook 0x%llx",
+                      static_cast<unsigned long long>(snap.target_va));
+        perf_note(L, what, own);
+    }
     const bool next_called = tl_next_called;
     tl_next_called = saved_next_called;
+    tl_next_us = saved_next_us;
 
     if (pcall_rc != LUA_OK) {
         int streak;

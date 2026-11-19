@@ -2034,6 +2034,22 @@ do
     check(#sched_logged == 4,
           "but it logs only the first 3 failures plus one silencing notice, not 30")
 
+    -- Issue #175: a slow timer callback holds the shared Lua lock the game's
+    -- hooks need, so it is named in the log — once a minute, not per fire.
+    ;(function()
+        local said = {}
+        rsmm.log = function(...) said[#said + 1] = table.concat({ ... }, " ") end
+        local slow = R.schedule.every(1, function() fake_clock = fake_clock + 0.05 end)
+        for _ = 1, 5 do
+            fake_clock = fake_clock + 1.5
+            R.schedule._tick()
+        end
+        R.schedule.cancel(slow)
+        rsmm.log = saved_sched_log
+        check(#said == 1 and said[1]:find("[perf] schedule.every(1) callback", 1, true)
+              and said[1]:find("50.0 ms", 1, true), "a slow repeater is reported once, with its time")
+    end)()
+
     -- Cancelling from OUTSIDE a drain still works, and is idempotent.
     local never = R.schedule.every(1, function() check(false, "cancelled timer ran") end)
     check(R.schedule.cancel(never), "cancel reports it stopped a live timer")
@@ -11090,6 +11106,22 @@ do
     local again = R.camera.cameras()
     check(again and #again == 3 and I.reads.single - s2 < first_reads / 10,
           "a re-check reads only the slots that held cameras")
+    -- Issue #175: the arrays grow in combat. A grown array re-reads the cached
+    -- camera slots and the new tail, never the thousands of slots before it.
+    ;(function()
+        for _, e in ipairs({ { ENT_B, ARR_B, 3000 }, { ENT_A, ARR_A, 3200 } }) do
+            for i = e[3], e[3] + 9 do I.write_u64(e[2] + i * 8, FILL) end
+            I.write_u32(e[1] + 0x198, e[3] + 10)
+        end
+        clock3 = clock3 + 2
+        local s3 = I.reads.single
+        local grown = R.camera.cameras()
+        check(grown and #grown == 3 and I.reads.single - s3 < first_reads / 10,
+              "a grown component array reads only its new tail")
+        I.write_u32(ENT_B + 0x198, 3000); I.write_u32(ENT_A + 0x198, 3200)
+        clock3 = clock3 + 2
+        R.camera.cameras()
+    end)()
     -- With a hero that reads local, only that hero's components are read: the
     -- ally's are never touched, even though it is published and in the ring.
     shared[9] = CTL_B
