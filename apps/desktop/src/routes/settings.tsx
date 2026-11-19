@@ -121,7 +121,7 @@ function SettingsPage() {
               className="inline-flex items-center gap-2 rounded py-1 text-sm font-semibold text-smoke transition-colors duration-150 hover:text-parchment"
             >
               <Github className="h-5 w-5 shrink-0" aria-hidden="true" />
-              {t('Repository')}
+              {t('Github')}
             </a>
           </div>
         }

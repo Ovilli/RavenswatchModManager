@@ -340,6 +340,7 @@ export const zhCN: Record<string, string> = {
   General: '常规',
   'Generate assets and apply the current mod set in one pass.':
     '一次性生成资源并应用当前模组集合。',
+  Github: 'Github',
   Graphics: '图形',
   Grimoire: '魔典',
   'Hide exactly what is uploaded': '隐藏上传内容预览',
