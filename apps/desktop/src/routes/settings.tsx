@@ -1,9 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { invoke } from '@tauri-apps/api/core';
-import { Activity, ChevronDown, EyeOff, ShieldAlert, Sparkles, Trash2 } from 'lucide-react';
+import { Activity, ChevronDown, EyeOff, Github, ShieldAlert, Sparkles, Trash2 } from 'lucide-react';
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { AboutPanels } from '../components/about-panels';
 import { Button, Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
+import { DiscordIcon } from '../components/icons/DiscordIcon';
 import { useLaunch } from '../components/launch';
 import { useToast } from '../components/toast';
 import { UpdaterSettings } from '../components/updater';
@@ -99,7 +100,32 @@ function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <SectionHeader title={t('Settings')} subtitle={t('Where things live. How they look.')} />
+      <SectionHeader
+        title={t('Settings')}
+        className="items-center"
+        right={
+          <div className="flex flex-wrap items-center justify-end gap-6">
+            <a
+              href="https://discord.gg/dZbsKBWjSF"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="inline-flex items-center gap-2 rounded py-1 text-sm font-semibold text-smoke transition-colors duration-150 hover:text-parchment"
+            >
+              <DiscordIcon className="h-5 w-5 shrink-0" />
+              {t('Discord')}
+            </a>
+            <a
+              href="https://github.com/Ravenswatch-Modding/RavenswatchModManager"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="inline-flex items-center gap-2 rounded py-1 text-sm font-semibold text-smoke transition-colors duration-150 hover:text-parchment"
+            >
+              <Github className="h-5 w-5 shrink-0" aria-hidden="true" />
+              {t('Github')}
+            </a>
+          </div>
+        }
+      />
 
       <SettingsTabs value={tab} onChange={setTab} />
 
