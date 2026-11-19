@@ -17,7 +17,6 @@ import { WindowMaximizeIcon } from '../components/icons/WindowMaximizeIcon';
 import { WindowMinimizeIcon } from '../components/icons/WindowMinimizeIcon';
 import { WindowRestoreIcon } from '../components/icons/WindowRestoreIcon';
 import { LaunchProvider, useLaunch } from '../components/launch';
-import { ProfilePopover } from '../components/profile-popover';
 import { SidebarTooltip } from '../components/sidebar-tooltip';
 import { DialogProvider, ToastProvider } from '../components/toast';
 import { UpdaterBanner, VersionFooter } from '../components/updater';
@@ -500,7 +499,15 @@ function RootLayout() {
                       </button>
                     ) : null}
                   </div>
-                  {collapsed ? null : <ProfilePopover />}
+                  {collapsed ? null : (
+                    <div
+                      className="min-w-0 flex-1 font-serif-italic text-lg leading-tight text-parchment"
+                      data-tauri-drag-region
+                    >
+                      <span className="block">Ravenswatch</span>
+                      <span className="block">Mod Manager</span>
+                    </div>
+                  )}
                   {collapsed ? null : <SidebarSearch collapsed={false} />}
                   {collapsed ? null : (
                     <button

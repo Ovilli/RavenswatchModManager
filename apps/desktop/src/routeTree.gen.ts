@@ -16,7 +16,6 @@ import { Route as BrowseRouteImport } from './routes/browse';
 import { Route as CommandsRouteImport } from './routes/commands';
 import { Route as ConflictsRouteImport } from './routes/conflicts';
 import { Route as LogRouteImport } from './routes/log';
-import { Route as ProfilesRouteImport } from './routes/profiles';
 import { Route as SettingsRouteImport } from './routes/settings';
 import { Route as SigninRouteImport } from './routes/signin';
 import { Route as CollectionSlugRouteImport } from './routes/collection.$slug';
@@ -57,11 +56,6 @@ const LogRoute = LogRouteImport.update({
   path: '/log',
   getParentRoute: () => rootRouteImport,
 } as any);
-const ProfilesRoute = ProfilesRouteImport.update({
-  id: '/profiles',
-  path: '/profiles',
-  getParentRoute: () => rootRouteImport,
-} as any);
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -91,7 +85,6 @@ export interface FileRoutesByFullPath {
   '/commands': typeof CommandsRoute;
   '/conflicts': typeof ConflictsRoute;
   '/log': typeof LogRoute;
-  '/profiles': typeof ProfilesRoute;
   '/settings': typeof SettingsRoute;
   '/signin': typeof SigninRoute;
   '/collection/$slug': typeof CollectionSlugRoute;
@@ -105,7 +98,6 @@ export interface FileRoutesByTo {
   '/commands': typeof CommandsRoute;
   '/conflicts': typeof ConflictsRoute;
   '/log': typeof LogRoute;
-  '/profiles': typeof ProfilesRoute;
   '/settings': typeof SettingsRoute;
   '/signin': typeof SigninRoute;
   '/collection/$slug': typeof CollectionSlugRoute;
@@ -120,7 +112,6 @@ export interface FileRoutesById {
   '/commands': typeof CommandsRoute;
   '/conflicts': typeof ConflictsRoute;
   '/log': typeof LogRoute;
-  '/profiles': typeof ProfilesRoute;
   '/settings': typeof SettingsRoute;
   '/signin': typeof SigninRoute;
   '/collection/$slug': typeof CollectionSlugRoute;
@@ -136,7 +127,6 @@ export interface FileRouteTypes {
     | '/commands'
     | '/conflicts'
     | '/log'
-    | '/profiles'
     | '/settings'
     | '/signin'
     | '/collection/$slug'
@@ -150,7 +140,6 @@ export interface FileRouteTypes {
     | '/commands'
     | '/conflicts'
     | '/log'
-    | '/profiles'
     | '/settings'
     | '/signin'
     | '/collection/$slug'
@@ -164,7 +153,6 @@ export interface FileRouteTypes {
     | '/commands'
     | '/conflicts'
     | '/log'
-    | '/profiles'
     | '/settings'
     | '/signin'
     | '/collection/$slug'
@@ -179,7 +167,6 @@ export interface RootRouteChildren {
   CommandsRoute: typeof CommandsRoute;
   ConflictsRoute: typeof ConflictsRoute;
   LogRoute: typeof LogRoute;
-  ProfilesRoute: typeof ProfilesRoute;
   SettingsRoute: typeof SettingsRoute;
   SigninRoute: typeof SigninRoute;
   CollectionSlugRoute: typeof CollectionSlugRoute;
@@ -237,13 +224,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LogRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    '/profiles': {
-      id: '/profiles';
-      path: '/profiles';
-      fullPath: '/profiles';
-      preLoaderRoute: typeof ProfilesRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
     '/settings': {
       id: '/settings';
       path: '/settings';
@@ -283,7 +263,6 @@ const rootRouteChildren: RootRouteChildren = {
   CommandsRoute: CommandsRoute,
   ConflictsRoute: ConflictsRoute,
   LogRoute: LogRoute,
-  ProfilesRoute: ProfilesRoute,
   SettingsRoute: SettingsRoute,
   SigninRoute: SigninRoute,
   CollectionSlugRoute: CollectionSlugRoute,
