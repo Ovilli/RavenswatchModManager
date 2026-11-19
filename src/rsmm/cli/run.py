@@ -560,9 +560,17 @@ def _spawn_restore_watcher() -> None:
 
     A spawn failure only warns: the launch itself already succeeded.
     """
+    from rsmm.engine.host_env import host_env
+
     cmd = self_cmd(["watch-restore"])
+    # A frozen onefile child started with the inherited environment reuses
+    # THIS process's unpacked _MEI dir, which is deleted the moment we exit —
+    # so the watcher died before its first line and the install stayed modded
+    # (a later Steam launch was still modded). Reset makes it unpack its own.
+    env = dict(host_env() or os.environ)
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
     kw: dict = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
-                "stderr": subprocess.DEVNULL, "cwd": REPO_ROOT}
+                "stderr": subprocess.DEVNULL, "cwd": REPO_ROOT, "env": env}
     try:
         if sys.platform == "win32":
             flags = (subprocess.DETACHED_PROCESS  # type: ignore[attr-defined]
@@ -575,9 +583,7 @@ def _spawn_restore_watcher() -> None:
                 # A job that forbids breakaway rejects the flag.
                 subprocess.Popen(cmd, creationflags=flags, **kw)
         else:
-            from rsmm.engine.host_env import host_env
-
-            subprocess.Popen(cmd, env=host_env(), start_new_session=True, **kw)
+            subprocess.Popen(cmd, start_new_session=True, **kw)
     except OSError as e:
         print(f"Could not start the restore watcher: {e}. Run `rsmm restore` "
               "after the game closes.", file=sys.stderr)

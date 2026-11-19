@@ -221,3 +221,14 @@ def test_spawn_failure_only_warns(monkeypatch, capsys):
     monkeypatch.setattr(run_mod.subprocess, "Popen", boom)
     run_mod._spawn_restore_watcher()
     assert "Could not start the restore watcher" in capsys.readouterr().err
+
+
+def test_watcher_unpacks_its_own_bundle(monkeypatch):
+    """A frozen onefile child inheriting our env reuses our _MEI dir, which is
+    deleted when `rsmm run` exits — the watcher then dies before restoring."""
+    from rsmm.cli import run as run_mod
+
+    seen = {}
+    monkeypatch.setattr(run_mod.subprocess, "Popen", lambda *_a, **k: seen.update(k))
+    run_mod._spawn_restore_watcher()
+    assert seen["env"]["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
