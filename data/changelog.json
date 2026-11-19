@@ -2,6 +2,20 @@
   "generated": "2026-11-19",
   "entries": [
     {
+      "version": "6.0.0",
+      "date": "2026-11-19",
+      "summary": "Profiles move into Library, installs land in the active profile, and the loader runs smoother after the 2026-11-17 game patch.",
+      "highlights": [
+        "Library now holds profile management, a refreshed empty state, and installs go straight into your active profile",
+        "Collection cards and registry listings share one look; signed-in users see registry reviews in the app",
+        "Footer shows the installed loader version and whether it is active",
+        "Linux AppImage updates in place and its launcher has an icon",
+        "Loader: 19 data globals relocated for the 2026-11-17 patch, plus camera and hot-reload stall fixes",
+        "Hero tab can rebuild a game hero from scratch, with undo/redo"
+      ],
+      "loader_version": 63
+    },
+    {
       "version": "",
       "date": "2026-11-19",
       "summary": "Restore vanilla after a modded launch: the restore watcher no longer dies on start in the packaged app, so launching from Steam afterwards is vanilla again (#211)",
@@ -493,18 +507,6 @@
         "Lint warns when an item's effect changes a stat the game never reads"
       ],
       "cli_version": 9
-    },
-    {
-      "version": "",
-      "date": "2026-10-22",
-      "summary": "Editor: card text no longer garbled in a local clone; clearer tabs, custom item flow and talent builder",
-      "highlights": [
-        "Item and talent card text is readable again in the local editor (a font table and page from different game builds were paired)",
-        "Tabs say what each editor does, and a short tour opens on first launch",
-        "\"+ New custom item\" starts a new item from a copy of a shipped one",
-        "Talent builder blocks are named, say what they do in plain words, and show each rarity's number as the card shows it"
-      ],
-      "cli_version": 8
     }
   ]
 }
