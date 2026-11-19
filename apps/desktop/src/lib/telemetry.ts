@@ -143,3 +143,91 @@ export function wireGlobalErrorHandlers() {
     });
   });
 }
+
+/** Structural slice of `LoaderPerfReport` (lib/rsmm.ts), kept here so this
+ *  module does not import the CLI bridge just for a type. */
+interface PerfFigures {
+  calls: number;
+  lua_ms: number;
+  max_ms: number;
+  max_in: string;
+  slow: number;
+}
+interface PerfReport {
+  session_s?: number;
+  session?: string;
+  lua_ms: number;
+  slow_calls: number;
+  wait_max_ms: number;
+  session_wait_max_ms: number;
+  mods: Record<
+    string,
+    PerfFigures & { heap_kb: number; heap_first_kb: number; session?: PerfFigures }
+  >;
+}
+
+const PERF_TOP_MODS = 12;
+const SLOW_MS = 16;
+
+/**
+ * The `/telemetry/run` body for one game session's loader performance report
+ * (issue #175). Whole-session figures where the loader has them, the busiest
+ * mods first, trimmed well inside the 50-key / 10 KB payload limit. `ok` is
+ * false when anything held the game up for a frame or more.
+ */
+export function perfRunBody(report: PerfReport, os = detectOs()): TelemetryRun {
+  const mods = Object.entries(report.mods)
+    .map(([id, m]) => {
+      const s = m.session ?? m;
+      return {
+        id,
+        luaMs: Math.round(s.lua_ms),
+        calls: s.calls,
+        maxMs: Math.round(s.max_ms * 10) / 10,
+        maxIn: s.max_in.slice(0, 48),
+        slow: s.slow,
+        heapKb: m.heap_kb,
+        heapGrowKb: m.heap_kb - m.heap_first_kb,
+      };
+    })
+    .sort((a, b) => b.luaMs - a.luaMs)
+    .slice(0, PERF_TOP_MODS);
+  const slow = mods.reduce((n, m) => n + m.slow, 0);
+  const waitMax = Math.max(report.session_wait_max_ms, report.wait_max_ms);
+  return {
+    rsmmVersion: RSMM_VERSION,
+    os,
+    ok: slow === 0 && waitMax < SLOW_MS,
+    durationMs: report.session_s ? Math.round(report.session_s * 1000) : undefined,
+    payload: {
+      kind: 'loader-perf',
+      slowCalls: slow,
+      waitMaxMs: Math.round(waitMax * 10) / 10,
+      modCount: Object.keys(report.mods).length,
+      mods,
+    },
+  };
+}
+
+const PERF_SENT_KEY = 'rsmm.perfSentSession';
+
+/** Send the last finished game session's performance report, once. Skipped
+ *  while the game runs (the report is still being rewritten) and when usage
+ *  reports are off. Best-effort: any failure just tries again next start. */
+export async function reportLoaderPerf() {
+  if (!useApp.getState().settings.usageReports || !shouldUploadCrash()) return;
+  try {
+    const { gameStatus, loaderPerf } = await import('./rsmm');
+    const st = await gameStatus();
+    if (!st || st.running) return;
+    const res = await loaderPerf();
+    const report = res?.report;
+    if (!report) return;
+    const key = report.session ?? String(res.mtime);
+    if (localStorage.getItem(PERF_SENT_KEY) === key) return;
+    await api.telemetry.run(perfRunBody(report));
+    localStorage.setItem(PERF_SENT_KEY, key);
+  } catch {
+    // best-effort
+  }
+}

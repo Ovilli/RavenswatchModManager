@@ -3,6 +3,8 @@
 #include <filesystem>
 #include <string>
 
+struct lua_State;   // Lua's own C type; full definition in lua.h
+
 namespace rsmm {
 
 // Per-mod Lua runtime. Each mod gets its own lua_State; the loader owns
@@ -75,6 +77,15 @@ bool script_has_wildcard();
 // and the native loader. Backs rsmm._internal.shared_get/shared_set; also used
 // by native infrastructure that must publish a handle to all Lua states (e.g.
 // the once-installed hero-capture writes the hero pointer here). Atomic.
+// Performance telemetry (issue #175). perf_note: `us` spent in one Lua call on
+// state `L`, labelled `what`; caller holds the script lock. perf_note_wait: how
+// long a game thread waited for that lock. perf_report: called from the ticker;
+// every 5 minutes logs a [perf] summary and writes mods/_perf.json.
+std::uint64_t perf_now_us();
+void perf_note(::lua_State* L, const char* what, std::uint64_t us);
+void perf_note_wait(std::uint64_t us);
+void perf_report();
+
 void     shared_set(int slot, std::uint64_t value);
 std::uint64_t shared_get(int slot);
 

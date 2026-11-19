@@ -44,6 +44,7 @@ extern "C" {
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -115,6 +116,20 @@ struct ModScript {
     // The loader-owned state (script_run_builtin_init): no mod root, no
     // config, no hot reload.
     bool builtin = false;
+    // Time this state's Lua spent holding g_mu (see perf_note). Window totals
+    // reset at each report; heap_first_kb is the first heap sample, so the
+    // report can show growth over the session.
+    struct Perf {
+        std::uint64_t calls = 0, total_us = 0, max_us = 0, slow = 0;
+        std::string max_what;
+        std::uint64_t last_warn_us = 0;
+        std::size_t heap_first_kb = 0;
+        // Whole-session figures, folded in at each report: the window alone
+        // loses the bad stretch once the player has quit to the menu.
+        std::uint64_t sess_calls = 0, sess_us = 0, sess_max_us = 0, sess_slow = 0;
+        std::string sess_max_what;
+        bool heap_warned = false;
+    } perf;
 };
 
 constexpr const char* kBuiltinId = "_rsmm";
@@ -2690,7 +2705,11 @@ void clear_handler_errors(const std::string& mod_id, const std::string& event) {
 // keep the one-argument form.
 template <class PushPayload>
 void emit_locked(const std::string& name, PushPayload push_payload) {
+    const auto wait_from = perf_now_us();
     std::lock_guard<std::recursive_mutex> g(g_mu);
+    // "tick" comes from the loader's own ticker thread; every other event is
+    // published from a game detour, so its wait is the game's wait.
+    if (name != "tick") perf_note_wait(perf_now_us() - wait_from);
     // Iterate over a SNAPSHOT of (id, state). The mutex is recursive, so a
     // handler that re-enters the loader (an engine call whose detour publishes
     // another event, a hot-reload) runs on this same thread while we hold the
@@ -2719,7 +2738,10 @@ void emit_locked(const std::string& name, PushPayload push_payload) {
                 lua_rawgeti(L, -1, i);     // handler fn
                 push_payload(L);           // arg 1: payload table
                 if (wildcard) lua_pushlstring(L, name.data(), name.size());  // arg 2
-                if (lua_pcall_traced(L, wildcard ? 2 : 1, 0) != LUA_OK) {
+                const auto t0 = perf_now_us();
+                const int rc = lua_pcall_traced(L, wildcard ? 2 : 1, 0);
+                perf_note(L, name.c_str(), perf_now_us() - t0);
+                if (rc != LUA_OK) {
                     log_handler_error(id, name, lua_err_str(L));
                     lua_pop(L, 1);
                 } else {
@@ -2766,17 +2788,28 @@ void script_reload_changed() {
     // down the lua_State and re-run init. The mod's own subscribers
     // (rsmm.on_event) live inside the registry table, so closing
     // lua_close drops them automatically — no stale callbacks remain.
-    std::vector<std::pair<std::string, std::filesystem::path>> to_reload;
+    // Snapshot under the lock, walk the disk WITHOUT it. This runs every second
+    // and stats up to 512 files per mod; holding g_mu across that made every
+    // game-thread Lua hook wait on the filesystem (Wine's FS layer under
+    // Proton), once a second for the whole session (issue #175).
+    struct Watched {
+        std::string id;
+        std::filesystem::path root;
+        std::filesystem::file_time_type seen;
+    };
+    std::vector<Watched> watched;
     {
         std::lock_guard<std::recursive_mutex> g(g_mu);
         for (auto& [id, s] : g_scripts) {
             if (s.builtin) continue;   // no mod root, nothing on disk to watch
-            const auto mt = newest_lua_mtime(s.root);
-            if (mt == std::filesystem::file_time_type{}) continue;
-            if (mt != s.init_mtime) {
-                to_reload.emplace_back(id, s.root);
-            }
+            watched.push_back({id, s.root, s.init_mtime});
         }
+    }
+    std::vector<std::pair<std::string, std::filesystem::path>> to_reload;
+    for (const auto& w : watched) {
+        const auto mt = newest_lua_mtime(w.root);
+        if (mt == std::filesystem::file_time_type{}) continue;
+        if (mt != w.seen) to_reload.emplace_back(w.id, w.root);
     }
     for (auto& [id, root] : to_reload) {
         Loader::get().log("[lua] " + id + " reload (init.lua changed)");
@@ -2807,6 +2840,195 @@ void script_reload_changed() {
         // Replay "ready" so handlers re-register and fire once.
         script_emit_event("ready");
     }
+}
+
+// -- performance telemetry (issue #175) --------------------------------------
+//
+// Every Lua entry point runs under the one g_mu, and the game's own threads
+// take it too (hook_lua dispatch, input and event detours). So a mod that
+// spends 40 ms in a timer is a 40 ms hitch for the game, not just for that mod,
+// and the log never said which mod. Two choke points see every call:
+// emit_locked (events, incl. the 500 ms "tick" that drives R.schedule) and
+// hook_lua's dispatch. Both already hold g_mu, so the counters need no lock
+// of their own; only the lock-wait figures are touched outside it.
+
+namespace {
+constexpr std::uint64_t kSlowCallUs   = 16'000;       // one frame at 60 fps
+constexpr std::uint64_t kWarnEveryUs  = 60'000'000;   // per mod, for slow-call lines
+// _perf.json every minute, so a short test session still leaves a report (the
+// detach at process exit cannot touch Lua). The log summary goes out on the
+// first report, then every 5th, or at once for a minute that had a hitch.
+constexpr std::uint64_t kReportEveryUs = 60'000'000;
+constexpr unsigned      kLogEveryReports = 5;
+constexpr std::size_t   kHeapGrowWarnKb = 32 * 1024;
+
+std::atomic<std::uint64_t> g_wait_max_us{0}, g_wait_total_us{0}, g_wait_slow{0};
+std::uint64_t g_last_report_us = 0, g_started_us = 0;
+unsigned g_reports = 0;
+
+// Boot and hot-reload work: one-off, under a loading screen, not a hitch.
+bool is_lifecycle(const char* what) {
+    return std::strcmp(what, "setup") == 0 || std::strcmp(what, "ready") == 0
+        || std::strcmp(what, "exit") == 0;
+}
+std::uint64_t g_session_wait_max_us = 0;
+
+std::string fmt_ms(std::uint64_t us) {
+    char b[32];
+    std::snprintf(b, sizeof(b), "%.1f", static_cast<double>(us) / 1000.0);
+    return b;
+}
+} // namespace
+
+std::uint64_t perf_now_us() {
+    static const LARGE_INTEGER freq = []{
+        LARGE_INTEGER f{}; QueryPerformanceFrequency(&f); return f;
+    }();
+    LARGE_INTEGER now{};
+    if (freq.QuadPart == 0 || !QueryPerformanceCounter(&now)) return GetTickCount64() * 1000;
+    return static_cast<std::uint64_t>(now.QuadPart / freq.QuadPart * 1'000'000
+                                      + now.QuadPart % freq.QuadPart * 1'000'000 / freq.QuadPart);
+}
+
+void perf_note(lua_State* L, const char* what, std::uint64_t us) {
+    auto* m = current_from_state(L);
+    if (!m) return;
+    auto& p = m->perf;
+    ++p.calls;
+    p.total_us += us;
+    // Boot / reload time counts in the totals but never as the "worst call":
+    // a 600 ms setup under the loading screen would hide every real hitch.
+    if (is_lifecycle(what)) return;
+    if (us > p.max_us) { p.max_us = us; p.max_what = what; }
+    if (us < kSlowCallUs) return;
+    ++p.slow;
+    const auto now = perf_now_us();
+    if (p.last_warn_us != 0 && now - p.last_warn_us < kWarnEveryUs) return;
+    p.last_warn_us = now;
+    Loader::get().log_warn("[perf] " + m->id + " ran " + fmt_ms(us) + " ms in '" + what
+        + "' while holding the shared Lua lock; the game's own hooks wait for it, "
+          "so this is a hitch in game. Look for slow R.schedule / R.on handlers "
+          "in this mod. (at most one such line per mod per minute)");
+}
+
+void perf_note_wait(std::uint64_t us) {
+    g_wait_total_us.fetch_add(us, std::memory_order_relaxed);
+    if (us >= kSlowCallUs) g_wait_slow.fetch_add(1, std::memory_order_relaxed);
+    auto cur = g_wait_max_us.load(std::memory_order_relaxed);
+    while (us > cur && !g_wait_max_us.compare_exchange_weak(cur, us, std::memory_order_relaxed)) {}
+}
+
+void perf_report() {
+    const auto now = perf_now_us();
+    if (g_last_report_us == 0) { g_last_report_us = g_started_us = now; return; }
+    if (now - g_last_report_us < kReportEveryUs) return;
+    const auto window_us = now - g_last_report_us;
+    g_last_report_us = now;
+
+    const auto wait_max = g_wait_max_us.exchange(0, std::memory_order_relaxed);
+    const auto wait_total = g_wait_total_us.exchange(0, std::memory_order_relaxed);
+    const auto wait_slow = g_wait_slow.exchange(0, std::memory_order_relaxed);
+    g_session_wait_max_us = std::max(g_session_wait_max_us, wait_max);
+
+    struct Row { std::string id, max_what; std::uint64_t calls, total_us, max_us, slow;
+                 std::size_t heap_kb, heap_first_kb;
+                 std::uint64_t sess_calls, sess_us, sess_max_us, sess_slow;
+                 std::string sess_max_what; bool heap_warn; };
+    std::vector<Row> rows;
+    {
+        std::lock_guard<std::recursive_mutex> g(g_mu);
+        for (auto& [id, s] : g_scripts) {
+            if (!s.L) continue;
+            const auto heap_kb = static_cast<std::size_t>(lua_gc(s.L, LUA_GCCOUNT, 0));
+            auto& p = s.perf;
+            if (p.heap_first_kb == 0) p.heap_first_kb = heap_kb;
+            const bool heap_warn = !p.heap_warned && heap_kb > p.heap_first_kb + kHeapGrowWarnKb;
+            if (heap_warn) p.heap_warned = true;
+            p.sess_calls += p.calls;
+            p.sess_us += p.total_us;
+            p.sess_slow += p.slow;
+            if (p.max_us > p.sess_max_us) { p.sess_max_us = p.max_us; p.sess_max_what = p.max_what; }
+            rows.push_back({id, p.max_what, p.calls, p.total_us, p.max_us, p.slow,
+                            heap_kb, p.heap_first_kb, p.sess_calls, p.sess_us,
+                            p.sess_max_us, p.sess_slow, p.sess_max_what, heap_warn});
+            p.calls = p.total_us = p.max_us = p.slow = 0;
+            p.max_what.clear();
+        }
+    }
+    std::sort(rows.begin(), rows.end(),
+              [](const Row& a, const Row& b) { return a.total_us > b.total_us; });
+
+    std::uint64_t lua_total = 0, slow_total = 0;
+    for (const auto& r : rows) { lua_total += r.total_us; slow_total += r.slow; }
+    std::string line = "[perf] last " + std::to_string(window_us / 60'000'000) + " min: Lua "
+        + fmt_ms(lua_total) + " ms, " + std::to_string(slow_total) + " call(s) over "
+        + fmt_ms(kSlowCallUs) + " ms; game threads waited " + fmt_ms(wait_total)
+        + " ms for the Lua lock (worst " + fmt_ms(wait_max) + " ms)";
+    std::string top;
+    for (std::size_t i = 0; i < rows.size() && i < 5; ++i) {
+        const auto& r = rows[i];
+        if (r.total_us == 0) break;
+        top += (top.empty() ? "" : "; ") + r.id + " " + fmt_ms(r.total_us) + " ms/"
+            + std::to_string(r.calls) + " calls, worst " + fmt_ms(r.max_us) + " ms in '"
+            + r.max_what + "'";
+    }
+    if (!top.empty()) line += " | top: " + top;
+    std::string heap;
+    for (const auto& r : rows) {
+        if (r.heap_kb < 1024) continue;   // only states worth naming
+        heap += (heap.empty() ? "" : ", ") + r.id + " " + std::to_string(r.heap_kb / 1024)
+            + " MB (" + (r.heap_kb >= r.heap_first_kb ? "+" : "-")
+            + std::to_string((r.heap_kb >= r.heap_first_kb ? r.heap_kb - r.heap_first_kb
+                                                          : r.heap_first_kb - r.heap_kb) / 1024)
+            + " MB)";
+    }
+    if (!heap.empty()) line += " | Lua heap: " + heap;
+    const bool hitch = slow_total > 0 || wait_slow > 0;
+    if (hitch) Loader::get().log_warn(line);
+    else if (g_reports++ % kLogEveryReports == 0) Loader::get().log(line);
+    for (const auto& r : rows) {
+        if (r.heap_warn) {
+            Loader::get().log_warn("[perf] " + r.id + "'s Lua heap grew from "
+                + std::to_string(r.heap_first_kb / 1024) + " MB to "
+                + std::to_string(r.heap_kb / 1024) + " MB this session; a table this mod "
+                  "keeps adding to and never clears is the usual cause");
+        }
+    }
+
+    // Machine-readable copy for `rsmm` / the app: the latest window plus the
+    // session's worst lock wait. Overwritten each report; tmp + rename so a
+    // reader never sees half a file.
+    nlohmann::json j;
+    j["window_s"] = window_us / 1'000'000;
+    j["session_s"] = (now - g_started_us) / 1'000'000;   // since the loader's first tick
+    j["session"] = Loader::get().session();
+    j["lua_ms"] = static_cast<double>(lua_total) / 1000.0;
+    j["slow_calls"] = slow_total;
+    j["wait_ms"] = static_cast<double>(wait_total) / 1000.0;
+    j["wait_max_ms"] = static_cast<double>(wait_max) / 1000.0;
+    j["session_wait_max_ms"] = static_cast<double>(g_session_wait_max_us) / 1000.0;
+    auto& mods = j["mods"] = nlohmann::json::object();
+    for (const auto& r : rows) {
+        mods[r.id] = {
+            {"calls", r.calls}, {"lua_ms", static_cast<double>(r.total_us) / 1000.0},
+            {"max_ms", static_cast<double>(r.max_us) / 1000.0}, {"max_in", r.max_what},
+            {"slow", r.slow}, {"heap_kb", r.heap_kb}, {"heap_first_kb", r.heap_first_kb},
+            {"session", {
+                {"calls", r.sess_calls}, {"lua_ms", static_cast<double>(r.sess_us) / 1000.0},
+                {"max_ms", static_cast<double>(r.sess_max_us) / 1000.0},
+                {"max_in", r.sess_max_what}, {"slow", r.sess_slow},
+            }},
+        };
+    }
+    const auto path = Loader::get().mods_dir() / "_perf.json";
+    const auto tmp = path.string() + ".tmp";
+    {
+        std::ofstream f(tmp, std::ios::trunc);
+        if (!f) return;
+        f << j.dump();
+    }
+    std::error_code ec;
+    std::filesystem::rename(tmp, path, ec);
 }
 
 void script_shutdown_all() {

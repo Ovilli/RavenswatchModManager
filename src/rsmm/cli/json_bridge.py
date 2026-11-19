@@ -34,6 +34,7 @@ Subcommands:
     rsmm json loader-log [--run N]  read the loader log, or an archived run
     rsmm json loader-runs           list archived runs under <game>/rsmm/logs
     rsmm json loader-health         boot canary + per-mod crash history
+    rsmm json loader-perf           the loader's last performance report (mods/_perf.json)
     rsmm json loader-health-reset <id>
                                     clear a mod's crash record
     rsmm json loader-flags get      list loader feature flags + enabled set
@@ -1448,6 +1449,27 @@ def cmd_loader_health() -> int:
     return _emit(payload)
 
 
+def cmd_loader_perf() -> int:
+    """The loader's latest performance report, for the app (issue #175).
+
+    The loader rewrites `<game>/mods/_perf.json` every 5 minutes of play: how
+    long each mod's Lua held the shared lock (which the game's own hooks wait
+    on), its slowest call and its Lua heap, for the last window and the whole
+    session. Passed through as written plus the file's mtime, so the app can
+    tell a report it already sent from a new one.
+    """
+    game_dir = find_game_dir()
+    path = Path(game_dir) / "mods" / "_perf.json" if game_dir else None
+    try:
+        report = json.loads(path.read_text(encoding="utf-8")) if path else None
+        mtime = int(path.stat().st_mtime) if path else 0
+    except (OSError, ValueError):
+        report, mtime = None, 0
+    if not isinstance(report, dict):
+        return _emit({"exists": False, "report": None, "mtime": 0})
+    return _emit({"exists": True, "report": report, "mtime": mtime})
+
+
 def cmd_loader_health_reset(mod_id: str) -> int:
     """Clear a mod's crash record so the loader stops skipping it at load.
 
@@ -2040,6 +2062,7 @@ def main(argv: list[str] | None = None) -> int:
                             "unique prefix) instead of the live log")
     sub.add_parser("loader-runs", help="list archived loader runs, newest first")
     sub.add_parser("loader-health", help="loader boot canary + per-mod crash history")
+    sub.add_parser("loader-perf", help="the loader's last performance report")
     p_health_reset = sub.add_parser(
         "loader-health-reset", help="clear a mod's crash record so the loader loads it again")
     p_health_reset.add_argument("mod_id", help="folder name under mods/")
@@ -2154,6 +2177,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_loader_runs()
     if args.cmd == "loader-health":
         return cmd_loader_health()
+    if args.cmd == "loader-perf":
+        return cmd_loader_perf()
     if args.cmd == "loader-health-reset":
         return cmd_loader_health_reset(args.mod_id)
     if args.cmd == "doctor":

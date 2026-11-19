@@ -432,6 +432,7 @@ end
 local ENT_CPNTS, ENT_COUNT, ENT_MAX = 0x190, 0x198, 16384
 local HERO_RING_FIRST, HERO_RING_COUNT = 8, 8
 local _ent_cache = {}            -- entity -> { arr, n, idx = { camera slots } }
+local _ent_cache_n = 0
 
 local function _is_camera_cpnt(cp)
     local c = _plausible(cp) and _cls(cp)
@@ -467,16 +468,22 @@ local function _entity_cameras(e)
     local arr, n = I.read_u64(e + ENT_CPNTS), I.read_u32(e + ENT_COUNT)
     if not (_plausible(arr) and n and n > 0 and n <= ENT_MAX) then return {} end
     local c = _ent_cache[e]
-    if c and c.arr == arr and c.n == n then
-        local out = {}
-        for _, i in ipairs(c.idx) do
-            local cp = I.read_u64(arr + i * 8)
-            if _is_camera_cpnt(cp) then out[#out + 1] = cp end
+    -- Components are appended, so while every remembered slot (all below the
+    -- old count) still holds its camera, only the slots past the old count can
+    -- be new. A full re-read here cost thousands of guarded reads (one
+    -- VirtualQuery each) under the shared Lua lock every time the array grew
+    -- in combat, and the array only grows over a run (issue #175).
+    local idx, out, i = {}, {}, 0
+    if c and n >= c.n then
+        for _, k in ipairs(c.idx) do
+            local cp = I.read_u64(arr + k * 8)
+            if not _is_camera_cpnt(cp) then idx = nil; break end
+            idx[#idx + 1] = k; out[#out + 1] = cp
         end
-        if #out == #c.idx then return out end
+        if idx and c.arr == arr and c.n == n then return out end
+        if idx then i = c.n else idx, out = {}, {} end
     end
-    local idx, out, unpack = {}, {}, string.unpack
-    local i = 0
+    local unpack = string.unpack
     while i < n do
         local take = math.min(n - i, 0x2000)          -- read_block caps at 64 KB
         local blk = I.read_block and I.read_block(arr + i * 8, take * 8)
@@ -490,6 +497,12 @@ local function _entity_cameras(e)
             if _is_camera_cpnt(cp) then idx[#idx + 1] = i + j; out[#out + 1] = cp end
         end
         i = i + take
+    end
+    -- Every transform, death and respawn is a new entity: drop the lot now and
+    -- then instead of keeping one entry per entity for the whole session.
+    if not c then
+        _ent_cache_n = _ent_cache_n + 1
+        if _ent_cache_n > 64 then _ent_cache, _ent_cache_n = {}, 1 end
     end
     _ent_cache[e] = { arr = arr, n = n, idx = idx }
     return out
@@ -537,8 +550,13 @@ function M.cameras()
     -- (see _entity_cameras). The controller itself is read too, since a test
     -- double or a future build may hand back the entity directly.
     for _, h in ipairs(_hero_controllers(hero, sweep)) do
-        for _, e in ipairs({ I.read_u64(h + 0x08), h }) do
-            for _, cp in ipairs(_entity_cameras(e)) do add_component(cp) end
+        local owner = I.read_u64(h + 0x08)
+        -- The controller itself only when it has no owner (a test double handing
+        -- back the entity). A real one's +0x190/+0x198 is an unrelated container
+        -- (HeroController_Ctor), and a count there that drifts made every rescan
+        -- a full read of up to ENT_MAX junk slots (issue #175).
+        for _, cp in ipairs(_entity_cameras(_plausible(owner) and owner or h)) do
+            add_component(cp)
         end
     end
 

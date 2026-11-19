@@ -132,6 +132,7 @@ const READ_ONLY_COMMANDS = new Set([
   'changelog',
   'loader-runs',
   'loader-health',
+  'loader-perf',
   'loader-log',
   'game-status',
   'conflicts',
@@ -1105,6 +1106,36 @@ export interface LoaderHealth {
  *  a mod after three in a row — this is how the app can say so. */
 export const loaderHealth = () => rsmm<LoaderHealth>(['loader-health']);
 
+/** One mod's line in the loader's performance report (`mods/_perf.json`). */
+export interface ModPerfFigures {
+  calls: number;
+  lua_ms: number;
+  max_ms: number;
+  /** The event or hook of the slowest call ("tick", "hook 0x14…"). */
+  max_in: string;
+  slow: number;
+}
+
+export interface LoaderPerfReport {
+  window_s: number;
+  session_s?: number;
+  session?: string;
+  lua_ms: number;
+  slow_calls: number;
+  wait_ms: number;
+  wait_max_ms: number;
+  session_wait_max_ms: number;
+  mods: Record<
+    string,
+    ModPerfFigures & { heap_kb: number; heap_first_kb: number; session?: ModPerfFigures }
+  >;
+}
+
+/** The loader's latest performance report (issue #175): how long each mod's
+ *  Lua held the lock the game's hooks wait on, rewritten every 5 min of play. */
+export const loaderPerf = () =>
+  rsmm<{ exists: boolean; report: LoaderPerfReport | null; mtime: number }>(['loader-perf']);
+
 /** Clear a mod's crash record so the loader stops skipping it at load. */
 export const resetModHealth = (modId: string) =>
   rsmm<{ ok: boolean; modId: string }>(['loader-health-reset', modId]);
@@ -1450,12 +1481,15 @@ function followMenuToggles(result: RunResult | null, profileId?: string) {
 
 export const build = () => rsmm<RunResult>(['build'], { timeoutMs: LONG_TIMEOUT_MS });
 
-const runGame = () => rsmm<RunResult>(['run'], { timeoutMs: DEFAULT_TIMEOUT_MS });
+// `run` applies every enabled mod (and may install the loader or restore)
+// before it launches, so it needs apply's budget. At 60 s it timed out on big
+// mod sets while the apply carried on (issue #175's "run timed out" reports).
+const runGame = () => rsmm<RunResult>(['run'], { timeoutMs: LONG_TIMEOUT_MS });
 
 export async function runVanilla(): Promise<RunResult | null> {
   await launchGate?.before('vanilla').catch(() => {});
   try {
-    return await rsmm<RunResult>(['run', '--vanilla'], { timeoutMs: DEFAULT_TIMEOUT_MS });
+    return await rsmm<RunResult>(['run', '--vanilla'], { timeoutMs: LONG_TIMEOUT_MS });
   } finally {
     launchGate?.after('vanilla');
   }

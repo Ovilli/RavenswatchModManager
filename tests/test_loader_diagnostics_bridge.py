@@ -162,3 +162,23 @@ def test_reset_clears_the_quarantine(game, capsys):
     # The canary node belongs to the loader and must survive a CLI write.
     doc = json.loads((game / "mods" / "_health.json").read_text())
     assert doc["canary"]["step"] == "boot_ok"
+
+
+# --- performance report (issue #175) -----------------------------------------
+
+def test_perf_report_is_passed_through_with_its_mtime(game, capsys):
+    report = {"window_s": 300, "mods": {"camera-control": {"lua_ms": 812.5, "slow": 3}}}
+    (game / "mods" / "_perf.json").write_text(json.dumps(report))
+    assert json_bridge.cmd_loader_perf() == 0
+    out = _emit_json(capsys)
+    assert out["exists"] is True
+    assert out["report"] == report
+    assert out["mtime"] > 0
+
+
+@pytest.mark.parametrize("body", [None, "{half", "[1, 2]"])
+def test_missing_or_broken_perf_report_reads_as_absent(game, capsys, body):
+    if body is not None:
+        (game / "mods" / "_perf.json").write_text(body)
+    assert json_bridge.cmd_loader_perf() == 0
+    assert _emit_json(capsys) == {"exists": False, "report": None, "mtime": 0}
