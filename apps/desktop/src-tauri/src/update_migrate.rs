@@ -278,6 +278,106 @@ fn system_desktop_entry() -> Option<(String, String)> {
     None
 }
 
+/// Themed icon name the app installs for itself, and the window class the
+/// launcher matches running windows against (the binary name, which is what
+/// the `.deb` entry's `StartupWMClass` holds too).
+#[cfg(target_os = "linux")]
+const OWN_ICON: &str = "rsmm-desktop";
+#[cfg(target_os = "linux")]
+const OWN_WM_CLASS: &str = "rsmm-desktop";
+
+/// The app's own icon, compiled in: the fallback runs exactly when there is no
+/// system package left to copy one from.
+#[cfg(target_os = "linux")]
+const OWN_ICONS: [(&str, &[u8]); 4] = [
+    ("32x32", include_bytes!("../icons/32x32.png")),
+    ("64x64", include_bytes!("../icons/64x64.png")),
+    ("128x128", include_bytes!("../icons/128x128.png")),
+    ("256x256", include_bytes!("../icons/128x128@2x.png")),
+];
+
+/// Write the compiled-in icon into the user's hicolor theme. Best effort.
+#[cfg(target_os = "linux")]
+fn install_own_icon(home: &Path) {
+    for (size, bytes) in OWN_ICONS {
+        let dir = home.join(".local/share/icons/hicolor").join(size).join("apps");
+        if std::fs::create_dir_all(&dir).is_ok() {
+            let _ = std::fs::write(dir.join(format!("{OWN_ICON}.png")), bytes);
+        }
+    }
+}
+
+/// Our own entry, for when there is neither a system nor a user one to reuse.
+#[cfg(target_os = "linux")]
+fn fallback_desktop_entry(exec: &str) -> String {
+    format!(
+        "[Desktop Entry]\n\
+         Type=Application\n\
+         Name=Ravenswatch Mod Manager\n\
+         Comment=Mod manager for Ravenswatch\n\
+         {exec}\n\
+         Icon={OWN_ICON}\n\
+         StartupWMClass={OWN_WM_CLASS}\n\
+         Terminal=false\n\
+         Categories=Utility;\n\
+         MimeType=x-scheme-handler/rsmm;\n"
+    )
+}
+
+/// `text` with `Icon=` (and `StartupWMClass=` if missing) added to its
+/// `[Desktop Entry]` group, for a reused entry that never had one.
+#[cfg(target_os = "linux")]
+fn with_own_icon(text: &str) -> String {
+    let has_wm = text.lines().any(|l| l.starts_with("StartupWMClass="));
+    let mut out = String::with_capacity(text.len() + 64);
+    for line in text.lines() {
+        out.push_str(line);
+        out.push('\n');
+        if line.trim() == "[Desktop Entry]" {
+            out.push_str(&format!("Icon={OWN_ICON}\n"));
+            if !has_wm {
+                out.push_str(&format!("StartupWMClass={OWN_WM_CLASS}\n"));
+            }
+        }
+    }
+    out
+}
+
+/// A visible launcher the user already has for this app, by its `Name=`.
+/// Scheme-handler stubs (`NoDisplay=true`) are not launchers and are skipped.
+#[cfg(target_os = "linux")]
+fn user_desktop_entry(dir: &Path) -> Option<(String, String)> {
+    let mut found: Vec<(String, String)> = std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .filter_map(|e| {
+            let path = e.path();
+            if path.extension().and_then(|x| x.to_str()) != Some("desktop") {
+                return None;
+            }
+            let text = std::fs::read_to_string(&path).ok()?;
+            Some((path.file_name()?.to_string_lossy().to_string(), text))
+        })
+        .collect();
+    found.sort();   // deterministic pick across runs
+    pick_user_entry(&found).map(|i| found.swap_remove(i))
+}
+
+/// Index of the entry to reuse: a visible one named like the app, preferring
+/// one that already has an icon.
+#[cfg(target_os = "linux")]
+fn pick_user_entry(entries: &[(String, String)]) -> Option<usize> {
+    let ours = |t: &str| {
+        t.lines().any(|l| l.trim() == "Name=Ravenswatch Mod Manager")
+            && !t.lines().any(|l| l.trim() == "NoDisplay=true")
+    };
+    let has_icon = |t: &str| t.lines().any(|l| l.starts_with("Icon="));
+    entries
+        .iter()
+        .position(|(_, t)| ours(t) && has_icon(t))
+        .or_else(|| entries.iter().position(|(_, t)| ours(t)))
+}
+
 /// Copy a themed icon out of the system theme into the user's, so the launcher
 /// entry keeps its icon after the system package is removed. Best effort.
 #[cfg(target_os = "linux")]
@@ -369,27 +469,30 @@ fn write_desktop_entry(appimage: &Path) -> Option<String> {
     std::fs::create_dir_all(&dir).ok()?;
 
     let exec = exec_line(appimage, needs_extract_and_run(appimage));
-    let (name, contents) = match system_desktop_entry() {
+    // Order: the system package's entry (shadowed under its own name), then a
+    // launcher the user already has (an earlier migration's, so a second run
+    // does not add a duplicate beside it), and only then one of our own.
+    let existing = system_desktop_entry().or_else(|| user_desktop_entry(&dir));
+    let (name, contents) = match existing {
         Some((name, text)) => {
             let (out, icon) = rewrite_exec(&text, &exec);
-            if let Some(icon) = icon {
-                copy_icon(&icon);
+            match icon {
+                Some(icon) => {
+                    copy_icon(&icon);
+                    (name, out)
+                }
+                None => {
+                    install_own_icon(&home);
+                    (name, with_own_icon(&out))
+                }
             }
-            (name, out)
         }
-        None => (
-            "ravenswatch-mod-manager.desktop".to_string(),
-            format!(
-                "[Desktop Entry]\n\
-                 Type=Application\n\
-                 Name=Ravenswatch Mod Manager\n\
-                 Comment=Mod manager for Ravenswatch\n\
-                 {exec}\n\
-                 Terminal=false\n\
-                 Categories=Utility;\n\
-                 MimeType=x-scheme-handler/rsmm;\n"
-            ),
-        ),
+        None => {
+            // No system package left to copy an icon from (the case that
+            // showed the generic gear: the synthesised entry had no Icon=).
+            install_own_icon(&home);
+            ("ravenswatch-mod-manager.desktop".to_string(), fallback_desktop_entry(&exec))
+        }
     };
 
     let path = dir.join(&name);
@@ -566,6 +669,42 @@ pub fn relaunch_migrated_appimage() -> Result<(), String> {
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fallback_entry_names_its_icon_and_window_class() {
+        // The synthesised entry had no Icon=, which is what put the generic
+        // gear in the applications menu once the .deb was gone.
+        let e = fallback_desktop_entry("Exec=\"/home/u/Applications/x.AppImage\" %U");
+        assert!(e.contains("\nIcon=rsmm-desktop\n"));
+        assert!(e.contains("\nStartupWMClass=rsmm-desktop\n"));
+        assert!(e.contains("MimeType=x-scheme-handler/rsmm;"));
+    }
+
+    #[test]
+    fn reused_entry_without_an_icon_gets_ours() {
+        let t = "[Desktop Entry]\nName=Ravenswatch Mod Manager\nExec=x\n";
+        let out = with_own_icon(t);
+        assert!(out.starts_with("[Desktop Entry]\nIcon=rsmm-desktop\nStartupWMClass=rsmm-desktop\n"));
+        let kept = with_own_icon("[Desktop Entry]\nStartupWMClass=other\nName=x\n");
+        assert!(kept.contains("StartupWMClass=other") && !kept.contains("StartupWMClass=rsmm-desktop"));
+    }
+
+    #[test]
+    fn an_existing_user_launcher_is_reused_not_duplicated() {
+        let entries = vec![
+            ("a-handler.desktop".to_string(),
+             "[Desktop Entry]\nName=Ravenswatch Mod Manager\nNoDisplay=true\n".to_string()),
+            ("ravenswatch-mod-manager.desktop".to_string(),
+             "[Desktop Entry]\nName=Ravenswatch Mod Manager\nExec=x\n".to_string()),
+            ("Ravenswatch Mod Manager.desktop".to_string(),
+             "[Desktop Entry]\nName=Ravenswatch Mod Manager\nIcon=rsmm-desktop\n".to_string()),
+            ("other.desktop".to_string(), "[Desktop Entry]\nName=Other\n".to_string()),
+        ];
+        // The visible one with an icon wins; the handler stub never does.
+        assert_eq!(pick_user_entry(&entries), Some(2));
+        assert_eq!(pick_user_entry(&entries[..2]), Some(1));
+        assert_eq!(pick_user_entry(&entries[3..]), None);
+    }
 
     #[test]
     fn only_type2_appimages_are_installable() {

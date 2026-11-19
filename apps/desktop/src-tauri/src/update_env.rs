@@ -78,9 +78,24 @@ fn dir_writable(dir: &Path) -> bool {
     }
 }
 
+/// Linux's "text file busy": the file is a program that is running right now.
+#[cfg(target_os = "linux")]
+const ETXTBSY: i32 = 26;
+
 #[cfg(target_os = "linux")]
 fn file_writable(path: &Path) -> bool {
-    std::fs::OpenOptions::new().write(true).open(path).is_ok()
+    match std::fs::OpenOptions::new().write(true).open(path) {
+        Ok(_) => true,
+        // A running AppImage is always busy: its runtime process executes the
+        // file for as long as the app is open. That is not a permission
+        // problem, and it does not stop the update — the updater renames the
+        // running file aside and writes the new one fresh, never opening this
+        // one for writing. Reading ETXTBSY as "no write access" offered the
+        // move to ~/Applications on every update, and each move rewrote the
+        // launcher (a duplicate entry, and one with no icon).
+        Err(e) if e.raw_os_error() == Some(ETXTBSY) => true,
+        Err(_) => false,
+    }
 }
 
 /// Directories whose contents are owned by the package manager. An app running
@@ -213,6 +228,27 @@ pub fn update_install_target() -> UpdateTarget {
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_running_program_counts_as_writable() {
+        // The AppImage being updated is always running (ETXTBSY on open for
+        // write). That must not read as "no write access", or every update
+        // offers a migration the updater does not need.
+        let dir = std::env::temp_dir().join(format!("rsmm-busy-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("busy");
+        std::fs::copy("/bin/sleep", &exe).unwrap();
+        let mut child = std::process::Command::new(&exe).arg("5").spawn().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let busy = std::fs::OpenOptions::new().write(true).open(&exe).unwrap_err();
+        assert_eq!(busy.raw_os_error(), Some(ETXTBSY), "precondition: the file is busy");
+        assert!(file_writable(&exe));
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = std::fs::remove_dir_all(&dir);
+        // A file this uid cannot write stays unwritable.
+        assert!(!file_writable(Path::new("/etc/passwd")));
+    }
 
     #[test]
     fn probes_real_write_access_not_mode_bits() {
