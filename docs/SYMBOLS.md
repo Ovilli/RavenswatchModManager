@@ -36,9 +36,9 @@ Total: **409** symbols across 29 categories.
 | `CameraModifier_Evaluate` | `0x1406604e0` | ✅ ok |  | void(void* modifier, const float* dt, void* camState, float parentWeight) |
 | `CameraModifier_RemoveChild` | `0x140660800` | ✅ ok | ✔ | void(void* parent, void* modifier) |
 | `TopDownCamera_Activate` | `0x1407e6a70` | ✅ ok |  | void(void* topDownCameraCpnt) |
-| `g_CameraModifier_vftable` | `0x140f62ea0` | 📍 va |  | vftable of oCCameraModifier (the base class; slot 2 destructor FUN_14065fdd0, slot 3 Ap… |
-| `g_CameraSceneContext_vftable` | `0x140f0a910` | 📍 va |  | vftable of oe::CameraSceneContext (ctor FUN_1401c8c40; reached through GameScene_FindCo… |
-| `g_ZoomCameraModifier_vftable` | `0x140f62b38` | 📍 va |  | vftable of oCZoomCameraModifier (0x38 bytes; slot 2 destructor FUN_1406618d0, slot 3 Ap… |
+| `g_CameraModifier_vftable` | `0x140f67b20` | 📍 va |  | [2026-11-19: relocated 0x140f62ea0 -> 0x140f67b20 for the 2026-11-17 patch (2a88a3bd564… |
+| `g_CameraSceneContext_vftable` | `0x140f0f6a0` | 📍 va |  | [2026-11-19: relocated 0x140f0a910 -> 0x140f0f6a0 for the 2026-11-17 patch (2a88a3bd564… |
+| `g_ZoomCameraModifier_vftable` | `0x140f678d0` | 📍 va |  | [2026-11-19: relocated 0x140f62b38 -> 0x140f678d0 for the 2026-11-17 patch (2a88a3bd564… |
 
 ## combat
 
@@ -233,14 +233,14 @@ Total: **409** symbols across 29 categories.
 |------|---------|--------|----------|------------------|
 | `InputActionMap_Add` | `0x140471260` | ✅ ok | ✔ | ActionEntry*(void* map, const oCString* name, const u32 keyboard[4], const u32 pad[4]) |
 | `Input_Poll` | `0x14067e400` | ✅ ok |  | void(void* inputManager, const void* frameTime) |
-| `g_CursorLockCentre` | `0x14146d9c0` | 📍 va |  | Two f32 (x at +0, y at +4): the SCREEN-coordinate point the cursor lock recentres to. R… |
-| `g_CursorLockFlag` | `0x141467b67` | 📍 va |  | Cursor-lock byte (u8). Its only reader is the UI update FUN_14045ab40: when it is set a… |
-| `g_InputActionMap` | `0x141436b68` | 📍 va |  | *ptr = the name-keyed input action map that key prompts draw from. +0x00 entry vector {… |
-| `g_InputKeyRecords` | `0x141466c50` | 📍 va |  | The key table: one 12-byte record per key id (keyboard 1-84, mouse buttons 85-91, wheel… |
-| `g_InputManager` | `0x14146f8e8` | 📍 va |  | Pointer to the input manager (*ptr = the object Input_Poll is called on). The window pr… |
-| `g_InputMouseWheelDown` | `0x1414670ac` | 📍 va |  | Button record of the mouse wheel DOWN virtual button: entry 93 (KEY_MouseWheelDown) of … |
-| `g_InputMouseWheelUp` | `0x1414670a0` | 📍 va |  | Button record of the mouse wheel UP virtual button: entry 92 (KEY_MouseWheelUp, display… |
-| `g_MouseState` | `0x14146d9c8` | 📍 va |  | The game's global cursor record (0x28 bytes): +0x00/+0x04 f32 x, y (client pixels plus … |
+| `g_CursorLockCentre` | `0x141474d00` | 📍 va |  | [2026-11-19: relocated 0x14146d9c0 -> 0x141474d00 for the 2026-11-17 patch (2a88a3bd564… |
+| `g_CursorLockFlag` | `0x14146eea7` | 📍 va |  | [2026-11-19: relocated 0x141467b67 -> 0x14146eea7 for the 2026-11-17 patch (2a88a3bd564… |
+| `g_InputActionMap` | `0x14143dea8` | 📍 va |  | [2026-11-19: relocated 0x141436b68 -> 0x14143dea8 for the 2026-11-17 patch (2a88a3bd564… |
+| `g_InputKeyRecords` | `0x14146df90` | 📍 va |  | [2026-11-19: relocated 0x141466c50 -> 0x14146df90 for the 2026-11-17 patch (2a88a3bd564… |
+| `g_InputManager` | `0x141476c28` | 📍 va |  | [2026-11-19: relocated 0x14146f8e8 -> 0x141476c28 for the 2026-11-17 patch (2a88a3bd564… |
+| `g_InputMouseWheelDown` | `0x14146e3ec` | 📍 va |  | [2026-11-19: relocated 0x1414670ac -> 0x14146e3ec for the 2026-11-17 patch (2a88a3bd564… |
+| `g_InputMouseWheelUp` | `0x14146e3e0` | 📍 va |  | [2026-11-19: relocated 0x1414670a0 -> 0x14146e3e0 for the 2026-11-17 patch (2a88a3bd564… |
+| `g_MouseState` | `0x141474d08` | 📍 va |  | [2026-11-19: relocated 0x14146d9c8 -> 0x141474d08 for the 2026-11-17 patch (2a88a3bd564… |
 
 ## items
 
@@ -302,7 +302,7 @@ Total: **409** symbols across 29 categories.
 | `Mem_Alloc16Zeroed` | `0x14050cbf0` | ✅ ok |  | malloc(0x10) + zero two qwords + bump global alloc counter DAT_1414442b4 = 16-byte zero… |
 | `PtrVector_Resize` | `0x14014db60` | ✅ ok |  | pointer-vector resize: param_3==0 frees vec[0] (free-counter DAT_14146d854), else mallo… |
 | `Registry_EnemyDefinition_desc` | `0x141470208` | 📍 va |  | Class registry descriptor for oCDtEnemyDefinition (set by registrar FUN_14022d940; UID … |
-| `Registry_EnemyTribeDefinition_desc` | `0x14146f938` | 📍 va |  | Class registry descriptor for oCDtEnemyTribeDefinition (registrar FUN_140189410; UID 0x… |
+| `Registry_EnemyTribeDefinition_desc` | `0x141476c78` | 📍 va |  | [2026-11-19: relocated 0x14146f938 -> 0x141476c78 for the 2026-11-17 patch (2a88a3bd564… |
 | `RewardDef_RegisterAssetLoader` | `0x14031fd80` | ✅ ok |  | void(void* assetClassDesc) |
 | `Rt_FailFast` | `0x140ccb8d4` | ✅ ok |  | CRT fail-fast: FUN_140cc7c90 then _invoke_watson (noreturn). 4459 refs. Naming it de-no… |
 | `SharedRef_AddRefCopy` | `0x14015ecd0` | ✅ ok |  | base virtual: copies {*(this+0x18) data, *(this+0x20) refblock} into out and addrefs at… |
@@ -367,9 +367,9 @@ Total: **409** symbols across 29 categories.
 | `GameModifierUi_PadSelectedSlots` | `0x14035b760` | ✅ ok | ✔ | void(void* uiController, void* unknown, void* selectedVector) |
 | `GameOptionsManager_Register` | `0x14066ab20` | ✅ ok | ✔ | void(GameOptionsManager* mgr, u8 category, GameOption* option) |
 | `GameOptionsManager_RequestLoad` | `0x140691110` | ✅ ok | ✔ | void(void* unused, FileRequest* req /* = mgr+8 */) |
-| `InputKeyGameOption_vftable` | `0x140efd440` | 📍 va |  | vftable of InputKeyGameOption, the 0x30-byte key option: +0x0 vftable, +0x8 u32 id (spi… |
+| `InputKeyGameOption_vftable` | `0x140f021b0` | 📍 va |  | [2026-11-19: relocated 0x140efd440 -> 0x140f021b0 for the 2026-11-17 patch (2a88a3bd564… |
 | `g_GameOptions` | `0x14143dd50` | 📍 va |  | [2026-07-10: re-derived post 2026-07-09 patch (was 0x141436510); ctor is now FUN_1401ca… |
-| `g_GameOptionsManager` | `0x141436a38` | 📍 va |  | *ptr = the GameOptionsManager (a static object, 0x141466980 on b9c3). +0x08 the setting… |
+| `g_GameOptionsManager` | `0x14143dd70` | 📍 va |  | [2026-11-19: relocated 0x141436a38 -> 0x14143dd70 for the 2026-11-17 patch (2a88a3bd564… |
 
 ## progression
 
@@ -384,8 +384,8 @@ Total: **409** symbols across 29 categories.
 
 | name | address | status | callable | signature / note |
 |------|---------|--------|----------|------------------|
-| `DefRegistry_Begin` | `0x14143a040` | 📍 va |  | Global definition registry (vector of registered def instances) written by Registry_Reg… |
-| `DefRegistry_End` | `0x14143a048` | 📍 va |  | Second word of DefRegistry_Begin's header (+8). See DefRegistry_Begin. |
+| `DefRegistry_Begin` | `0x141441380` | 📍 va |  | [2026-11-19: relocated 0x14143a040 -> 0x141441380 for the 2026-11-17 patch (2a88a3bd564… |
+| `DefRegistry_End` | `0x141441388` | 📍 va |  | [2026-11-19: relocated 0x14143a048 -> 0x141441388 for the 2026-11-17 patch (2a88a3bd564… |
 
 ## resource
 
@@ -397,7 +397,7 @@ Total: **409** symbols across 29 categories.
 | `Definition_LoadPreloadSet` | `0x1404aade0` | ✅ ok | ✔ | void(void* preloadSet, int* outCount) |
 | `Definition_PreloadResourceCache` | `0x14030bce0` | ✅ ok |  | void(void* definition) |
 | `Definitions_LoadGroup` | `0x14030b030` | ✅ ok |  | Loads the 'Definitions' group / VersionDefinition manifest (triggers loading the curate… |
-| `EntitySettings_ClassDescDefault` | `0x14146fd90` | 📍 va |  | The class descriptor Enemy_RuntimeSpawnPicker passes to ResourceRef_Resolve for a def's… |
+| `EntitySettings_ClassDescDefault` | `0x1414770d0` | 📍 va |  | [2026-11-19: relocated 0x14146fd90 -> 0x1414770d0 for the 2026-11-17 patch (2a88a3bd564… |
 | `FileStream_Open` | `0x14053a1f0` | ✅ ok |  | bool(void** outHandle, const char* path, int* mode) |
 | `InitialLoading_LoadAllDefinitions` | `0x14025b1d0` | ✅ ok |  | void(void* nameFilter) |
 | `LevelBinary_Load` | `0x140476a90` | ✅ ok |  | bool(void* container, void* stream, void* lvlId, void* links) |
@@ -416,7 +416,7 @@ Total: **409** symbols across 29 categories.
 | `Registry_EnumInstances` | `0x14023ba10` | ✅ ok | ✔ | void*(void* unused, void* out3, void** classDescPtr) |
 | `Registry_RegisterInstance` | `0x14030c700` | ✅ ok |  | void(void* definition) |
 | `Registry_UnregisterInstance` | `0x14030c780` | ✅ ok | ✔ | void(void*) |
-| `ResourceArchive_Default` | `0x141472240` | 📍 va |  | The default resource archive: a static object, constructed on first use by its getter F… |
+| `ResourceArchive_Default` | `0x141479580` | 📍 va |  | [2026-11-19: relocated 0x141472240 -> 0x141479580 for the 2026-11-17 patch (2a88a3bd564… |
 | `ResourceCache_Parse` | `0x140492fa0` | ✅ ok |  | bool(void* outVector, void* cachePath) |
 | `ResourceCache_Submit` | `0x1404aa930` | ✅ ok |  | void(void* resourceSink, void* entryVector) |
 | `ResourceRef_Resolve` | `0x140492ad0` | ✅ ok | ✔ | void(void* refBlock, void* classDesc, void** outResolved, void* policy) |
@@ -447,7 +447,7 @@ Total: **409** symbols across 29 categories.
 | `LobbyAttributes_Serialize` | `0x140923a50` | ✅ ok | ✔ | void*(void* out, void* member) |
 | `LobbyMembers_List` | `0x1409251a0` | ✅ ok |  | void(void** scene, std::vector<LobbyMember*>* out) |
 | `LobbyMembers_Local` | `0x140925120` | ✅ ok |  | void(void** scene, LobbyMember** out) |
-| `LobbyPlayerName_Registry` | `0x141470268` | 📍 va |  | std::string[]  // count at 0x141470270 |
+| `LobbyPlayerName_Registry` | `0x1414775a8` | 📍 va |  | std::string[]  // count at 0x141470270 |
 | `Netcode_PeerCount` | `0x141440a40` | 📍 va |  | uint32_t |
 | `Netcode_PeerSlots` | `0x1414408c0` | 📍 va |  | PeerSlot[]  // 0x60 stride; live count at Netcode_PeerCount |
 | `Stormancer_StartMatchmaking` | `0x140916c30` | ✅ ok |  | void(void* stormancer_scene_ctx) |
