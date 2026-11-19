@@ -717,7 +717,7 @@ export function VersionFooter() {
     // `pointer-events-none`: this is a caption, not a control, and it sits over
     // the scrolling content — it must never eat a click meant for what is
     // underneath it.
-    <div className="font-mono pointer-events-none fixed bottom-0 right-0 z-10 select-none rounded-tl-lg border-l border-t border-border/60 bg-[hsl(var(--surface-1))] px-3 py-1.5 text-xs leading-tight text-ash/80">
+    <div className="font-mono pointer-events-none fixed bottom-0 right-0 z-20 select-none px-3 py-1.5 text-xs leading-tight text-ash/80">
       <span>{t('launcher v{version}', { version: appVersion })}</span>
       {loaderText != null ? <span> · {t('loader {state}', { state: loaderText })}</span> : null}
       {cli?.dir ? <span> · {t('cli {source}', { source: describeCliSource(cli) })}</span> : null}

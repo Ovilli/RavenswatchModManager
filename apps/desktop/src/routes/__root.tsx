@@ -561,6 +561,11 @@ function RootLayout() {
                   <Outlet />
                 </div>
               </main>
+              {/* Fades and blurs what scrolls under the version footer. */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-16 bg-gradient-to-t from-[hsl(var(--pitch))] via-[hsl(var(--pitch)/0.7)] to-transparent backdrop-blur-sm [mask-image:linear-gradient(to_top,black_35%,transparent)]"
+              />
             </div>
 
             <CommandPalette />
