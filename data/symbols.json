@@ -3037,10 +3037,10 @@
    "name": "LobbyPlayerName_Registry",
    "kind": "data",
    "category": "session",
-   "va": "0x141470268",
+   "va": "0x1414775a8",
    "status": "va",
    "signature": "std::string[]  // count at 0x141470270",
-   "note": "Global append-only table of every player name the session has interned, 0x10 bytes per entry, count in the adjacent global. LobbyAttributes_Parse pushes a member's PlayerName here (and into the parallel table at 0x141475cc0) the first time it sees it, then copies the interned copy back into the record. Mined 2026-08-19. ⚠ Append-only and never pruned, so it is a history of names seen, NOT the current roster — the same trap that made R.lobby's roster grow to six members for a four-player run. Useful as a name POOL, useless as membership."
+   "note": "[2026-11-19: relocated 0x141470268 -> 0x1414775a8 for the 2026-11-17 patch (2a88a3bd5647); the remap left it at the b9c3 address. Matched the b9c3 referencing instructions (rip disp wildcarded) uniquely in the new .text: 4/4.] Global append-only table of every player name the session has interned, 0x10 bytes per entry, count in the adjacent global. LobbyAttributes_Parse pushes a member's PlayerName here (and into the parallel table at 0x141475cc0) the first time it sees it, then copies the interned copy back into the record. Mined 2026-08-19. ⚠ Append-only and never pruned, so it is a history of names seen, NOT the current roster — the same trap that made R.lobby's roster grow to six members for a four-player run. Useful as a name POOL, useless as membership."
   },
   {
    "name": "MagicalObjectPool_Grow",
@@ -4033,9 +4033,9 @@
    "name": "Registry_EnemyTribeDefinition_desc",
    "kind": "data",
    "category": "library",
-   "va": "0x14146f938",
+   "va": "0x141476c78",
    "status": "va",
-   "note": "Class registry descriptor for oCDtEnemyTribeDefinition (registrar FUN_140189410; UID 0x176dc2eb, size 0x2d8). Default descriptor for enemy tribe_ref resolution (enemy+0x308). ⚠ UNREFERENCED IN BUILD 40430b75c72b (audited 2026-09-17, scripts/audit_va_globals.py): .text contains NO RIP-relative reference to this address under any trailing-immediate size, and the anchor function this note names does not reach it either. So the VA is stale or was mis-derived, and a read of it returns whatever else now lives there. It is NOT relocated here on purpose — guessing a replacement from a nearby write is how a symbol acquires a confidently wrong address. Re-derive it from a live trace before use, and keep every read gated on va_globals_trusted. [2026-10-25 b9c3642884a8: the UNREFERENCED warning above does not hold here: 2 RIP-relative sites in 1 function (e.g. 0x140453aa5). None of those functions carries UID 0x176dc2eb or size 0x2d8, so the reference does not confirm this is the descriptor. Static evidence; not yet seen in game.]",
+   "note": "[2026-11-19: relocated 0x14146f938 -> 0x141476c78 for the 2026-11-17 patch (2a88a3bd5647); the remap left it at the b9c3 address. Matched the b9c3 referencing instructions (rip disp wildcarded) uniquely in the new .text: 1/1, block delta +0x7340.] Class registry descriptor for oCDtEnemyTribeDefinition (registrar FUN_140189410; UID 0x176dc2eb, size 0x2d8). Default descriptor for enemy tribe_ref resolution (enemy+0x308). ⚠ UNREFERENCED IN BUILD 40430b75c72b (audited 2026-09-17, scripts/audit_va_globals.py): .text contains NO RIP-relative reference to this address under any trailing-immediate size, and the anchor function this note names does not reach it either. So the VA is stale or was mis-derived, and a read of it returns whatever else now lives there. It is NOT relocated here on purpose — guessing a replacement from a nearby write is how a symbol acquires a confidently wrong address. Re-derive it from a live trace before use, and keep every read gated on va_globals_trusted. [2026-10-25 b9c3642884a8: the UNREFERENCED warning above does not hold here: 2 RIP-relative sites in 1 function (e.g. 0x140453aa5). None of those functions carries UID 0x176dc2eb or size 0x2d8, so the reference does not confirm this is the descriptor. Static evidence; not yet seen in game.]",
    "refs": [
     "docs/_re/kinds/enemies.md"
    ]
@@ -4226,10 +4226,10 @@
    "name": "ResourceArchive_Default",
    "kind": "data",
    "category": "resource",
-   "va": "0x141472240",
+   "va": "0x141479580",
    "status": "va",
    "signature": null,
-   "note": "The default resource archive: a static object, constructed on first use by its getter FUN_14049cf10 (thread-safe-init guard DAT_141472208, ctor FUN_14049ab30), which FUN_1404a1980 passes as Resource_LookupByPath's map. Its path index is an absl SwissTable: control bytes at +0x38 (high bit clear = full), 0x18-byte slots at +0x40 = {oCString key {char*, u32 len|flags}, ..., resource* @+0x10}, capacity mask at +0x50; FUN_1404a0690 walks a chain of archives through +0xb8 when the first misses. Keys are the lowercased decoded path ('\\\\' separators). The engine's lookup takes the critical section at +0x70 and lowercases its argument in place, so R.spawn.template_named READS the table on the main thread instead of calling in (Ghidra 2026-10-29, static only).",
+   "note": "[2026-11-19: relocated 0x141472240 -> 0x141479580 for the 2026-11-17 patch (2a88a3bd5647); the remap left it at the b9c3 address. Matched the b9c3 referencing instructions (rip disp wildcarded) uniquely in the new .text: 1/1, block delta +0x7340.] The default resource archive: a static object, constructed on first use by its getter FUN_14049cf10 (thread-safe-init guard DAT_141472208, ctor FUN_14049ab30), which FUN_1404a1980 passes as Resource_LookupByPath's map. Its path index is an absl SwissTable: control bytes at +0x38 (high bit clear = full), 0x18-byte slots at +0x40 = {oCString key {char*, u32 len|flags}, ..., resource* @+0x10}, capacity mask at +0x50; FUN_1404a0690 walks a chain of archives through +0xb8 when the first misses. Keys are the lowercased decoded path ('\\\\' separators). The engine's lookup takes the critical section at +0x70 and lowercases its argument in place, so R.spawn.template_named READS the table on the main thread instead of calling in (Ghidra 2026-10-29, static only).",
    "refs": [
     "src/loader/lua/rsmm/spawn.lua"
    ]
@@ -4238,10 +4238,10 @@
    "name": "EntitySettings_ClassDescDefault",
    "kind": "data",
    "category": "resource",
-   "va": "0x14146fd90",
+   "va": "0x1414770d0",
    "status": "va",
    "signature": null,
-   "note": "The class descriptor Enemy_RuntimeSpawnPicker passes to ResourceRef_Resolve for a def's entity ref when the ref block's own descriptor (def+0x2a8) is null: `classDesc = *(def+0x2a8) ? *(def+0x2a8) : &DAT_14146fd90` (b9c3642884a8). Address of the descriptor itself, not a pointer to it.",
+   "note": "[2026-11-19: relocated 0x14146fd90 -> 0x1414770d0 for the 2026-11-17 patch (2a88a3bd5647); the remap left it at the b9c3 address. Matched the b9c3 referencing instructions (rip disp wildcarded) uniquely in the new .text: 2/2.] The class descriptor Enemy_RuntimeSpawnPicker passes to ResourceRef_Resolve for a def's entity ref when the ref block's own descriptor (def+0x2a8) is null: `classDesc = *(def+0x2a8) ? *(def+0x2a8) : &DAT_14146fd90` (b9c3642884a8). Address of the descriptor itself, not a pointer to it.",
    "refs": [
     "src/loader/lua/rsmm/spawn.lua"
    ]
@@ -5740,18 +5740,18 @@
    "name": "DefRegistry_Begin",
    "kind": "data",
    "category": "registry",
-   "va": "0x14143a040",
+   "va": "0x141441380",
    "status": "va",
-   "note": "Global definition registry (vector of registered def instances) written by Registry_RegisterInstance (`lea rcx,[this]` / `mov edx,[this+8]` at its entry) and read by ~90 functions: rewards, camps, tiles, magical objects, level load. hook_rewards.cpp walks it for the reward dump. Pre-Update-6 it was 0x141440420/0x141440428; relocated 2026-10-12 from the same two instructions in the new Registry_RegisterInstance (0x14030c519 / 0x14030c513).",
+   "note": "[2026-11-19: relocated 0x14143a040 -> 0x141441380 for the 2026-11-17 patch (2a88a3bd5647); the remap left it at the b9c3 address. Matched the b9c3 referencing instructions (rip disp wildcarded) uniquely in the new .text: 9/9.] Global definition registry (vector of registered def instances) written by Registry_RegisterInstance (`lea rcx,[this]` / `mov edx,[this+8]` at its entry) and read by ~90 functions: rewards, camps, tiles, magical objects, level load. hook_rewards.cpp walks it for the reward dump. Pre-Update-6 it was 0x141440420/0x141440428; relocated 2026-10-12 from the same two instructions in the new Registry_RegisterInstance (0x14030c519 / 0x14030c513).",
    "refs": []
   },
   {
    "name": "DefRegistry_End",
    "kind": "data",
    "category": "registry",
-   "va": "0x14143a048",
+   "va": "0x141441388",
    "status": "va",
-   "note": "Second word of DefRegistry_Begin's header (+8). See DefRegistry_Begin.",
+   "note": "[2026-11-19: relocated 0x14143a048 -> 0x141441388 for the 2026-11-17 patch (2a88a3bd5647); the remap left it at the b9c3 address. Matched the b9c3 referencing instructions (rip disp wildcarded) uniquely in the new .text: 9/9.] Second word of DefRegistry_Begin's header (+8). See DefRegistry_Begin.",
    "refs": []
   },
   {
@@ -6460,9 +6460,9 @@
    "name": "g_InputActionMap",
    "kind": "data",
    "category": "input",
-   "va": "0x141436b68",
+   "va": "0x14143dea8",
    "status": "va",
-   "note": "*ptr = the name-keyed input action map that key prompts draw from. +0x00 entry vector {data, u32 size, u32 cap}, entries 0x60: +0x00 name oCString {char*, u32 len|0x80000000, u32 cap}, +0x10 u32[4] keyboard keys, +0x20/+0x30/+0x40/+0x50 u32[4] pad keys (one per pad layout), 0x107 = none. Built once at boot (FUN_14024fe00 via InputActionMap_Add); FUN_140250860 rewrites the vanilla entries' keys from g_GameOptions when the options page changes a key (called from the row's after-capture handler FUN_1403f6380); it touches no entry whose name is not a vanilla action. The Controls key row's input-icon widget ([row+0xa0], ctor FUN_14046fb50, name at +0x340, keyboard/pad flags +0x33c/+0x33d) looks its key up here BY NAME every draw (FUN_14046fca0 from FUN_140470b00), not through row+0x98. So a row spawned from a vanilla template keeps showing the template action's key until its widget name is changed and the map has an entry under the new name. Read 2026-11-11 on b9c3.",
+   "note": "[2026-11-19: relocated 0x141436b68 -> 0x14143dea8 for the 2026-11-17 patch (2a88a3bd5647); the remap left it at the b9c3 address. Matched the b9c3 referencing instructions (rip disp wildcarded) uniquely in the new .text: 8/8.] *ptr = the name-keyed input action map that key prompts draw from. +0x00 entry vector {data, u32 size, u32 cap}, entries 0x60: +0x00 name oCString {char*, u32 len|0x80000000, u32 cap}, +0x10 u32[4] keyboard keys, +0x20/+0x30/+0x40/+0x50 u32[4] pad keys (one per pad layout), 0x107 = none. Built once at boot (FUN_14024fe00 via InputActionMap_Add); FUN_140250860 rewrites the vanilla entries' keys from g_GameOptions when the options page changes a key (called from the row's after-capture handler FUN_1403f6380); it touches no entry whose name is not a vanilla action. The Controls key row's input-icon widget ([row+0xa0], ctor FUN_14046fb50, name at +0x340, keyboard/pad flags +0x33c/+0x33d) looks its key up here BY NAME every draw (FUN_14046fca0 from FUN_140470b00), not through row+0x98. So a row spawned from a vanilla template keeps showing the template action's key until its widget name is changed and the map has an entry under the new name. Read 2026-11-11 on b9c3.",
    "refs": [
     "src/loader/src/hook_keybinds.cpp"
    ]
@@ -6471,9 +6471,9 @@
    "name": "g_GameOptionsManager",
    "kind": "data",
    "category": "options",
-   "va": "0x141436a38",
+   "va": "0x14143dd70",
    "status": "va",
-   "note": "*ptr = the GameOptionsManager (a static object, 0x141466980 on b9c3). +0x08 the settings file request (GameOptionsManager_RequestLoad's req; +0x7c requested / +0x80 completed sequence), +0x18 bound file name, +0x68 bound serializer callbacks, +0x80 byte result flag of the last read, +0x130 13 category vectors ({GameOption** data, u32 size, u32 cap}, 0x10 each, names at 0x140ee5c40), +0x238/+0x240 per-option spinlock buckets hashed (FNV-1a) from option +0x8. Ctor FUN_14066a2c0. Read 2026-11-10/11 on b9c3 (static, then a live read in the controls-rows probe).",
+   "note": "[2026-11-19: relocated 0x141436a38 -> 0x14143dd70 for the 2026-11-17 patch (2a88a3bd5647); the remap left it at the b9c3 address. Matched the b9c3 referencing instructions (rip disp wildcarded) uniquely in the new .text: 11/11 sites.] *ptr = the GameOptionsManager (a static object, 0x141466980 on b9c3). +0x08 the settings file request (GameOptionsManager_RequestLoad's req; +0x7c requested / +0x80 completed sequence), +0x18 bound file name, +0x68 bound serializer callbacks, +0x80 byte result flag of the last read, +0x130 13 category vectors ({GameOption** data, u32 size, u32 cap}, 0x10 each, names at 0x140ee5c40), +0x238/+0x240 per-option spinlock buckets hashed (FNV-1a) from option +0x8. Ctor FUN_14066a2c0. Read 2026-11-10/11 on b9c3 (static, then a live read in the controls-rows probe).",
    "refs": [
     "src/loader/src/hook_keybinds.cpp"
    ]
@@ -6482,9 +6482,9 @@
    "name": "InputKeyGameOption_vftable",
    "kind": "data",
    "category": "options",
-   "va": "0x140efd440",
+   "va": "0x140f021b0",
    "status": "va",
-   "note": "vftable of InputKeyGameOption, the 0x30-byte key option: +0x0 vftable, +0x8 u32 id (spinlock hash key), +0x10 name oCString {char*, u32 len|0x80000000, u32 cap} = the ini key, +0x20 u8, +0x21 u8 registered, +0x28 u32 current key id, +0x2c u32 default key id (ctor FUN_1401b5e70 zeroes all of it). Slots: 3 Serialize 0x1401012c0 (hands the serializer +0x10 name and +0x28 value), 4 ResetToDefault 0x140101350 (+0x28 = +0x2c under the lock), 5 IsDefault 0x140101320, 6 SetValue 0x140101290 (+0x28 = *arg under the lock, no listeners). hook_keybinds.cpp builds mod keybind options on it. Read 2026-11-10 on b9c3.",
+   "note": "[2026-11-19: relocated 0x140efd440 -> 0x140f021b0 for the 2026-11-17 patch (2a88a3bd5647); the remap left it at the b9c3 address. Matched the b9c3 referencing instructions (rip disp wildcarded) uniquely in the new .text: 1 site + RTTI .?AVInputKeyGameOption@oe@@.] vftable of InputKeyGameOption, the 0x30-byte key option: +0x0 vftable, +0x8 u32 id (spinlock hash key), +0x10 name oCString {char*, u32 len|0x80000000, u32 cap} = the ini key, +0x20 u8, +0x21 u8 registered, +0x28 u32 current key id, +0x2c u32 default key id (ctor FUN_1401b5e70 zeroes all of it). Slots: 3 Serialize 0x1401012c0 (hands the serializer +0x10 name and +0x28 value), 4 ResetToDefault 0x140101350 (+0x28 = +0x2c under the lock), 5 IsDefault 0x140101320, 6 SetValue 0x140101290 (+0x28 = *arg under the lock, no listeners). hook_keybinds.cpp builds mod keybind options on it. Read 2026-11-10 on b9c3.",
    "refs": [
     "src/loader/src/hook_keybinds.cpp"
    ]
@@ -6493,9 +6493,9 @@
    "name": "g_InputKeyRecords",
    "kind": "data",
    "category": "input",
-   "va": "0x141466c50",
+   "va": "0x14146df90",
    "status": "va",
-   "note": "The key table: one 12-byte record per key id (keyboard 1-84, mouse buttons 85-91, wheel 92-93, pad 94+): u8 flags (0x4 held, 0x8 pressed this frame, 0x10 released this frame, 0x1 while the input manager's blocked countdown runs), +4 f32 held time, +8 f32. Input_Poll updates it every frame. g_InputMouseWheelUp / g_InputMouseWheelDown are its entries 92 / 93. hook_keybinds.cpp reads the 0x8 bit of each mod keybind's key after the poll. Mouse ids: 85 left, 86 right, 87 double left, 88 double right, 89 middle, 90 back, 91 forward (names KEY_MouseButton* in the table at 0x140ee6740). hook_input.cpp reads record 89's held bit after the poll for the middle drag.",
+   "note": "[2026-11-19: relocated 0x141466c50 -> 0x14146df90 for the 2026-11-17 patch (2a88a3bd5647); the remap left it at the b9c3 address. Matched the b9c3 referencing instructions (rip disp wildcarded) uniquely in the new .text: 5/5.] The key table: one 12-byte record per key id (keyboard 1-84, mouse buttons 85-91, wheel 92-93, pad 94+): u8 flags (0x4 held, 0x8 pressed this frame, 0x10 released this frame, 0x1 while the input manager's blocked countdown runs), +4 f32 held time, +8 f32. Input_Poll updates it every frame. g_InputMouseWheelUp / g_InputMouseWheelDown are its entries 92 / 93. hook_keybinds.cpp reads the 0x8 bit of each mod keybind's key after the poll. Mouse ids: 85 left, 86 right, 87 double left, 88 double right, 89 middle, 90 back, 91 forward (names KEY_MouseButton* in the table at 0x140ee6740). hook_input.cpp reads record 89's held bit after the poll for the middle drag.",
    "refs": [
     "src/loader/src/hook_input.cpp",
     "src/loader/src/hook_keybinds.cpp"
@@ -6884,9 +6884,9 @@
    "name": "g_InputManager",
    "kind": "data",
    "category": "input",
-   "va": "0x14146f8e8",
+   "va": "0x141476c28",
    "status": "va",
-   "note": "Pointer to the input manager (*ptr = the object Input_Poll is called on). The window procedure FUN_14057ac80 writes the wheel direction (+1/-1, dword) at [*ptr]+0xa0; Input_Poll consumes and zeroes it. Of the 42 functions that touch this global, only those two access +0xa0 on the manager. hook_input.cpp does not read this global (it takes the manager from the poll's this); it is recorded for R.debug and for the next patch's re-derivation.",
+   "note": "[2026-11-19: relocated 0x14146f8e8 -> 0x141476c28 for the 2026-11-17 patch (2a88a3bd5647); the remap left it at the b9c3 address. Matched the b9c3 referencing instructions (rip disp wildcarded) uniquely in the new .text: 11/11.] Pointer to the input manager (*ptr = the object Input_Poll is called on). The window procedure FUN_14057ac80 writes the wheel direction (+1/-1, dword) at [*ptr]+0xa0; Input_Poll consumes and zeroes it. Of the 42 functions that touch this global, only those two access +0xa0 on the manager. hook_input.cpp does not read this global (it takes the manager from the poll's this); it is recorded for R.debug and for the next patch's re-derivation.",
    "refs": [
     "src/loader/src/hook_input.cpp"
    ]
@@ -6895,9 +6895,9 @@
    "name": "g_InputMouseWheelUp",
    "kind": "data",
    "category": "input",
-   "va": "0x1414670a0",
+   "va": "0x14146e3e0",
    "status": "va",
-   "note": "Button record of the mouse wheel UP virtual button: entry 92 (KEY_MouseWheelUp, display 'Mouse wheel up') of the 12-byte key table at 0x141466c50 indexed by key id (keyboard 1-84, mouse buttons 85-91, wheel 92-93, pad 94+). Record: u8 flags (0x4 held, 0x8 pressed this frame, 0x10 released this frame, 0x1 set while the manager's blocked countdown +0x60 is non-zero), +4 f32 held time, +8 f32. One notch reads pressed (0x0c) for one frame, then released (0x10). Direct readers are UI only (oCUIMenu list scroll, oCUIWindow zoom, hero story book, scroll panels, Compendium prev/next, UI mouse dispatcher); the only default bindings are Menu::AlternativePageNext/Prev. hook_input.cpp reads the held bit right after Input_Poll to confirm a notch.",
+   "note": "[2026-11-19: relocated 0x1414670a0 -> 0x14146e3e0 for the 2026-11-17 patch (2a88a3bd5647); the remap left it at the b9c3 address. Matched the b9c3 referencing instructions (rip disp wildcarded) uniquely in the new .text: 7/7.] Button record of the mouse wheel UP virtual button: entry 92 (KEY_MouseWheelUp, display 'Mouse wheel up') of the 12-byte key table at 0x141466c50 indexed by key id (keyboard 1-84, mouse buttons 85-91, wheel 92-93, pad 94+). Record: u8 flags (0x4 held, 0x8 pressed this frame, 0x10 released this frame, 0x1 set while the manager's blocked countdown +0x60 is non-zero), +4 f32 held time, +8 f32. One notch reads pressed (0x0c) for one frame, then released (0x10). Direct readers are UI only (oCUIMenu list scroll, oCUIWindow zoom, hero story book, scroll panels, Compendium prev/next, UI mouse dispatcher); the only default bindings are Menu::AlternativePageNext/Prev. hook_input.cpp reads the held bit right after Input_Poll to confirm a notch.",
    "refs": [
     "src/loader/src/hook_input.cpp"
    ]
@@ -6906,9 +6906,9 @@
    "name": "g_InputMouseWheelDown",
    "kind": "data",
    "category": "input",
-   "va": "0x1414670ac",
+   "va": "0x14146e3ec",
    "status": "va",
-   "note": "Button record of the mouse wheel DOWN virtual button: entry 93 (KEY_MouseWheelDown) of the key table at 0x141466c50, directly after g_InputMouseWheelUp. Same 12-byte layout; see that symbol.",
+   "note": "[2026-11-19: relocated 0x1414670ac -> 0x14146e3ec for the 2026-11-17 patch (2a88a3bd5647); the remap left it at the b9c3 address. Matched the b9c3 referencing instructions (rip disp wildcarded) uniquely in the new .text: 9/9.] Button record of the mouse wheel DOWN virtual button: entry 93 (KEY_MouseWheelDown) of the key table at 0x141466c50, directly after g_InputMouseWheelUp. Same 12-byte layout; see that symbol.",
    "refs": [
     "src/loader/src/hook_input.cpp"
    ]
@@ -6917,9 +6917,9 @@
    "name": "g_MouseState",
    "kind": "data",
    "category": "input",
-   "va": "0x14146d9c8",
+   "va": "0x141474d08",
    "status": "va",
-   "note": "The game's global cursor record (0x28 bytes): +0x00/+0x04 f32 x, y (client pixels plus the window's +0x70/+0x74 offset), +0x08/+0x0c f32 dx, dy since the previous update (zeroed when the position did not change), +0x10/+0x14 x/width, y/height, +0x18/+0x1c dx/width, dy/height, +0x20/+0x24 f32 width, height. Written only by the leaf FUN_140680970(state, &pos, &size) (returns true when the position changed), called at 0x14045ac62 from FUN_14045ab40 with the main window's cursor [[ui+0xf8]+0xa8/+0xac] and client size [+0xa0/+0xa4]; the window procedure FUN_14057ac80 stores that cursor on WM_MOUSEMOVE (0x14057afea) and WM_NCMOUSEMOVE, clamped to the client size. Path: oCEngineApplication vftable slot 5 FUN_1404546f0 (rcx = app+0x20, the UI manager) -> FUN_140459e00 -> (when [ui+0x18] == 0 and [[ui+0x30]+0x248] != 0) FUN_14045a4e0 -> FUN_14045ab40, once per UI update. With the cursor lock on (g_CursorLockFlag, off unless the loader sets it) FUN_14045ab40 recentres the cursor with SetCursorPos and dx/dy become screen cursor minus g_CursorLockCentre; the record is valid either way. Direct readers are UI: NewsUiControllerEntityCpnt drag-to-turn (FUN_140365b60) reads x. hook_input.cpp differences x/y between polls while key record 89 (middle) is held, for the R.input drag. Found 2026-11-11 by static reading on b9c3 (evidence/mouse-drag-2026-11-11).",
+   "note": "[2026-11-19: relocated 0x14146d9c8 -> 0x141474d08 for the 2026-11-17 patch (2a88a3bd5647); the remap left it at the b9c3 address. Matched the b9c3 referencing instructions (rip disp wildcarded) uniquely in the new .text: 4/4.] The game's global cursor record (0x28 bytes): +0x00/+0x04 f32 x, y (client pixels plus the window's +0x70/+0x74 offset), +0x08/+0x0c f32 dx, dy since the previous update (zeroed when the position did not change), +0x10/+0x14 x/width, y/height, +0x18/+0x1c dx/width, dy/height, +0x20/+0x24 f32 width, height. Written only by the leaf FUN_140680970(state, &pos, &size) (returns true when the position changed), called at 0x14045ac62 from FUN_14045ab40 with the main window's cursor [[ui+0xf8]+0xa8/+0xac] and client size [+0xa0/+0xa4]; the window procedure FUN_14057ac80 stores that cursor on WM_MOUSEMOVE (0x14057afea) and WM_NCMOUSEMOVE, clamped to the client size. Path: oCEngineApplication vftable slot 5 FUN_1404546f0 (rcx = app+0x20, the UI manager) -> FUN_140459e00 -> (when [ui+0x18] == 0 and [[ui+0x30]+0x248] != 0) FUN_14045a4e0 -> FUN_14045ab40, once per UI update. With the cursor lock on (g_CursorLockFlag, off unless the loader sets it) FUN_14045ab40 recentres the cursor with SetCursorPos and dx/dy become screen cursor minus g_CursorLockCentre; the record is valid either way. Direct readers are UI: NewsUiControllerEntityCpnt drag-to-turn (FUN_140365b60) reads x. hook_input.cpp differences x/y between polls while key record 89 (middle) is held, for the R.input drag. Found 2026-11-11 by static reading on b9c3 (evidence/mouse-drag-2026-11-11).",
    "refs": [
     "src/loader/src/hook_input.cpp"
    ]
@@ -6928,9 +6928,9 @@
    "name": "g_CursorLockFlag",
    "kind": "data",
    "category": "input",
-   "va": "0x141467b67",
+   "va": "0x14146eea7",
    "status": "va",
-   "note": "Cursor-lock byte (u8). Its only reader is the UI update FUN_14045ab40: when it is set and the foreground callback at [0x141436bf8] (FUN_14045a480, true when a game window is the foreground window; no callback counts as yes) agrees, the update calls GetCursorPos, takes dx/dy = screen cursor minus g_CursorLockCentre, stores them in g_MouseState and SetCursorPos()es the cursor back to the centre. Set to 0 once by the input init FUN_14067cea0 and written by nothing else, so the game never turns it on; hook_input.cpp does, for R.input.mouse_look. Static RE 2026-11-12 (evidence/mouse-look-2026-11-12).",
+   "note": "[2026-11-19: relocated 0x141467b67 -> 0x14146eea7 for the 2026-11-17 patch (2a88a3bd5647); the remap left it at the b9c3 address. Matched the b9c3 referencing instructions (rip disp wildcarded) uniquely in the new .text: 1/1, block delta +0x7340.] Cursor-lock byte (u8). Its only reader is the UI update FUN_14045ab40: when it is set and the foreground callback at [0x141436bf8] (FUN_14045a480, true when a game window is the foreground window; no callback counts as yes) agrees, the update calls GetCursorPos, takes dx/dy = screen cursor minus g_CursorLockCentre, stores them in g_MouseState and SetCursorPos()es the cursor back to the centre. Set to 0 once by the input init FUN_14067cea0 and written by nothing else, so the game never turns it on; hook_input.cpp does, for R.input.mouse_look. Static RE 2026-11-12 (evidence/mouse-look-2026-11-12).",
    "refs": [
     "src/loader/src/hook_input.cpp"
    ]
@@ -6939,9 +6939,9 @@
    "name": "g_CursorLockCentre",
    "kind": "data",
    "category": "input",
-   "va": "0x14146d9c0",
+   "va": "0x141474d00",
    "status": "va",
-   "note": "Two f32 (x at +0, y at +4): the SCREEN-coordinate point the cursor lock recentres to. Read by FUN_14045ab40 at 0x14045abeb / 0x14045ac1f and cast to int for SetCursorPos at 0x14045aca0. Nothing in the game writes them (they stay 0.0), so with g_CursorLockFlag set and no writer the game would pin the cursor to the screen corner every frame; hook_input.cpp writes the game window's client-area centre each poll while the lock is requested. Static RE 2026-11-12 (evidence/mouse-look-2026-11-12).",
+   "note": "[2026-11-19: relocated 0x14146d9c0 -> 0x141474d00 for the 2026-11-17 patch (2a88a3bd5647); the remap left it at the b9c3 address. Matched the b9c3 referencing instructions (rip disp wildcarded) uniquely in the new .text: 2/2.] Two f32 (x at +0, y at +4): the SCREEN-coordinate point the cursor lock recentres to. Read by FUN_14045ab40 at 0x14045abeb / 0x14045ac1f and cast to int for SetCursorPos at 0x14045aca0. Nothing in the game writes them (they stay 0.0), so with g_CursorLockFlag set and no writer the game would pin the cursor to the screen corner every frame; hook_input.cpp writes the game window's client-area centre each poll while the lock is requested. Static RE 2026-11-12 (evidence/mouse-look-2026-11-12).",
    "refs": [
     "src/loader/src/hook_input.cpp"
    ]
@@ -6993,9 +6993,9 @@
    "name": "g_CameraModifier_vftable",
    "kind": "data",
    "category": "camera",
-   "va": "0x140f62ea0",
+   "va": "0x140f67b20",
    "status": "va",
-   "note": "vftable of oCCameraModifier (the base class; slot 2 destructor FUN_14065fdd0, slot 3 Apply). The root of the camera tree, embedded at CameraSceneContext+0x78, is exactly this class (stored by the context ctor FUN_1401c8c40). hook_input.cpp uses it with g_CameraSceneContext_vftable to recognise the root inside CameraModifier_Evaluate.",
+   "note": "[2026-11-19: relocated 0x140f62ea0 -> 0x140f67b20 for the 2026-11-17 patch (2a88a3bd5647); the remap left it at the b9c3 address. Matched the b9c3 referencing instructions (rip disp wildcarded) uniquely in the new .text: 3/3 + RTTI .?AVoCCameraModifier@@.] vftable of oCCameraModifier (the base class; slot 2 destructor FUN_14065fdd0, slot 3 Apply). The root of the camera tree, embedded at CameraSceneContext+0x78, is exactly this class (stored by the context ctor FUN_1401c8c40). hook_input.cpp uses it with g_CameraSceneContext_vftable to recognise the root inside CameraModifier_Evaluate.",
    "refs": [
     "src/loader/src/hook_input.cpp"
    ]
@@ -7004,9 +7004,9 @@
    "name": "g_ZoomCameraModifier_vftable",
    "kind": "data",
    "category": "camera",
-   "va": "0x140f62b38",
+   "va": "0x140f678d0",
    "status": "va",
-   "note": "vftable of oCZoomCameraModifier (0x38 bytes; slot 2 destructor FUN_1406618d0, slot 3 Apply FUN_140661960). +0x30 f32 zoom factor. Apply: f = lerp(1, zoom, weight); eye = look_at + (eye - look_at) * f, so below 1 moves the camera in. Ctor FUN_140667370 (registered by reflection, class id 0x115fa237, no direct code caller): base fields +8 dir 1, +9 0, elapsed 0, duration 1.0, weight 1.0, curve 0, no children, then this vftable and factor 1.0. hook_input.cpp builds its zoom modifiers with the same field values in loader-owned memory.",
+   "note": "[2026-11-19: relocated 0x140f62b38 -> 0x140f678d0 for the 2026-11-17 patch (2a88a3bd5647); the remap left it at the b9c3 address. Matched the b9c3 referencing instructions (rip disp wildcarded) uniquely in the new .text: 1/1 + RTTI .?AVoCZoomCameraModifier@@.] vftable of oCZoomCameraModifier (0x38 bytes; slot 2 destructor FUN_1406618d0, slot 3 Apply FUN_140661960). +0x30 f32 zoom factor. Apply: f = lerp(1, zoom, weight); eye = look_at + (eye - look_at) * f, so below 1 moves the camera in. Ctor FUN_140667370 (registered by reflection, class id 0x115fa237, no direct code caller): base fields +8 dir 1, +9 0, elapsed 0, duration 1.0, weight 1.0, curve 0, no children, then this vftable and factor 1.0. hook_input.cpp builds its zoom modifiers with the same field values in loader-owned memory.",
    "refs": [
     "src/loader/src/hook_input.cpp"
    ]
@@ -7015,9 +7015,9 @@
    "name": "g_CameraSceneContext_vftable",
    "kind": "data",
    "category": "camera",
-   "va": "0x140f0a910",
+   "va": "0x140f0f6a0",
    "status": "va",
-   "note": "vftable of oe::CameraSceneContext (ctor FUN_1401c8c40; reached through GameScene_FindContextByTester with tester vftable 0x140f093a8). +0x28 oCCallScheduleStep whose callback FUN_1406add60 evaluates the root every frame; +0x78 the embedded root oCCameraModifier; +0xb8/+0xbc/+0xc0 hold 10.0 / 20.0 / 1.0 (meaning unknown).",
+   "note": "[2026-11-19: relocated 0x140f0a910 -> 0x140f0f6a0 for the 2026-11-17 patch (2a88a3bd5647); the remap left it at the b9c3 address. Matched the b9c3 referencing instructions (rip disp wildcarded) uniquely in the new .text: 2/2 + RTTI .?AVCameraSceneContext@oe@@.] vftable of oe::CameraSceneContext (ctor FUN_1401c8c40; reached through GameScene_FindContextByTester with tester vftable 0x140f093a8). +0x28 oCCallScheduleStep whose callback FUN_1406add60 evaluates the root every frame; +0x78 the embedded root oCCameraModifier; +0xb8/+0xbc/+0xc0 hold 10.0 / 20.0 / 1.0 (meaning unknown).",
    "refs": [
     "src/loader/src/hook_input.cpp"
    ]
