@@ -12,6 +12,7 @@ import { ArrowLeft, ExternalLink, Globe, Plus, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { api, describeApiError, logApiError } from '../lib/api';
 import { getApiUrl } from '../lib/api-url';
+import { useSession } from '../lib/auth-client';
 import { useT } from '../lib/i18n-react';
 import { inTauri } from '../lib/platform';
 import { installModIntoProfile, resolveInstallTarget } from '../lib/profile-mods';
@@ -35,6 +36,7 @@ import {
 } from './chrome';
 import { useConfirmDisableHook } from './disable-hook-consent';
 import { OverlayButton } from './overlay-button';
+import { ListingRatingSummary, ListingReviews } from './listing-reviews';
 import { PrivateGamesOnlyBadge } from './private-games-only-badge';
 import { useDialog, useToast } from './toast';
 import { useModToggle } from './use-mod-toggle';
@@ -51,6 +53,7 @@ import { useModToggle } from './use-mod-toggle';
  */
 export function ModDetail({ slug, embedded = false }: { slug: string; embedded?: boolean }) {
   const t = useT();
+  const { data: session } = useSession();
   const navigate = useNavigate();
   const router = useRouter();
   const canGoBack = useCanGoBack();
@@ -72,7 +75,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
   const dialog = useDialog();
 
   const { data, error, isLoading } = useQuery({
-    queryKey: ['mods', 'detail', slug],
+    queryKey: ['mods', 'detail', slug, session?.user.id ?? null],
     queryFn: () => api.mods.get(slug),
     retry: (count, err) => (err instanceof ApiError && err.status === 404 ? false : count < 1),
     staleTime: 30_000,
@@ -285,15 +288,20 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
         summary={summary}
         labels={privateOnly ? <PrivateGamesOnlyBadge /> : null}
         stats={
-          <span>
-            {author}
-            {localVersion ? ` · v${localVersion}` : ''}
-            {outdated && apiLatest
-              ? ` → ${apiLatest}`
-              : apiLatest && !localVersion
-                ? ` · v${apiLatest}`
-                : ''}
-          </span>
+          <>
+            <span>
+              {author}
+              {localVersion ? ` · v${localVersion}` : ''}
+              {outdated && apiLatest
+                ? ` → ${apiLatest}`
+                : apiLatest && !localVersion
+                  ? ` · v${apiLatest}`
+                  : ''}
+            </span>
+            {apiMod ? (
+              <ListingRatingSummary target="mod" slug={slug} fallbackRating={rating} />
+            ) : null}
+          </>
         }
         action={
           installedHere && liveBySlug ? (
@@ -453,6 +461,9 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
             <Fleuron />
             <Markdown source={markdown} className="mt-4" />
           </Panel>
+          {apiMod ? (
+            <ListingReviews target="mod" slug={slug} isAuthor={apiMod.isAuthor ?? false} />
+          ) : null}
           {liveBySlug?.changelog ? (
             <Panel>
               <h3 className="font-fraktur text-xl text-parchment mb-3">{t('Changelog')}</h3>

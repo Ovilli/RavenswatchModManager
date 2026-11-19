@@ -61,11 +61,13 @@ export function RegistryDetailContentLayout({
   className?: string;
 }) {
   return (
-    <div className={`mod-content-grid ${className}`}>
-      <aside className="mod-download-sidebar" aria-label={sidebarLabel}>
-        {sidebar}
-      </aside>
-      <div className="mod-reading">{children}</div>
+    <div className="registry-detail-content">
+      <div className={`mod-content-grid ${className}`}>
+        <aside className="mod-download-sidebar" aria-label={sidebarLabel}>
+          {sidebar}
+        </aside>
+        <div className="mod-reading">{children}</div>
+      </div>
     </div>
   );
 }

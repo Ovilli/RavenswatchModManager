@@ -232,8 +232,12 @@ body:has(.mod-detail) > .site-header {
   text-underline-offset: 4px;
 }
 .mod-rating-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   margin-left: auto;
   min-height: 32px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
 .mod-rating-summary svg {
@@ -242,6 +246,9 @@ body:has(.mod-detail) > .site-header {
 .mod-rating-count {
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+.registry-detail-content {
+  container-type: inline-size;
 }
 .mod-content-grid {
   display: grid;
@@ -261,6 +268,28 @@ body:has(.mod-detail) > .site-header {
   min-width: 0;
   position: sticky;
   top: calc(var(--site-header-height, 61px) + 80px);
+}
+/* The desktop sidebar consumes viewport width. Use the available content
+   width to keep the shared review form and reading column usable there. */
+@container (max-width: 760px) {
+  .mod-content-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+    padding-top: 24px;
+  }
+  .mod-download-sidebar {
+    grid-column: 1;
+    grid-row: 1;
+    position: static;
+    width: 100%;
+  }
+  .mod-reading {
+    grid-column: 1;
+    grid-row: 2;
+    width: 100%;
+  }
+  .registry-detail-embedded .mod-download-sidebar { grid-row: 2; }
+  .registry-detail-embedded .mod-reading { grid-row: 1; }
 }
 .mod-download-card {
   padding: 26px;

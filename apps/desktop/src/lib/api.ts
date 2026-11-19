@@ -6,18 +6,30 @@ import { modLocale } from './rsmm';
 
 const API_BASE = getApiUrl();
 
-// Don't send cookies on API fetch calls — the Tauri WebView origin
-// (http://tauri.localhost on Windows) must be CORS-whitelisted by the
-// API for credentialed requests. Since the desktop app uses a separate
-// better-auth client for sign-in, the API client only needs public /
-// unauthenticated access. Removing credentials avoids the strict CORS
-// origin-matching requirement that breaks on Windows when the API's
-// TRUSTED_ORIGINS env var doesn't include the Windows WebView origin.
-const noCredsFetch: typeof fetch = (input, init) => fetch(input, { ...init, credentials: 'omit' });
+// Use the same Better Auth session as sign-in. The API always trusts the
+// shipped Tauri origins (apps/api/src/env.ts), including Windows HTTP.
+// Lists are CDN cached for up to six minutes: bypass that cache after writes
+// so a new review also updates ratings on Browse, matching the web registry.
+let lastWrite = 0;
+const registryFetch: typeof fetch = async (input, init) => {
+  const method = (init?.method ?? 'GET').toUpperCase();
+  const url = new URL(String(input));
+  if (
+    method === 'GET' &&
+    lastWrite &&
+    Date.now() - lastWrite < 6 * 60_000 &&
+    /^\/api\/(mods|collections)$/.test(url.pathname)
+  ) {
+    url.searchParams.set('fresh', String(lastWrite));
+  }
+  const response = await fetch(url.toString(), init);
+  if (method !== 'GET' && response.ok) lastWrite = Date.now();
+  return response;
+};
 
 const client = createApiClient({
   baseUrl: API_BASE,
-  fetch: noCredsFetch,
+  fetch: registryFetch,
 });
 
 type Translatable = {

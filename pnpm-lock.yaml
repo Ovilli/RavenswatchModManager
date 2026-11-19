@@ -431,6 +431,12 @@ importers:
 
   packages/ui:
     dependencies:
+      '@rsmm/api-client':
+        specifier: workspace:*
+        version: link:../api-client
+      '@rsmm/schemas':
+        specifier: workspace:*
+        version: link:../schemas
       class-variance-authority:
         specifier: 0.7.1
         version: 0.7.1
@@ -447,6 +453,9 @@ importers:
       '@rsmm/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
+      '@tanstack/react-query':
+        specifier: 5.62.11
+        version: 5.62.11(react@19.0.0)
       '@types/react':
         specifier: 19.0.2
         version: 19.0.2

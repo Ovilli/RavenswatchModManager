@@ -17,10 +17,12 @@ import {
   StatPill,
 } from '../components/chrome';
 import { InstalledState } from '../components/installed-state';
+import { ListingRatingSummary, ListingReviews } from '../components/listing-reviews';
 import { ScreenshotLightbox } from '../components/screenshot-lightbox';
 import { useToast } from '../components/toast';
 import { useDialog } from '../components/toast';
 import { api, describeApiError, logApiError } from '../lib/api';
+import { useSession } from '../lib/auth-client';
 import { useT } from '../lib/i18n-react';
 import {
   installModIntoProfile,
@@ -37,6 +39,7 @@ export const Route = createFileRoute('/collection/$slug')({
 
 function CollectionDetailPage() {
   const t = useT();
+  const { data: session } = useSession();
   const { slug } = Route.useParams();
   const navigate = useNavigate();
   const router = useRouter();
@@ -64,7 +67,7 @@ function CollectionDetailPage() {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
 
   const { data, error, isLoading } = useQuery({
-    queryKey: ['collections', 'detail', slug],
+    queryKey: ['collections', 'detail', slug, session?.user.id ?? null],
     queryFn: () => api.collections.get(slug),
     retry: (count, err) => (err instanceof ApiError && err.status === 404 ? false : count < 1),
     staleTime: 30_000,
@@ -337,6 +340,8 @@ function CollectionDetailPage() {
         />
       ) : null}
 
+      <ListingRatingSummary target="collection" slug={slug} />
+
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         <div className="space-y-4 md:col-span-2">
           {markdownBody ? (
@@ -435,6 +440,11 @@ function CollectionDetailPage() {
               </p>
             </Panel>
           ) : null}
+          <ListingReviews
+            target="collection"
+            slug={slug}
+            isAuthor={data.ownerId === session?.user.id}
+          />
         </div>
 
         <aside className="space-y-4">
