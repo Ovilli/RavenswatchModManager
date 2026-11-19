@@ -112,6 +112,8 @@ local function _plausible(p)
     return type(p) == "number" and p ~= 0 and R.ptr and R.ptr.plausible(p)
 end
 
+-- Guards every write, so the action camera runs it on every mouse move.
+-- R.rtti.name caches per vftable (one read per call), so this stays cheap.
 local function _is(obj, cls)
     local n = R.rtti and R.rtti.name and R.rtti.name(obj)
     if type(n) ~= "string" then return false end
@@ -123,8 +125,7 @@ end
 -- Class name for a SEARCH: only objects whose first word is a vftable inside
 -- the game image, and looked up once per vftable. R.rtti.name is a dozen
 -- guarded reads plus a string; called on every pointer a search met, it made
--- one search take ~13 s (2026-11-08). _is() stays uncached for the checks
--- that guard a write.
+-- one search take ~13 s (2026-11-08).
 local _vt_cls = {}
 local function _cls(p)
     local vt = I.read_u64(p)

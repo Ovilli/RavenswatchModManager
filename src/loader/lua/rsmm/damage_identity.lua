@@ -737,9 +737,12 @@ function F._dmg_find_needles(names)
         if left <= 0 then
             F._own.capped = (F._own.capped or 0) + 1
         else
-            local ok, hits, resume = pcall(I.mem_find, needle, left,
-                                           F._own.SLICE_MB,
+            local ok, hits, resume = pcall(R._mem_find_slice, "damage.owner",
+                                           needle, left, F._own.SLICE_MB,
                                            F._own.cursor_va or 0)
+            -- Still searching on the worker thread: same needle, same cursor,
+            -- collect it next tick. Nothing below may advance or retire.
+            if ok and hits == nil and resume == "pending" then return F._own.addrs end
             if ok and type(hits) == "table" then
                 local m = names[needle]
                 for _, va in ipairs(hits) do
