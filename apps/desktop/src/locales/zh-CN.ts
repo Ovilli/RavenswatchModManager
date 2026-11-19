@@ -22,7 +22,6 @@
  */
 
 export const zhCN: Record<string, string> = {
-  'Browse mods to get started': '浏览模组，开启冒险',
   '{active} / {total} active': '{active} / {total} 已启用',
   'Actions for {name}': '{name} 的操作',
   Duplicate: '复制',

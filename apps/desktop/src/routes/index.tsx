@@ -454,12 +454,12 @@ function LibraryPage() {
 
   if (installed.length === 0) {
     return (
-      <div className="space-y-6">
+      <div className="library-empty-page">
         <LibraryHeader />
         <LibraryEmptyState
           title={
             <Link to="/browse" className="empty-grimoire-link">
-              {t('Browse mods to get started')} <span aria-hidden="true">→</span>
+              {t('Browse mods')} <span aria-hidden="true">→</span>
             </Link>
           }
         />
@@ -474,9 +474,11 @@ function LibraryPage() {
   // instead of sending the user to /browse to find something already local.
   if (profile.loadOrder.length === 0) {
     return (
-      <div className="space-y-6">
-        <SetupBanner />
-        <LibraryHeader />
+      <div className="library-empty-page">
+        <div className="space-y-6">
+          <SetupBanner />
+          <LibraryHeader />
+        </div>
         <LibraryEmptyState
           title={t('“{name}” has no mods yet', { name: profile.name })}
           body={

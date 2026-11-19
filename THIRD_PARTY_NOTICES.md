@@ -17,6 +17,14 @@ the artifact it ends up in.
 
 The RSMM logo and app icon are by **Arch**.
 
+The Library's **Paladin Tome** model is by
+[Mike Chan (rikuchan)](https://sketchfab.com/rikuchan), licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+[Original model](https://sketchfab.com/3d-models/paladin-tome-e8af23487fed49e9abf87b5a3c902a66).
+The supplied GLB is bundled unchanged; the accompanying poster is rendered
+with RSMM's camera and lighting. Its original attribution is also embedded
+in the GLB metadata.
+
 ---
 
 # Loader DLL
@@ -183,6 +191,7 @@ inside the package itself.
 |-----------|---------|
 | [Tauri](https://tauri.app) 2 and its plugins (shell, opener, deep-link, os, http, process, updater, global-shortcut, single-instance) | MIT OR Apache-2.0 |
 | [React](https://react.dev) / React DOM | MIT |
+| [Three.js](https://threejs.org) | MIT |
 | [TanStack Query](https://tanstack.com/query) / [TanStack Router](https://tanstack.com/router) | MIT |
 | [Zustand](https://github.com/pmndrs/zustand) | MIT |
 | [Lucide](https://lucide.dev) icons (`lucide-react`) | ISC |
