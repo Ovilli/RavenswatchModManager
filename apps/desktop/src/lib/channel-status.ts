@@ -229,8 +229,8 @@ export async function trackCliUpdate(): Promise<UpdateCliResult | null> {
 export type LoaderState = 'release' | 'dev' | 'none';
 
 /**
- * "v9 · active", "dev · active", "v9 · inactive" (not planted; `nextVersion` is
- * what the next launch plants), "none", or null when it cannot be told.
+ * "v9 · active", "dev · active", "v9" (not planted; `nextVersion` is what the
+ * next launch plants), "none", or null when it cannot be told.
  */
 export function describeLoaderInstall(
   state: LoaderState | undefined,
@@ -238,7 +238,7 @@ export function describeLoaderInstall(
   nextVersion?: number | null,
 ): string | null {
   if (state === 'none') {
-    return nextVersion == null ? tr('none') : tr('v{version} · inactive', { version: nextVersion });
+    return nextVersion == null ? tr('none') : `v${nextVersion}`;
   }
   if (state === 'dev') return tr('dev · active');
   if (version == null) return null;

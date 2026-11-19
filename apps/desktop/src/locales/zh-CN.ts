@@ -433,7 +433,6 @@ export const zhCN: Record<string, string> = {
   dev: '开发版',
   'dev · active': '开发版 · 启用中',
   'v{version} · active': 'v{version} · 启用中',
-  'v{version} · inactive': 'v{version} · 未启用',
   'Loader update failed.': '加载器更新失败。',
   'Loader update failed: {error}': '加载器更新失败：{error}',
   'Loading…': '加载中…',
