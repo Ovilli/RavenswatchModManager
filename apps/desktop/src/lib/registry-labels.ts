@@ -1,4 +1,4 @@
-import type { RegistryListingGallery, RegistryModCard, getRegistryMedia } from '@rsmm/ui';
+import type { RegistryListingGallery, RegistryListingCard, getRegistryMedia } from '@rsmm/ui';
 import type { ComponentProps } from 'react';
 import type { TFunction } from './i18n-react';
 
@@ -6,21 +6,22 @@ import type { TFunction } from './i18n-react';
 // every message, including text rendered inside the shared registry components.
 export function registryCardLabels(
   t: TFunction,
-  mod: ComponentProps<typeof RegistryModCard>['mod'],
-): Required<NonNullable<ComponentProps<typeof RegistryModCard>['labels']>> {
-  const author = mod.author || t('unknown');
+  listing: ComponentProps<typeof RegistryListingCard>['listing'],
+): Required<NonNullable<ComponentProps<typeof RegistryListingCard>['labels']>> {
+  const author = listing.author || t('unknown');
   return {
     author: t('unknown'),
     authorLine: t('by {author}', { author }),
-    card: mod.author ? t('{name} by {author}', { name: mod.name, author }) : mod.name,
-    preview: t('{name} preview', { name: mod.name }),
+    card: listing.author ? t('{name} by {author}', { name: listing.name, author }) : listing.name,
+    preview: t('{name} preview', { name: listing.name }),
     featured: t('Featured'),
     nsfw: t('nsfw'),
     privateOnly: t('Private games only'),
     coauthor: t('Co-author'),
-    downloads: t('{n} dl', { n: (mod.downloads ?? 0).toLocaleString(t.tag) }),
-    downloadUnit: (mod.downloads ?? 0) === 1 ? t('download') : t('downloads'),
-    rating: t('{rating} out of 5 stars', { rating: (mod.rating ?? 0).toFixed(1) }),
+    downloads: t('{n} dl', { n: (listing.downloads ?? 0).toLocaleString(t.tag) }),
+    downloadUnit: (listing.downloads ?? 0) === 1 ? t('download') : t('downloads'),
+    rating: t('{rating} out of 5 stars', { rating: (listing.rating ?? 0).toFixed(1) }),
+    modCount: t.n(listing.modCount ?? 0, '{n} mod', '{n} mods'),
   };
 }
 

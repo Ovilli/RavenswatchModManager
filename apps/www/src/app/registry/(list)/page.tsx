@@ -3,7 +3,7 @@
 import { type ModListItem, hasPrivateOnlyTag } from '@rsmm/schemas';
 import {
   RegistryGridSkeleton,
-  RegistryModCard,
+  RegistryListingCard,
   RegistryResultsControls,
   buttonVariants,
 } from '@rsmm/ui';
@@ -256,9 +256,9 @@ function RegistryInner() {
  */
 function ModListRow({ m, onOpen }: { m: ModListItem; onOpen: () => void }) {
   return (
-    <RegistryModCard
+    <RegistryListingCard
       view="list"
-      mod={m}
+      listing={m}
       privateOnly={hasPrivateOnlyTag(m.tags)}
       onOpen={onOpen}
       labels={{

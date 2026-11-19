@@ -1,4 +1,4 @@
-import { RegistryListingGallery, RegistryModCard, getRegistryMedia } from '@rsmm/ui';
+import { RegistryListingGallery, RegistryListingCard, getRegistryMedia } from '@rsmm/ui';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { type Locale, type Vars, localeTag, translate } from './i18n';
@@ -26,10 +26,50 @@ const mod = {
 };
 
 describe('desktop shared registry translations', () => {
+  it.each([0, 1, 5])(
+    'keeps collection counts and unknown authors translated (%i mods)',
+    (modCount) => {
+      const t = translator('zh-CN');
+      const collection = { slug: 'collection', name: '合集', modCount, author: null };
+      const html = renderToStaticMarkup(
+        <RegistryListingCard
+          listing={collection}
+          locale={t.tag}
+          labels={registryCardLabels(t, collection)}
+        />,
+      );
+      expect(html).toContain(`${modCount} 个模组`);
+      expect(html).toContain('作者 未知');
+      expect(html).not.toMatch(/lucide-download|mod-card-rating|>downloads?</);
+    },
+  );
+
+  it.each([
+    [0, '0 mods'],
+    [1, '1 mod'],
+    [1234, '1,234 mods'],
+  ])('keeps English collection counts readable (%i)', (modCount, label) => {
+    const html = renderToStaticMarkup(
+      <RegistryListingCard
+        listing={{ slug: 'collection', name: 'Collection', modCount }}
+        href="/c/collection"
+        footer={<a href="/c/collection/edit">Manage</a>}
+      />,
+    );
+    expect(html).toContain(`>${label}</span>`);
+    expect(html).toContain('by unknown');
+    expect(html).toContain('</a><div class="mod-card-footer"><a href="/c/collection/edit">');
+  });
+
   it.each(['grid', 'list'] as const)('renders a translated %s card and accessible name', (view) => {
     const t = translator('zh-CN');
     const html = renderToStaticMarkup(
-      <RegistryModCard mod={mod} view={view} locale={t.tag} labels={registryCardLabels(t, mod)} />,
+      <RegistryListingCard
+        listing={mod}
+        view={view}
+        locale={t.tag}
+        labels={registryCardLabels(t, mod)}
+      />,
     );
     expect(html).toContain('aria-label="测试模组，作者 作者甲"');
     expect(html).toContain('精选');
@@ -91,7 +131,7 @@ describe('desktop shared registry translations', () => {
     expect(media[0]?.label).toBe('测试模组 cover');
     const gallery = renderToStaticMarkup(<RegistryListingGallery media={media} name={mod.name} />);
     expect(gallery).toContain('View full image');
-    const card = renderToStaticMarkup(<RegistryModCard mod={mod} />);
+    const card = renderToStaticMarkup(<RegistryListingCard listing={mod} />);
     expect(card).toContain('by 作者甲');
     expect(card).toContain('4.5 out of 5 stars');
   });

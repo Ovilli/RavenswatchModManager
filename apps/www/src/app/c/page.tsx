@@ -1,6 +1,6 @@
 'use client';
 
-import { Spinner, buttonVariants } from '@rsmm/ui';
+import { RegistryGridSkeleton, buttonVariants } from '@rsmm/ui';
 import { useQuery } from '@tanstack/react-query';
 import type { Route } from 'next';
 import Link from 'next/link';
@@ -29,8 +29,8 @@ export default function CollectionsIndexPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-24">
-          <Spinner />
+        <div aria-busy="true" aria-label="Loading collections">
+          <RegistryGridSkeleton />
         </div>
       ) : isError ? (
         // Not "No collections yet": an outage must not tell a visitor the
@@ -61,7 +61,7 @@ export default function CollectionsIndexPage() {
           </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="registry-grid">
           {data.items.map((c) => (
             <ListingCard key={c.id} kind="collection" item={c} />
           ))}

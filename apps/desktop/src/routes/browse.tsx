@@ -2,7 +2,7 @@ import { type ModListItem, hasPrivateOnlyTag, isPrivateOnlyTag } from '@rsmm/sch
 import {
   RegistryFilterDialog,
   RegistryGridSkeleton,
-  RegistryModCard,
+  RegistryListingCard,
   RegistryResultsControls,
   RegistrySearchBar,
 } from '@rsmm/ui';
@@ -10,7 +10,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { ExternalLink, Loader2, Plus, WifiOff, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, CopyButton, Cover, Panel } from '../components/chrome';
+import { Button, CopyButton, Panel } from '../components/chrome';
 import { InstalledState } from '../components/installed-state';
 import { ModDetail } from '../components/mod-detail';
 import { useToast } from '../components/toast';
@@ -292,63 +292,28 @@ function BrowsePage() {
 
           {tab === 'collections' ? (
             <>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {collections.map((c) => (
-                  <div
-                    key={c.id}
-                    tabIndex={0}
-                    // biome-ignore lint/a11y/useSemanticElements: card link with nested interactive controls; <a> may not legally wrap them, so a guarded role="link" is used
-                    role="link"
-                    aria-label={c.name}
-                    onClick={(e) => {
-                      const el = e.target as HTMLElement;
-                      if (el.closest('button, a, input, textarea, select, [role="switch"]')) return;
-                      navigate({ to: '/collection/$slug', params: { slug: c.slug } });
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        navigate({ to: '/collection/$slug', params: { slug: c.slug } });
+              <div className="registry-grid">
+                {collections.map((collection) => {
+                  const listing = { ...collection, author: collection.ownerName };
+                  return (
+                    <RegistryListingCard
+                      key={collection.id}
+                      listing={listing}
+                      onOpen={() =>
+                        navigate({ to: '/collection/$slug', params: { slug: collection.slug } })
                       }
-                    }}
-                    className="grimoire-card flex flex-col gap-3 p-5 cursor-pointer transition-colors duration-150 hover:border-gilt/40 focus:border-gilt/60"
-                  >
-                    {c.imageUrl ? (
-                      <Cover
-                        src={c.imageUrl}
-                        alt={t('{name} cover', { name: c.name })}
-                        caption={`${c.slug}.png`}
-                      />
-                    ) : null}
-                    <header className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <Link
-                          to="/collection/$slug"
-                          params={{ slug: c.slug }}
-                          onClick={(e) => e.stopPropagation()}
-                          className="font-serif-italic break-words text-xl leading-tight text-parchment hover:text-gilt"
-                        >
-                          {c.name}
-                        </Link>
-                        <p className="font-mono mt-1 text-ash">
-                          {c.ownerName ?? t('unknown')} · {t.n(c.modCount, '{n} mod', '{n} mods')}
+                      locale={t.tag}
+                      labels={registryCardLabels(t, listing)}
+                      footer={
+                        <p className="text-xs text-ash">
+                          {t('updated {date}', {
+                            date: new Date(collection.updatedAt).toLocaleDateString(t.tag),
+                          })}
                         </p>
-                      </div>
-                    </header>
-                    {c.summary ? (
-                      <p className="font-serif-italic text-sm leading-snug text-smoke">
-                        {c.summary}
-                      </p>
-                    ) : null}
-                    <div className="mt-auto flex items-center justify-between gap-2">
-                      <span className="font-mono text-xs text-ash">
-                        {t('updated {date}', {
-                          date: new Date(c.updatedAt).toLocaleDateString(t.tag),
-                        })}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                      }
+                    />
+                  );
+                })}
               </div>
               {!isLoading && !error && collections.length === 0 ? (
                 <p className="font-serif-italic py-10 text-center text-ash">
@@ -380,9 +345,9 @@ function BrowsePage() {
                       />
                     ))
                   : list.map((m) => (
-                      <RegistryModCard
+                      <RegistryListingCard
                         key={m.id}
-                        mod={m}
+                        listing={m}
                         privateOnly={hasPrivateOnlyTag(m.tags)}
                         active={selected === m.slug}
                         onOpen={() => navigate({ to: '/mod/$slug', params: { slug: m.slug } })}
@@ -567,9 +532,9 @@ function ModRow({
 }) {
   const t = useT();
   return (
-    <RegistryModCard
+    <RegistryListingCard
       view="list"
-      mod={m}
+      listing={m}
       privateOnly={hasPrivateOnlyTag(m.tags)}
       active={active}
       onOpen={onOpen}
