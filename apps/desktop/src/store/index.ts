@@ -192,18 +192,12 @@ function defaultModsDir(): string {
   }
 }
 
-const DEFAULT_PROFILE: Profile = {
+// Keep the original folder id: changing a profile's name must never repoint
+// its installs, library scans or launches at another directory.
+const INITIAL_PROFILE: Profile = {
   id: 'default',
-  name: 'Default',
+  name: 'My mods',
   loadOrder: [],
-  disabled: new Set(),
-  createdAt: new Date().toISOString(),
-};
-
-const CHAOS_PROFILE: Profile = {
-  id: 'chaos',
-  name: 'Chaos Run',
-  loadOrder: ['hyper-aggro', 'long-night', 'iron-economy', 'wolfheart-buff', 'wolf-iron-fang'],
   disabled: new Set(),
   createdAt: new Date().toISOString(),
 };
@@ -281,27 +275,22 @@ function normalizeProfiles(profiles: Profile[] | undefined): Profile[] {
     // Same boundary, the shape half: a profile from a backup code or a
     // corrupt store can be missing any field, and these two are read on
     // every render.
-    name: typeof p.name === 'string' ? p.name : 'Profile',
+    // Upgrade the old built-in label in place. Custom names, ids, load orders
+    // and disabled mods survive, including existing Chaos Run profiles.
+    name:
+      p.id === 'default' && (!p.name || p.name === 'Default')
+        ? INITIAL_PROFILE.name
+        : typeof p.name === 'string'
+          ? p.name
+          : 'Profile',
     loadOrder: sanitizeIdList(p.loadOrder),
     disabled: normalizeDisabled(p.disabled),
   }));
 
-  const byId = new Map(list.map((p) => [p.id, p]));
-  const existingDefault = byId.get('default');
-  const defaultProfile: Profile = existingDefault
-    ? {
-        ...existingDefault,
-        name: existingDefault.name || 'Default',
-        loadOrder: [],
-        disabled: new Set<string>(),
-      }
-    : {
-        ...DEFAULT_PROFILE,
-        disabled: new Set<string>(),
-      };
-
-  const rest = list.filter((p) => p.id !== 'default');
-  return [defaultProfile, ...rest];
+  // Never recreate a deleted starter profile alongside a user's saved lists.
+  return list.length > 0
+    ? list
+    : [{ ...INITIAL_PROFILE, loadOrder: [], disabled: new Set<string>() }];
 }
 
 /**
@@ -376,8 +365,8 @@ export function hydrateImportedSettings(
 export const useApp = create<State>()(
   persist(
     (set, get) => ({
-      profiles: [DEFAULT_PROFILE, CHAOS_PROFILE],
-      activeProfileId: 'default',
+      profiles: [INITIAL_PROFILE],
+      activeProfileId: INITIAL_PROFILE.id,
       installed: [],
       settings: {
         gameDir: defaultGameDir(),
@@ -403,12 +392,8 @@ export const useApp = create<State>()(
       installMod: (id, targetProfileId, onDiskId) =>
         set((s) => {
           // "Install" = make the mod available on disk + add it to a
-          // target profile. Caller may pass an explicit profile id (the
-          // Browse-page picker uses this); otherwise the active profile
-          // is used. Default profile is the vanilla load by design and
-          // never accepts mods — installs targeting default are routed
-          // to a freshly-created "My Mods" profile so the user actually
-          // sees the mod in their Library.
+          // target profile. Caller may pass an explicit profile id;
+          // otherwise the active profile is used, including the starter list.
           //
           // Always store folder slugs in loadOrder — never API UUIDs
           // (mod detail used to pass apiMod.id, which syncLocalMods pruned).
@@ -417,21 +402,6 @@ export const useApp = create<State>()(
           const modId = onDiskId ?? resolveModId(id, s.localMods, s.installed);
           const installed = s.installed.includes(modId) ? s.installed : [...s.installed, modId];
           const requested = targetProfileId ?? s.activeProfileId;
-          if (requested === 'default') {
-            const newId = uid();
-            const newProfile: Profile = {
-              id: newId,
-              name: 'My Mods',
-              loadOrder: [modId],
-              disabled: new Set(),
-              createdAt: new Date().toISOString(),
-            };
-            return {
-              installed,
-              profiles: [...s.profiles, newProfile],
-              activeProfileId: newId,
-            };
-          }
           const profiles = s.profiles.map((p) => {
             if (p.id !== requested) return p;
             const loadOrder = [
@@ -466,10 +436,6 @@ export const useApp = create<State>()(
           // who expected each profile to be its own bucket. The mod
           // stays on disk (in `installed`) so the user can re-add it to
           // any profile without re-downloading.
-          //
-          // The default profile is the "vanilla" load — by design it
-          // carries no mods, so the active profile guard already covers
-          // the no-op case.
           const modId = resolveModId(id, s.localMods, s.installed);
           const profiles = s.profiles.map((p) => {
             if (p.id !== s.activeProfileId) return p;
@@ -579,6 +545,7 @@ export const useApp = create<State>()(
 
       deleteProfile: (id) =>
         set((s) => {
+          if (s.profiles.length <= 1) return s;
           const profiles = s.profiles.filter((p) => p.id !== id);
           const activeProfileId =
             s.activeProfileId === id ? (profiles[0]?.id ?? 'default') : s.activeProfileId;
@@ -681,7 +648,7 @@ export const useApp = create<State>()(
             profiles,
             activeProfileId: profiles.some((p) => p.id === parsed.activeProfileId)
               ? (parsed.activeProfileId as string)
-              : 'default',
+              : (profiles[0]?.id ?? INITIAL_PROFILE.id),
             // A backup code is user-supplied data that travels between
             // machines: appearance keys are sanitized (they are read straight
             // into CSS) and the directory settings are pinned to this install's
@@ -735,9 +702,6 @@ export const useApp = create<State>()(
           const previous = ownerIsActive ? s.localMods : {};
           const installedSet = new Set(mods.map((m) => m.id));
           const profiles = s.profiles.map((p) => {
-            if (p.id === 'default') {
-              return { ...p, loadOrder: [], disabled: new Set<string>() };
-            }
             if (p.id !== owner) return p;
             const loadOrder = reconcileProfileModIds(
               p.loadOrder,
@@ -788,9 +752,6 @@ export const useApp = create<State>()(
       adoptMods: (ids, profileId) =>
         set((s) => {
           const target = profileId ?? s.activeProfileId;
-          // The default profile is the vanilla load and never carries mods,
-          // so adopting into it would silently do nothing.
-          if (target === 'default') return s;
           return {
             profiles: s.profiles.map((p) => {
               if (p.id !== target) return p;
@@ -839,7 +800,7 @@ export const useApp = create<State>()(
         const profiles = normalizeProfiles(merged.profiles);
         const activeProfileId = profiles.some((p) => p.id === merged.activeProfileId)
           ? merged.activeProfileId
-          : 'default';
+          : (profiles[0]?.id ?? INITIAL_PROFILE.id);
         return {
           ...merged,
           profiles,

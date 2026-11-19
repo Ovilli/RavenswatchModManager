@@ -270,12 +270,37 @@ describe('resolveInstallTarget', () => {
     expect(resolveInstallTarget()).toBe('A');
   });
 
-  it('turns Default into a new profile BEFORE anything is downloaded', () => {
+  it('keeps the starter profile and installs into that same folder', async () => {
     useApp.setState({ activeProfileId: 'default' });
+    const profileIds = useApp.getState().profiles.map((p) => p.id);
+    listLocalModsForProfile.mockResolvedValueOnce([]).mockResolvedValueOnce(listed('first-mod'));
+    installModFromIndex.mockResolvedValue({ ok: true });
     const id = resolveInstallTarget();
-    expect(id).not.toBe('default');
-    expect(useApp.getState().profiles.find((p) => p.id === id)?.name).toBe('My Mods');
+    expect(id).toBe('default');
+    await installModIntoProfile('first-mod', id);
+    expect(installModFromIndex).toHaveBeenCalledWith('first-mod', 'default');
+    expect(listLocalModsForProfile.mock.calls).toEqual([['default'], ['default']]);
+    expect(profileById('default').loadOrder).toEqual(['first-mod']);
+    expect(profileById('A').loadOrder).toEqual(['shared']);
+    expect(profileById('B').loadOrder).toEqual([]);
+    expect(useApp.getState().profiles.map((p) => p.id)).toEqual(profileIds);
     expect(useApp.getState().activeProfileId).toBe(id);
+  });
+
+  it('retains the captured folder when the active profile changes during a download', async () => {
+    useApp.setState({ activeProfileId: 'default' });
+    listLocalModsForProfile.mockResolvedValueOnce([]).mockResolvedValueOnce(listed('first-mod'));
+    installModFromIndex.mockImplementation(async () => {
+      useApp.getState().setActiveProfile('B');
+      return { ok: true };
+    });
+
+    await installModIntoProfile('first-mod', resolveInstallTarget());
+
+    expect(installModFromIndex).toHaveBeenCalledWith('first-mod', 'default');
+    expect(listLocalModsForProfile.mock.calls).toEqual([['default'], ['default']]);
+    expect(profileById('default').loadOrder).toEqual(['first-mod']);
+    expect(profileById('B').loadOrder).toEqual([]);
   });
 });
 

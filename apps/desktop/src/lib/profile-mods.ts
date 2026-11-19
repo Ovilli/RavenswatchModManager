@@ -21,9 +21,6 @@ import {
  * so each screen does not have to remember to.
  */
 
-/** Name of the profile an install aimed at Default lands in (matches the store's `installMod`). */
-const INSTALL_PROFILE_NAME = 'My Mods';
-
 /**
  * Duplicate a profile: the store row AND the mods in its folder.
  *
@@ -50,19 +47,11 @@ export async function duplicateProfileWithMods(
 }
 
 /**
- * The profile an install should land in.
- *
- * Default is the vanilla load and never carries mods, so `installMod` reroutes
- * an install aimed at it into a fresh "My Mods" profile. That has to be decided
- * BEFORE the download: the CLI writes into the folder of the profile it is
- * given, and a mod downloaded into Default's folder and then listed under a new
- * profile is a mod the new profile does not have.
+ * Capture the target before downloading so its folder and profile entry agree,
+ * even if the user changes the active profile while the download is running.
  */
 export function resolveInstallTarget(requested?: string): string {
-  const s = useApp.getState();
-  const target = requested ?? s.activeProfileId;
-  if (target !== 'default') return target;
-  return s.createProfile(INSTALL_PROFILE_NAME);
+  return requested ?? useApp.getState().activeProfileId;
 }
 
 /** Resolve both folder ids and registry slugs against one profile's listing. */

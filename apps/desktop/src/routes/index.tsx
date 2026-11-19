@@ -35,9 +35,9 @@ import { SupportNudge } from '../components/support-nudge';
 import { useDialog, useToast } from '../components/toast';
 import { UpdatesPanel } from '../components/updates-panel';
 import { useModToggle } from '../components/use-mod-toggle';
+import { hasRunBefore } from '../lib/first-run';
 import { msg } from '../lib/i18n';
 import { useT } from '../lib/i18n-react';
-import { hasRunBefore } from '../lib/first-run';
 import {
   type LibrarySort,
   type LibraryStatusFilter,
@@ -482,7 +482,7 @@ function LibraryPage() {
           }
           action={
             <div className="flex flex-wrap items-center justify-center gap-2">
-              {unadopted.length > 0 && profile.id !== 'default' ? (
+              {unadopted.length > 0 ? (
                 <Button
                   type="button"
                   variant="primary"

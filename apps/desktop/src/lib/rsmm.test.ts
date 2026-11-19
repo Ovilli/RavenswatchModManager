@@ -113,10 +113,24 @@ describe('profileEnabledMods', () => {
     expect(profileEnabledMods('other')).toEqual(['y']);
   });
 
-  it('leaves the manifests alone for the default profile and an unknown one', () => {
+  it('uses an empty enabled list for an empty starter profile', () => {
     useApp.setState({ profiles: [profile('default', [], [])], activeProfileId: 'default' });
-    expect(profileEnabledMods()).toBeUndefined();
+    expect(profileEnabledMods()).toEqual([]);
     expect(profileEnabledMods('gone')).toBeUndefined();
+  });
+
+  it('launches the starter list from its own folder with its own enabled mods', () => {
+    useApp.setState({
+      profiles: [profile('default', ['a', 'b'], ['b']), profile('other', ['x'], [])],
+      activeProfileId: 'default',
+    });
+    expect(rsmmEnv().RSMM_MODS_DIR).toMatch(/\/profiles\/default$/);
+    expect(profileEnabledMods()).toEqual(['a']);
+    useApp.getState().setActiveProfile('other');
+    expect(rsmmEnv('default').RSMM_MODS_DIR).toMatch(/\/profiles\/default$/);
+    expect(profileEnabledMods('default')).toEqual(['a']);
+    expect(rsmmEnv().RSMM_MODS_DIR).toMatch(/\/profiles\/other$/);
+    expect(profileEnabledMods()).toEqual(['x']);
   });
 });
 
