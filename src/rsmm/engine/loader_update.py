@@ -793,6 +793,26 @@ def _release_build() -> bool:
     return bool(getattr(sys, "frozen", False))
 
 
+def next_launch_version(game_dir: Path) -> int | None:
+    """The loader version the next launch plants, or None when unknown.
+
+    `install-loader` plants the bundled DLL, then `replant_cached` swaps in the
+    cached bundle when it is at least as new, so the result is the larger of the
+    two. Display only: the cached manifest's signature is not verified here.
+    """
+    version = bundled_version()
+    cache = cache_dir(game_dir)
+    if (cache / SIGNATURE_NAME).exists() and (cache / "payload").is_dir():
+        try:
+            data = json.loads((cache / MANIFEST_NAME).read_text(encoding="utf-8"))
+            cached = data.get("loader_version") if isinstance(data, dict) else None
+        except (OSError, ValueError):
+            cached = None
+        if isinstance(cached, int) and not isinstance(cached, bool):
+            version = max(version, cached)
+    return version or None
+
+
 def replant_cached(game_dir: Path) -> dict | None:
     """Re-plant a cached bundle that is newer than this build's bundled one,
     or the same version when this is a release build (see below).

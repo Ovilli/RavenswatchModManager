@@ -551,7 +551,7 @@ function RootLayout() {
               <ChannelStatusBanner />
               <main
                 ref={mainRef}
-                className={`rsmm-main min-h-0 flex-1 overflow-y-auto px-6 pb-6 md:px-8 ${inTauri() ? 'pt-2' : 'pt-6'}`}
+                className={`rsmm-main min-h-0 flex-1 overflow-y-auto px-6 pb-12 md:px-8 ${inTauri() ? 'pt-2' : 'pt-6'}`}
               >
                 <div
                   className={`mx-auto w-full animate-page-in ${
@@ -561,6 +561,11 @@ function RootLayout() {
                   <Outlet />
                 </div>
               </main>
+              {/* Fades and blurs what scrolls under the version footer. */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-t from-[hsl(var(--pitch))] via-[hsl(var(--pitch)/0.7)] to-transparent backdrop-blur-sm [mask-image:linear-gradient(to_top,black_35%,transparent)]"
+              />
             </div>
 
             <CommandPalette />

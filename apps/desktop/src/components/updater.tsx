@@ -678,7 +678,11 @@ export function VersionFooter() {
       .then((r) => {
         if (alive && r) {
           setLoaderText(
-            describeLoaderInstall(r.loaderState, r.plantedVersion ?? r.installedVersion),
+            describeLoaderInstall(
+              r.loaderState,
+              r.plantedVersion ?? r.installedVersion,
+              r.nextVersion,
+            ),
           );
         }
       })
@@ -698,7 +702,11 @@ export function VersionFooter() {
         const r = getNotedLoaderResult();
         if (r) {
           setLoaderText(
-            describeLoaderInstall(r.loaderState, r.plantedVersion ?? r.installedVersion),
+            describeLoaderInstall(
+              r.loaderState,
+              r.plantedVersion ?? r.installedVersion,
+              r.nextVersion,
+            ),
           );
         }
       }),
@@ -709,7 +717,7 @@ export function VersionFooter() {
     // `pointer-events-none`: this is a caption, not a control, and it sits over
     // the scrolling content — it must never eat a click meant for what is
     // underneath it.
-    <div className="font-mono pointer-events-none fixed bottom-1.5 right-3 z-10 select-none text-xs leading-tight text-ash/60">
+    <div className="font-mono pointer-events-none fixed bottom-0 right-0 z-20 select-none px-3 py-1.5 text-xs leading-tight text-ash/80">
       <span>{t('launcher v{version}', { version: appVersion })}</span>
       {loaderText != null ? <span> · {t('loader {state}', { state: loaderText })}</span> : null}
       {cli?.dir ? <span> · {t('cli {source}', { source: describeCliSource(cli) })}</span> : null}
@@ -966,6 +974,7 @@ export function UpdaterSettings() {
     describeLoaderInstall(
       loader?.loaderState,
       loader?.plantedVersion ?? loader?.installedVersion,
+      loader?.nextVersion,
     ) ?? t('unknown');
   const cliPending = cli?.staged ?? cliStaged;
   const loaderPending =
