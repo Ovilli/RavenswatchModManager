@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
-import { Download, TriangleAlert, Users } from 'lucide-react';
+import { Download, Layers, TriangleAlert, Users } from 'lucide-react';
 import { RegistryModCover } from './registry-mod-cover';
 
-export interface RegistryModCardData {
+export interface RegistryListingCardData {
   slug: string;
   name: string;
   author?: string | null;
@@ -11,6 +11,8 @@ export interface RegistryModCardData {
   imageUrl?: string | null;
   category?: string | null;
   downloads?: number | null;
+  /** Collections show their included mod count instead of download statistics. */
+  modCount?: number;
   rating?: number | null;
   ratingCount?: number;
   featured?: boolean;
@@ -19,24 +21,27 @@ export interface RegistryModCardData {
   role?: 'owner' | 'coauthor';
 }
 
-/** Registry presentation shared by the website and the desktop client. */
-export function RegistryModCard({
-  mod,
+/** Mod and collection presentation shared by the website and the desktop client. */
+export function RegistryListingCard({
+  listing,
   privateOnly = false,
   href,
   onOpen,
   actions,
+  footer,
   active = false,
   headingLevel = 2,
   view = 'grid',
   labels = {},
   locale = 'en-US',
 }: {
-  mod: RegistryModCardData;
+  listing: RegistryListingCardData;
   privateOnly?: boolean;
   href?: string;
   onOpen?: () => void;
   actions?: ReactNode;
+  /** Content below the grid card's link, such as management controls or an updated date. */
+  footer?: ReactNode;
   active?: boolean;
   headingLevel?: 2 | 3;
   view?: 'grid' | 'list';
@@ -53,25 +58,33 @@ export function RegistryModCard({
     downloads?: string;
     downloadUnit?: string;
     rating?: string;
+    modCount?: string;
   };
 }) {
   const Heading = headingLevel === 3 ? 'h3' : 'h2';
-  const hasRating = mod.rating != null && mod.ratingCount !== 0;
+  const hasRating = listing.rating != null && listing.ratingCount !== 0;
+  const modCountLabel =
+    listing.modCount != null
+      ? (labels.modCount ??
+        `${listing.modCount.toLocaleString(locale)} ${listing.modCount === 1 ? 'mod' : 'mods'}`)
+      : undefined;
   if (view === 'list') {
     const row = (
       <>
         <div className="mod-card-list-art">
-          {mod.imageUrl ? (
-            <img src={mod.imageUrl} alt="" loading="lazy" />
+          {listing.imageUrl ? (
+            <img src={listing.imageUrl} alt="" loading="lazy" />
           ) : (
-            <RegistryModCover seed={mod.slug} name={mod.name} size="sm" />
+            <RegistryModCover seed={listing.slug} name={listing.name} size="sm" />
           )}
         </div>
         <div className="mod-card-list-identity">
           <div className="mod-card-list-name">
-            <Heading>{mod.name}</Heading>
-            {mod.featured ? <span aria-label={labels.featured ?? 'Featured'}>★</span> : null}
-            {mod.nsfw ? <span className="mod-card-mature">{labels.nsfw ?? 'Mature'}</span> : null}
+            <Heading>{listing.name}</Heading>
+            {listing.featured ? <span aria-label={labels.featured ?? 'Featured'}>★</span> : null}
+            {listing.nsfw ? (
+              <span className="mod-card-mature">{labels.nsfw ?? 'Mature'}</span>
+            ) : null}
             {privateOnly ? (
               <span className="mod-card-private-tag inline-flex items-center gap-1">
                 <TriangleAlert size={12} aria-hidden />
@@ -80,20 +93,23 @@ export function RegistryModCard({
             ) : null}
           </div>
           <p>
-            {mod.author || labels.author || 'unknown'}
-            {mod.latestVersion ? ` · v${mod.latestVersion}` : ''}
-            {mod.summary ? ` — ${mod.summary}` : ''}
+            {listing.author || labels.author || 'unknown'}
+            {listing.latestVersion ? ` · v${listing.latestVersion}` : ''}
+            {listing.summary ? ` — ${listing.summary}` : ''}
           </p>
         </div>
-        {mod.category ? <span className="mod-card-list-category">{mod.category}</span> : null}
-        {hasRating && mod.rating != null ? (
-          <span className="mod-card-list-rating">★ {mod.rating.toFixed(1)}</span>
+        {listing.category ? (
+          <span className="mod-card-list-category">{listing.category}</span>
         ) : null}
-        {mod.downloads != null ? (
+        {hasRating && listing.rating != null ? (
+          <span className="mod-card-list-rating">★ {listing.rating.toFixed(1)}</span>
+        ) : null}
+        {listing.downloads != null ? (
           <span className="mod-card-list-downloads">
-            {labels.downloads ?? `${mod.downloads.toLocaleString(locale)} dl`}
+            {labels.downloads ?? `${listing.downloads.toLocaleString(locale)} dl`}
           </span>
         ) : null}
+        {modCountLabel ? <span className="mod-card-downloads">{modCountLabel}</span> : null}
         {actions ? (
           <div className="mod-card-list-actions" onClick={(event) => event.stopPropagation()}>
             {actions}
@@ -114,7 +130,9 @@ export function RegistryModCard({
         className={`mod-card mod-card-list mod-card-interactive${active ? ' is-active' : ''}`}
         tabIndex={0}
         role="link"
-        aria-label={labels.card ?? `${mod.name}${mod.author ? ` by ${mod.author}` : ''}`}
+        aria-label={
+          labels.card ?? `${listing.name}${listing.author ? ` by ${listing.author}` : ''}`
+        }
         aria-current={active ? 'true' : undefined}
         onClick={(event) => {
           if (
@@ -140,16 +158,22 @@ export function RegistryModCard({
   const contents = (
     <>
       <div className="mod-card-artwork">
-        {mod.imageUrl ? (
-          <img src={mod.imageUrl} alt={labels.preview ?? `${mod.name} preview`} loading="lazy" />
+        {listing.imageUrl ? (
+          <img
+            src={listing.imageUrl}
+            alt={labels.preview ?? `${listing.name} preview`}
+            loading="lazy"
+          />
         ) : (
-          <RegistryModCover seed={mod.slug} name={mod.name} className="h-full w-full" />
+          <RegistryModCover seed={listing.slug} name={listing.name} className="h-full w-full" />
         )}
-        {mod.featured || mod.nsfw || mod.role === 'coauthor' ? (
+        {listing.featured || listing.nsfw || listing.role === 'coauthor' ? (
           <div className="mod-card-status">
-            {mod.featured ? <span>★ {labels.featured ?? 'Featured'}</span> : null}
-            {mod.nsfw ? <span className="mod-card-mature">{labels.nsfw ?? 'Mature'}</span> : null}
-            {mod.role === 'coauthor' ? (
+            {listing.featured ? <span>★ {labels.featured ?? 'Featured'}</span> : null}
+            {listing.nsfw ? (
+              <span className="mod-card-mature">{labels.nsfw ?? 'Mature'}</span>
+            ) : null}
+            {listing.role === 'coauthor' ? (
               <span className="inline-flex items-center gap-1">
                 <Users size={13} aria-hidden />
                 {labels.coauthor ?? 'Co-author'}
@@ -167,7 +191,7 @@ export function RegistryModCard({
         ) : null}
       </div>
       <div className="mod-card-body">
-        {privateOnly || mod.category ? (
+        {privateOnly || listing.category ? (
           <div className="mod-card-tags">
             {privateOnly ? (
               <span className="mod-card-tag mod-card-private-tag">
@@ -175,30 +199,36 @@ export function RegistryModCard({
                 {labels.privateOnly ?? 'Private games only'}
               </span>
             ) : null}
-            {mod.category ? <span className="mod-card-tag">{mod.category}</span> : null}
+            {listing.category ? <span className="mod-card-tag">{listing.category}</span> : null}
           </div>
         ) : null}
         <div className="mod-card-identity">
-          <Heading>{mod.name}</Heading>
+          <Heading>{listing.name}</Heading>
         </div>
-        {mod.summary ? <p className="mod-card-summary">{mod.summary}</p> : null}
+        {listing.summary ? <p className="mod-card-summary">{listing.summary}</p> : null}
         <p className="mod-card-author">
-          {labels.authorLine ?? `by ${mod.author || labels.author || 'unknown'}`}
+          {labels.authorLine ?? `by ${listing.author || labels.author || 'unknown'}`}
         </p>
-        {mod.downloads != null || hasRating ? (
+        {modCountLabel || listing.downloads != null || hasRating ? (
           <div className="mod-card-stats">
-            {mod.downloads != null ? (
+            {modCountLabel ? (
+              <span className="mod-card-downloads">
+                <Layers size={16} aria-hidden />
+                {modCountLabel}
+              </span>
+            ) : null}
+            {listing.downloads != null ? (
               <span className="mod-card-downloads">
                 <Download size={16} aria-hidden />
-                {mod.downloads.toLocaleString(locale)}{' '}
+                {listing.downloads.toLocaleString(locale)}{' '}
                 <span className="sr-only">
-                  {labels.downloadUnit ?? (mod.downloads === 1 ? 'download' : 'downloads')}
+                  {labels.downloadUnit ?? (listing.downloads === 1 ? 'download' : 'downloads')}
                 </span>
               </span>
             ) : null}
-            {hasRating && mod.rating != null ? (
+            {hasRating && listing.rating != null ? (
               <span className="mod-card-rating-group">
-                {mod.downloads != null ? (
+                {listing.downloads != null ? (
                   <span className="mod-card-stat-dot" aria-hidden>
                     ·
                   </span>
@@ -206,13 +236,13 @@ export function RegistryModCard({
                 <span
                   className="mod-card-rating"
                   role="img"
-                  aria-label={labels.rating ?? `${mod.rating.toFixed(1)} out of 5 stars`}
+                  aria-label={labels.rating ?? `${listing.rating.toFixed(1)} out of 5 stars`}
                 >
                   <span className="mod-card-star" aria-hidden>
                     ★
                   </span>
-                  <strong>{mod.rating.toFixed(1)}</strong>
-                  {mod.ratingCount ? ` (${mod.ratingCount.toLocaleString(locale)})` : ''}
+                  <strong>{listing.rating.toFixed(1)}</strong>
+                  {listing.ratingCount ? ` (${listing.ratingCount.toLocaleString(locale)})` : ''}
                 </span>
               </span>
             ) : null}
@@ -228,6 +258,7 @@ export function RegistryModCard({
         <a className="mod-card-link" href={href}>
           {contents}
         </a>
+        {footer ? <div className="mod-card-footer">{footer}</div> : null}
       </article>
     );
   return (
@@ -235,7 +266,7 @@ export function RegistryModCard({
       className={`mod-card mod-card-interactive${active ? ' is-active' : ''}`}
       tabIndex={0}
       role="link"
-      aria-label={labels.card ?? `${mod.name}${mod.author ? ` by ${mod.author}` : ''}`}
+      aria-label={labels.card ?? `${listing.name}${listing.author ? ` by ${listing.author}` : ''}`}
       aria-current={active ? 'true' : undefined}
       onClick={(event) => {
         if (
@@ -255,6 +286,7 @@ export function RegistryModCard({
       }}
     >
       {contents}
+      {footer ? <div className="mod-card-footer">{footer}</div> : null}
     </article>
   );
 }
