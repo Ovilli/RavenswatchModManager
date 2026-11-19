@@ -49,6 +49,9 @@ extern "C" {
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <memory>
+#include <string>
+#include <thread>
 #include <limits>
 #include <map>
 #include <mutex>
@@ -1707,22 +1710,22 @@ int lua_steam_name(lua_State* L) {
 //     cap a fragmented heap turns a debug probe into a multi-second freeze.
 //     Private, committed, readable, non-guard pages only — mapped images and
 //     file views cannot hold a runtime-received name.
-int lua_mem_find(lua_State* L) {
-    std::size_t needle_len = 0;
-    const char* needle = luaL_checklstring(L, 1, &needle_len);
-    const auto max_hits = static_cast<std::size_t>(luaL_optinteger(L, 2, 16));
-    auto budget = static_cast<std::size_t>(luaL_optinteger(L, 3, 512)) << 20;
-    if (needle_len == 0 || needle_len > 512 || max_hits == 0) {
-        lua_createtable(L, 0, 0);
-        lua_pushinteger(L, 0);
-        return 2;
-    }
+struct MemFindResult {
+    std::vector<std::uintptr_t> hits;
+    std::uintptr_t resume = 0;   // 0: swept to the end of the address space
+};
 
+// The walk itself, with no Lua in it, so it can run on a worker thread
+// (lua_mem_find_start) as well as inline (lua_mem_find).
+MemFindResult mem_find_scan(const std::string& needle, std::size_t max_hits,
+                            std::size_t budget, std::uintptr_t from) {
+    MemFindResult out;
+    const std::size_t needle_len = needle.size();
     constexpr std::size_t CHUNK = 1u << 20;
     // Overlap so a match straddling two chunks is still found.
     const std::size_t overlap = needle_len - 1;
     std::vector<char> buf(CHUNK + overlap);
-    std::vector<std::uintptr_t> hits;
+    auto& hits = out.hits;
 
     SYSTEM_INFO si{};
     GetSystemInfo(&si);
@@ -1732,12 +1735,10 @@ int lua_mem_find(lua_State* L) {
     // background thread that saturates memory bandwidth and the process VM
     // lock, which the player feels as a hitch. The caller therefore walks the
     // address space in small slices across many ticks, passing back the
-    // address this call stopped at. Second return value is that address, or 0
-    // when the sweep is complete.
-    if (auto from = static_cast<std::uintptr_t>(luaL_optinteger(L, 4, 0)); from > addr)
-        addr = from;
+    // address this call stopped at.
+    if (from > addr) addr = from;
 
-    std::uintptr_t resume = 0;
+    std::uintptr_t& resume = out.resume;
     MEMORY_BASIC_INFORMATION mbi{};
     while (addr < limit && hits.size() < max_hits && budget > 0) {
         if (VirtualQuery(reinterpret_cast<LPCVOID>(addr), &mbi, sizeof(mbi)) != sizeof(mbi))
@@ -1760,11 +1761,19 @@ int lua_mem_find(lua_State* L) {
                                        buf.data(), want, &got) || got < needle_len)
                     continue;
                 budget = got >= budget ? 0 : budget - got;
-                for (std::size_t i = 0; i + needle_len <= got; ++i) {
-                    if (std::memcmp(buf.data() + i, needle, needle_len) == 0) {
+                // memchr to each candidate first byte, then compare: a memcmp
+                // call at every offset was most of the time spent here.
+                const char* const b = buf.data();
+                const std::size_t last = got - needle_len;   // last start offset
+                for (std::size_t i = 0; i <= last;) {
+                    const void* p = std::memchr(b + i, needle[0], last - i + 1);
+                    if (!p) break;
+                    i = static_cast<std::size_t>(static_cast<const char*>(p) - b);
+                    if (std::memcmp(b + i, needle.data(), needle_len) == 0) {
                         hits.push_back(region + off + i);
                         if (hits.size() >= max_hits) break;
                     }
+                    ++i;
                 }
             }
             // Out of budget PART-WAY through a region: resume at the chunk we
@@ -1781,16 +1790,130 @@ int lua_mem_find(lua_State* L) {
         addr = region + size;
         if (budget == 0) { resume = addr; break; }
     }
+    return out;
+}
 
-    lua_createtable(L, static_cast<int>(hits.size()), 0);
-    for (std::size_t i = 0; i < hits.size(); ++i) {
-        lua_pushinteger(L, static_cast<lua_Integer>(hits[i]));
+// Push { va, ... }, resume.
+int push_mem_find(lua_State* L, const MemFindResult& r) {
+    lua_createtable(L, static_cast<int>(r.hits.size()), 0);
+    for (std::size_t i = 0; i < r.hits.size(); ++i) {
+        lua_pushinteger(L, static_cast<lua_Integer>(r.hits[i]));
         lua_rawseti(L, -2, static_cast<int>(i) + 1);
     }
     // 0 means "swept to the end of the address space" — the caller uses that
     // to know a slice sequence is finished rather than merely paused.
-    lua_pushinteger(L, static_cast<lua_Integer>(resume));
+    lua_pushinteger(L, static_cast<lua_Integer>(r.resume));
     return 2;
+}
+
+// Validated (needle, max_hits, budget bytes, from) from Lua args 1..4; false
+// for an argument set that can only find nothing.
+bool mem_find_args(lua_State* L, std::string* needle, std::size_t* max_hits,
+                   std::size_t* budget, std::uintptr_t* from) {
+    std::size_t needle_len = 0;
+    const char* n = luaL_checklstring(L, 1, &needle_len);
+    *max_hits = static_cast<std::size_t>(luaL_optinteger(L, 2, 16));
+    *budget = static_cast<std::size_t>(luaL_optinteger(L, 3, 512)) << 20;
+    *from = static_cast<std::uintptr_t>(luaL_optinteger(L, 4, 0));
+    if (needle_len == 0 || needle_len > 512 || *max_hits == 0) return false;
+    needle->assign(n, needle_len);
+    return true;
+}
+
+int lua_mem_find(lua_State* L) {
+    std::string needle;
+    std::size_t max_hits = 0, budget = 0;
+    std::uintptr_t from = 0;
+    if (!mem_find_args(L, &needle, &max_hits, &budget, &from)) return push_mem_find(L, {});
+    return push_mem_find(L, mem_find_scan(needle, max_hits, budget, from));
+}
+
+// _internal.mem_find_start(needle [, max_hits] [, budget_mb] [, from]) -> id | nil, why
+// _internal.mem_find_poll(id) -> nil (running) | { va, ... }, resume | false (unknown id)
+//
+// mem_find on a worker thread (issue #175). The inline call runs inside a Lua
+// callback, i.e. holding the one lock every mod and the game's own hooks
+// share: each 48 MB slice the damage meter's and the lobby's name sweeps take
+// once a tick was 15-30 ms of the game waiting, every second of a co-op run
+// until the sweep finished. Here the walk holds nothing of ours; the caller
+// starts it on one tick and collects it on a later one.
+struct MemFindJob {
+    bool done = false;
+    MemFindResult result;
+    std::uint64_t started_us = 0;
+};
+std::mutex g_mf_mu;
+std::unordered_map<std::uint64_t, std::shared_ptr<MemFindJob>> g_mf_jobs;
+std::uint64_t g_mf_next = 1;
+constexpr std::size_t kMfMaxJobs = 8;
+constexpr std::uint64_t kMfExpireUs = 120'000'000;   // never polled: dropped
+
+int lua_mem_find_start(lua_State* L) {
+    std::string needle;
+    std::size_t max_hits = 0, budget = 0;
+    std::uintptr_t from = 0;
+    if (!mem_find_args(L, &needle, &max_hits, &budget, &from)) {
+        lua_pushnil(L);
+        lua_pushstring(L, "bad arguments");
+        return 2;
+    }
+    auto job = std::make_shared<MemFindJob>();
+    job->started_us = perf_now_us();
+    std::uint64_t id = 0;
+    {
+        std::lock_guard<std::mutex> g(g_mf_mu);
+        // A caller that stopped polling (a reload, a mod that errored) must not
+        // pin its results forever.
+        for (auto it = g_mf_jobs.begin(); it != g_mf_jobs.end();) {
+            if (it->second->done && job->started_us - it->second->started_us > kMfExpireUs)
+                it = g_mf_jobs.erase(it);
+            else
+                ++it;
+        }
+        if (g_mf_jobs.size() >= kMfMaxJobs) {
+            lua_pushnil(L);
+            lua_pushstring(L, "too many searches in flight");
+            return 2;
+        }
+        id = g_mf_next++;
+        g_mf_jobs.emplace(id, job);
+    }
+    try {
+        std::thread([job, needle = std::move(needle), max_hits, budget, from] {
+            MemFindResult r = mem_find_scan(needle, max_hits, budget, from);
+            std::lock_guard<std::mutex> g(g_mf_mu);
+            job->result = std::move(r);
+            job->done = true;
+        }).detach();
+    } catch (const std::exception&) {
+        std::lock_guard<std::mutex> g(g_mf_mu);
+        g_mf_jobs.erase(id);
+        lua_pushnil(L);
+        lua_pushstring(L, "could not start a thread");
+        return 2;
+    }
+    lua_pushinteger(L, static_cast<lua_Integer>(id));
+    return 1;
+}
+
+int lua_mem_find_poll(lua_State* L) {
+    const auto id = static_cast<std::uint64_t>(luaL_checkinteger(L, 1));
+    MemFindResult r;
+    {
+        std::lock_guard<std::mutex> g(g_mf_mu);
+        const auto it = g_mf_jobs.find(id);
+        if (it == g_mf_jobs.end()) {
+            lua_pushboolean(L, 0);
+            return 1;
+        }
+        if (!it->second->done) {
+            lua_pushnil(L);
+            return 1;
+        }
+        r = std::move(it->second->result);
+        g_mf_jobs.erase(it);
+    }
+    return push_mem_find(L, r);
 }
 
 // rsmm._internal.traceback(err) -> string
@@ -2390,6 +2513,8 @@ void register_api(lua_State* L) {
         { "module_base",             lua_module_base },
         { "self_id",                 lua_self_id },
         { "now",                     lua_now },
+        { "mem_find_start",          lua_mem_find_start },
+        { "mem_find_poll",           lua_mem_find_poll },
         { "audio_mute",              lua_audio_mute },
         { "audio_status",            lua_audio_status },
         { "audio_targets",           lua_audio_targets },

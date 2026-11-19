@@ -438,10 +438,23 @@ end
 function F._dmg_scan_session(base, win, targets, path)
     local out = {}
     if not _ptr_plausible(base) or not I.read_u64 then return out end
+    -- The qword needles by VALUE. Lua 5.4's tonumber(hex, 16) wraps to the
+    -- exact 64-bit integer the `<i8` read produces (no float, no rounding), so
+    -- this is the same match as formatting every word as "%016x" and looking
+    -- the text up -- minus a string.format per word, ~12k of them for one new
+    -- row, which is the lag players saw on a teammate's first hit (#175).
+    local num = targets.num
+    if not num then
+        num = {}
+        for k, h in pairs(targets.hex) do
+            if #k == 16 then num[tonumber(k, 16)] = h end
+        end
+        targets.num = num
+    end
     for off = 0, win - 8, 8 do
         local q = F._dmg_pread(base + off, 8)
         if type(q) == "number" then
-            local h = targets.hex[("%016x"):format(q)]
+            local h = num[q]
             if h then
                 out[#out + 1] = { off = off, path = path, kind = h.kind, m = h.m }
             else
@@ -450,15 +463,11 @@ function F._dmg_scan_session(base, win, targets, path)
             end
         end
         -- A std::string read is up to three more guarded reads, and this
-        -- loop runs tens of thousands of times per row. Only bother where one
-        -- could actually start: the heap form begins with a pointer, and the
-        -- inline form begins with hex characters.
-        local looks = _ptr_plausible(q)
-        if not looks and type(q) == "number" then
-            local c = q & 0xff
-            looks = (c >= 0x30 and c <= 0x39) or (c >= 0x61 and c <= 0x66)
-                    or (c >= 0x41 and c <= 0x46)
-        end
+        -- loop runs tens of thousands of times per row. A session id is 32
+        -- characters, more than MSVC's 15-character inline buffer, so it can
+        -- only be the heap form: a pointer here and size == 32 at +0x10. The
+        -- size is in the page this loop already cached, so check it first.
+        local looks = _ptr_plausible(q) and F._dmg_pread(base + off + 0x10, 8) == 32
         local s = looks and R.debug.stdstring_at and R.debug.stdstring_at(base + off)
         if type(s) == "string" and #s == 32 then
             local h = targets.hex[s:lower()]

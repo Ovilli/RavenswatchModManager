@@ -5333,9 +5333,17 @@ function R.lobby.refresh(force)
     if force then _lobby_cursor, _lobby_found, _lobby_seen = 0, {}, {} end
 
     repeat
-        local hits, nxt = I.mem_find("PlayerName\0", 16,
-                                     force and MEM_SCAN_MB or LOBBY_SLICE_MB,
-                                     _lobby_cursor)
+        local hits, nxt
+        if force then
+            -- A forced sweep is one explicit full walk (diagnostics): inline.
+            hits, nxt = I.mem_find("PlayerName\0", 16, MEM_SCAN_MB, _lobby_cursor)
+        else
+            -- The routine slice runs on a worker thread (R._mem_find_slice):
+            -- until it is back, keep the cursor and answer from what we have.
+            hits, nxt = R._mem_find_slice("lobby.sweep", "PlayerName\0", 16,
+                                          LOBBY_SLICE_MB, _lobby_cursor)
+            if hits == nil and nxt == "pending" then return R.lobby.members() end
+        end
         for _, va in ipairs(hits or {}) do
             -- The anchor check: a genuine lobby block has RequestedHero at
             -- -0x60. Lua's interned copy of the literal "PlayerName" — which
@@ -6331,6 +6339,37 @@ end)()
 R.rtti = {}
 R.defs = {}
 
+-- One slice of an address-space search without stalling the game (issue #175).
+--
+-- `mem_find` inline runs inside this Lua call, so it holds the one lock every
+-- mod and the game's own hooks share: a 48 MB slice was 15-30 ms of the game
+-- waiting, once a tick, for as long as a name sweep ran. With a loader that
+-- has mem_find_start the walk runs on a worker thread instead: the first call
+-- for a (key, needle, from) starts it and answers nil, "pending"; a later call
+-- answers hits, resume exactly like mem_find. An older loader gets the inline
+-- call, unchanged. `key` names the caller's sweep, so two sweeps never collect
+-- each other's results.
+R._mf_jobs = {}
+function R._mem_find_slice(key, needle, max_hits, budget_mb, from)
+    from = from or 0
+    if type(I.mem_find_start) ~= "function" then
+        return I.mem_find(needle, max_hits, budget_mb, from)
+    end
+    local job = R._mf_jobs[key]
+    if job and (job.needle ~= needle or job.from ~= from) then job = nil end
+    if not job then
+        local id, why = I.mem_find_start(needle, max_hits, budget_mb, from)
+        if not id then error("mem_find_start: " .. tostring(why)) end
+        R._mf_jobs[key] = { id = id, needle = needle, from = from }
+        return nil, "pending"
+    end
+    local hits, resume = I.mem_find_poll(job.id)
+    if hits == nil then return nil, "pending" end
+    R._mf_jobs[key] = nil
+    if hits == false then error("mem_find_poll: unknown search") end
+    return hits, resume
+end
+
 -- absl control bytes: high bit CLEAR = full slot (h2), 0x80 = empty,
 -- 0xfe = deleted. Slot stride 0x18 = { u64 classDesc, u64 data, u32 count }.
 -- Baked at the map's image base and REBASED at read time. The game is loaded
@@ -6352,14 +6391,29 @@ local MAX_INSTANCES = 0x8000
 --- COL+0x0 = signature, COL+0xc = type-descriptor RVA, COL+0x14 = self RVA
 --- (signature 1 only), and the type descriptor carries the name at +0x10.
 --- Every read is page-guarded, so a non-object pointer yields nil, not a fault.
+-- vftable address -> raw name (false: not an RTTI-bearing vftable). Only
+-- vftables inside the game image are cached, and those never change for the
+-- life of the process, so a hit is exact, not a guess: an object freed and
+-- reused gets a different vftable, hence a different key. Saves ~7 guarded
+-- reads (one VirtualQuery each) per call; R.camera's write guard ran this on
+-- every mouse move of the action camera (issue #175).
+local _rtti_by_vt, _rtti_n = {}, 0
+
 function R.rtti.raw(obj)
-    if not R.ptr.has_vtable(obj) then return nil end
+    if not _ptr_plausible(obj) then return nil end
     local vt = I.read_u64(obj)
-    -- has_vtable read this once already, but the object can be torn down (or
-    -- its page unmapped) between the two reads, and `nil - 8` is an ERROR, not
-    -- a nil — it would escape R.defs.classes()/dump(), which are documented as
-    -- read-only walks that never fault.
-    if not vt then return nil end
+    -- `nil - 8` is an ERROR, not a nil — it would escape R.defs.classes()/
+    -- dump(), which are documented as read-only walks that never fault.
+    if not vt or not R.ptr.in_image(vt) then return nil end
+    local hit = _rtti_by_vt[vt]
+    if hit ~= nil then return hit or nil end
+    local name = R.rtti._raw_walk(vt)
+    if _rtti_n >= 8192 then _rtti_by_vt, _rtti_n = {}, 0 end   -- a real image has fewer
+    _rtti_by_vt[vt], _rtti_n = name or false, _rtti_n + 1
+    return name
+end
+
+function R.rtti._raw_walk(vt)
     local col = I.read_u64(vt - 8)
     if not col then return nil end
     if not R.ptr.in_image(col) then return nil end
@@ -6385,9 +6439,18 @@ end
 
 --- Readable class name of a live object: ".?AVoCFoo@bar@@" -> "bar::oCFoo".
 --- MSVC stores the qualifiers innermost-first, so the pieces are reversed.
+local _rtti_pretty = {}   -- raw -> readable; bounded by the raw cache's key set
 function R.rtti.name(obj)
     local raw = R.rtti.raw(obj)
     if not raw then return nil end
+    local done = _rtti_pretty[raw]
+    if done then return done end
+    done = R.rtti._pretty(raw)
+    _rtti_pretty[raw] = done
+    return done
+end
+
+function R.rtti._pretty(raw)
     local body = raw:match("^%.%?A[VU](.+)@@$")
     if not body then return raw end
     local parts = {}

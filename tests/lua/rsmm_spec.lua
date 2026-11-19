@@ -8838,8 +8838,13 @@ do
 
     -- Seed a complete MSVC RTTI chain relative to `base`: object -> vftable ->
     -- COL -> type descriptor, plus the two vtable slots the saver vcalls.
+    -- Each class gets its own vftable, as in a real image: R.rtti caches names
+    -- per vftable, which is exact only because one never changes class.
+    local seeded = 0
     local function seed_rtti(mangled, base)
-        local vft, col, td = base + 0x700000, base + 0x800000, base + 0x900000
+        seeded = seeded + 1
+        local vft = base + 0x700000 + seeded * 0x100
+        local col, td = base + 0x800000 + seeded * 0x100, base + 0x900000 + seeded * 0x100
         I.write_u64(vft - 8, col)
         I.write_u32(col, 1)                       -- signature 1 (x64)
         I.write_u32(col + 0x0c, td - base)        -- type descriptor RVA
@@ -8861,6 +8866,11 @@ do
     check(R.rtti.raw(INST) == ".?AVoCDtEnemyDefinition@@",
           "R.rtti.raw walks vftable[-1] -> COL -> type descriptor")
     check(R.rtti.name(INST) == "oCDtEnemyDefinition", "and demangles it")
+    -- Issue #175: the walk is ~8 guarded reads, and R.camera's write guard ran
+    -- it on every mouse move. A vftable's class never changes, so it is cached.
+    local r0 = I.reads.single
+    check(R.rtti.name(INST) == "oCDtEnemyDefinition" and I.reads.single - r0 <= 1,
+          "a second lookup through the same vftable costs one read")
     check(R.rtti.name(0) == nil, "a non-object yields nil, not a fault")
 
     seed_rtti(".?AVoCFoo@dt@oe@@", IMG)
@@ -8942,7 +8952,7 @@ do
     -- Back to the default base: the RTTI fixtures above were seeded relative to
     -- it, and R.ptr.in_image (which every serialize guard leans on) reads it.
     I.module_base = saved_base
-    seed_rtti(".?AVoCDtEnemyDefinition@@", IMG)
+    VFT = seed_rtti(".?AVoCDtEnemyDefinition@@", IMG)
 
     -- R.serialize guards
     check(R.serialize.can(INST) == true, "can() accepts vtable slots 1/3 in image")
@@ -12518,6 +12528,38 @@ do
 
     factory({ R = env_R, I = { mods_menu_owner = function() return false end } })   -- drop our handlers
     I.mods_menu_owner, I.mods_model, I.mods_menu_set, I.mods_menu_refresh = I_saved[1], I_saved[2], I_saved[3], I_saved[4]
+end
+
+-- Issue #175: address-space searches run on a worker thread. A search inside
+-- the Lua call held the lock the game's hooks wait on for 15-30 ms per slice.
+do
+    local saved = { I.mem_find_start, I.mem_find_poll, I.mem_find }
+    local started, done = {}, {}
+    I.mem_find = function() error("the inline search must not run when a worker can") end
+    I.mem_find_start = function(needle, max_hits, mb, from)
+        started[#started + 1] = { needle = needle, from = from }
+        return #started
+    end
+    I.mem_find_poll = function(id)
+        if not done[id] then return nil end
+        return done[id][1], done[id][2]
+    end
+    local h, why = R._mem_find_slice("t", "abc", 4, 48, 0)
+    check(h == nil and why == "pending" and #started == 1, "the first call starts a search and says pending")
+    h, why = R._mem_find_slice("t", "abc", 4, 48, 0)
+    check(h == nil and why == "pending" and #started == 1, "a running search is polled, not restarted")
+    done[1] = { { 0x1000 }, 0x5000 }
+    local hits, resume = R._mem_find_slice("t", "abc", 4, 48, 0)
+    check(type(hits) == "table" and hits[1] == 0x1000 and resume == 0x5000,
+          "a finished search answers hits and resume, like mem_find")
+    R._mem_find_slice("t", "abc", 4, 48, 0x5000)
+    check(#started == 2 and started[2].from == 0x5000, "the next slice starts from the resume point")
+    R._mf_jobs = {}
+    I.mem_find_start, I.mem_find_poll = nil, nil
+    I.mem_find = function() return { 0x7000 }, 0 end
+    local old = R._mem_find_slice("t", "abc", 4, 48, 0)
+    check(type(old) == "table" and old[1] == 0x7000, "an older loader falls back to the inline search")
+    I.mem_find_start, I.mem_find_poll, I.mem_find = saved[1], saved[2], saved[3]
 end
 
 io.write(string.format("rsmm_spec: %d passed, %d failed\n", passed, failed))
