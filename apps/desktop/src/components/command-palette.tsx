@@ -191,7 +191,7 @@ export function CommandPalette() {
 
   const actions = useMemo<PaletteAction[]>(() => {
     const go = (
-      to: '/' | '/browse' | '/profiles' | '/conflicts' | '/commands' | '/settings',
+      to: '/' | '/browse' | '/conflicts' | '/commands' | '/settings',
       label: string,
       keywords: string,
       // Settings groups its panels into tabs and `?tab=` opens one directly, so
@@ -259,9 +259,8 @@ export function CommandPalette() {
       // One entry per mod-declared overlay — the client hardcodes none of
       // them, so a newly installed mod's HUD shows up here on its own.
       ...overlayActions,
-      go('/', t('Library'), 'mods installed home'),
+      go('/', t('Library'), 'mods installed home profiles loadout preset switch'),
       go('/browse', t('Browse mods'), 'search index download store'),
-      go('/profiles', t('Profiles'), 'loadout preset switch'),
       go('/conflicts', t('Conflicts'), 'clash overlap same file'),
       go('/commands', t('Commands'), 'apply build doctor terminal'),
       go('/settings', t('Settings'), 'paths font size density options preferences'),

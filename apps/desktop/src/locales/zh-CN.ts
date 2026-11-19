@@ -22,6 +22,20 @@
  */
 
 export const zhCN: Record<string, string> = {
+  'Browse mods to get started': '浏览模组，开启冒险',
+  '{active} / {total} active': '{active} / {total} 已启用',
+  'Actions for {name}': '{name} 的操作',
+  Duplicate: '复制',
+  Export: '导出',
+  'Export profile': '导出方案',
+  'Profile duplicated.': '方案已复制。',
+  'Profile duplicated, but its mod files could not be copied: {error}':
+    '方案已复制，但模组文件复制失败：{error}',
+  'Profile code copied.': '方案代码已复制。',
+  'Profile share code': '方案分享代码',
+  'Copy the share code for “{name}”.': '复制“{name}”的分享代码。',
+  'Copy code': '复制代码',
+  'Could not copy. Select the code and copy it manually.': '复制失败。请选中代码并手动复制。',
   '{n} Active': '已启用 {n} 个',
   'Library · {n} active': '模组库 · 已启用 {n} 个',
   '{n} active mod in {profile}': '{profile} 中已启用 {n} 个模组',
@@ -78,7 +92,6 @@ export const zhCN: Record<string, string> = {
   'Account created. Check your email to verify, then sign in.':
     '账户已创建。请查收邮件完成验证，然后登录。',
   'Action Needed: Update Your Launcher!': '需要操作：请更新启动器！',
-  Activate: '设为当前',
   Add: '添加',
   'Add mod': '添加模组',
   'Private games only': '仅限私人游戏',
@@ -131,14 +144,10 @@ export const zhCN: Record<string, string> = {
   'Could not check for conflicts': '无法检查冲突',
   'Could not copy — select the preview below and copy it from there.':
     '无法复制——请选中下方的预览内容，从那里复制。',
-  'Could not read the installed mods': '无法读取已安装的模组',
-  'The mod names below may be incomplete until this succeeds.':
-    '在此成功之前，下面的模组名称可能不完整。',
   'Dismiss the launch error': '关闭启动错误',
   'All subsystems': '全部子系统',
   'Already have an account?': '已有账户？',
   'Already in "{profile}"': '已在“{profile}”中',
-  'An empty grimoire': '空白的魔典',
   'Animate the interface': '界面动画',
   'Any run in progress will be lost — the new loader only takes effect in a fresh session.':
     '正在进行的这一局会丢失——新加载器只在新的会话里生效。',
@@ -259,7 +268,6 @@ export const zhCN: Record<string, string> = {
   'Delete profile "{name}"? This cannot be undone.': '删除方案“{name}”？此操作无法撤销。',
   Density: '界面密度',
   Diagnostics: '诊断',
-  'Different loadouts for different runs.': '为不同的玩法准备不同的模组组合。',
   Difficulty: '难度',
   'Disable GPU acceleration (software rendering)': '禁用 GPU 加速（软件渲染）',
   'Disable all': '全部禁用',
@@ -370,7 +378,6 @@ export const zhCN: Record<string, string> = {
     '改为安装到 ~/Applications 只需几秒，之后的每次更新都会自动完成。',
   'Installing {done}/{total}…': '正在安装 {done}/{total}…',
   'Installing…': '正在安装…',
-  'Invalid profile id': '方案 ID 无效',
   'Is Ravenswatch installed?': 'Ravenswatch 安装好了吗？',
   'Join the rsmm index to track your library and sync your profiles.':
     '加入 rsmm 索引，管理你的模组库并同步方案。',
@@ -438,7 +445,6 @@ export const zhCN: Record<string, string> = {
   Log: '日志',
   'Log uploaded — link copied below.': '日志已上传——链接见下方。',
   'Logo by Arch': '图标设计：Arch',
-  'Manage profiles →': '管理方案 →',
   Maximize: '最大化',
   'Maximum legibility — your OS UI font everywhere.': '最高可读性——全部使用系统界面字体。',
   Minimize: '最小化',
@@ -463,7 +469,6 @@ export const zhCN: Record<string, string> = {
   'Must be at most {value}.': '不能大于 {value}。',
   Name: '名称',
   'Name is required.': '名称为必填项。',
-  New: '新建',
   'New Run': '新方案',
   'New profile': '新建方案',
   'New profile from collection': '用合集新建方案',
@@ -486,12 +491,9 @@ export const zhCN: Record<string, string> = {
     '磁盘上还没有模组。到索引里逛逛，添加第一个吧。',
   'No mods in your mods folder yet. Install one from Browse.':
     '你的模组文件夹还是空的。到“浏览”页装一个吧。',
-  'No mods installed yet. Browse the index to add your first.':
-    '还没有安装任何模组。到索引里逛逛，添加第一个吧。',
   'No mods match that search.': '没有符合该搜索的模组。',
   'No mods match those filters': '没有符合这些筛选条件的模组',
   'No mods published to the index yet.': '索引中还没有发布任何模组。',
-  'No mods.': '暂无模组。',
   'No options available.': '没有可选项。',
   'No public collections yet.': '还没有公开的合集。',
   'No response from rsmm. Check the game path in Settings, then try again.':
@@ -585,11 +587,6 @@ export const zhCN: Record<string, string> = {
   'Remote index unreachable — showing installed mods only.':
     '无法连接远程索引——仅显示已安装的模组。',
   'Remove {name}': '移除 {name}',
-  'Remove {n} missing': '移除 {n} 个缺失项',
-  'Removed 1 entry with no mod on disk': '已移除 1 个磁盘上没有对应模组的条目',
-  'Removed {n} entries with no mods on disk': '已移除 {n} 个磁盘上没有对应模组的条目',
-  Rename: '重命名',
-  'Rename profile': '重命名方案',
   Repair: '修复',
   "Repair re-applies every enabled mod against the new game files. Playing modded from the app's Play button also repairs automatically.":
     '“修复”会针对新的游戏文件重新应用每个已启用的模组。用本程序的开始按钮启动模组版时也会自动修复。',
@@ -809,7 +806,6 @@ export const zhCN: Record<string, string> = {
   'Your Windows account name, home folder, e-mail addresses, Steam IDs, player names and IP addresses are replaced with placeholders. Check the preview — this is pattern matching, not a guarantee.':
     '你的 Windows 账户名、主目录、电子邮箱、Steam ID、玩家名称和 IP 地址会被替换成占位符。请自行检查预览——这只是模式匹配，并不能保证万无一失。',
   action: '操作',
-  active: '使用中',
   'ad slot offline': '广告位离线',
   add: '添加',
   'all installed': '已全部安装',
@@ -906,7 +902,6 @@ export const zhCN: Record<string, string> = {
   '{command} failed — see the log below.': '{command} 失败——请查看下方日志。',
   '{command} failed: {reason}': '{command} 失败：{reason}',
   '{command} finished.': '{command} 已完成。',
-  '{enabled} enabled · {present} on disk': '已启用 {enabled} 个 · 磁盘上 {present} 个',
   '{id} missing': '缺少 {id}',
   '{label} contains control characters.': '{label} 含有控制字符。',
   '{label} must be a filesystem path, not a URL.': '{label} 必须是文件系统路径，而不是网址。',
@@ -941,7 +936,6 @@ export const zhCN: Record<string, string> = {
   '{n} findings have an automated repair — run {command} to apply them.':
     '有 {n} 项问题可自动修复——运行 {command} 即可应用。',
   '{n} lines': '{n} 行',
-  '{n} missing': '缺失 {n} 个',
   '{n} missing dep': '缺少 {n} 个依赖',
   '{n} missing dependencies across the selection.': '所选项目共缺少 {n} 个依赖。',
   '{n} missing dependency across the selection.': '所选项目共缺少 {n} 个依赖。',
@@ -967,7 +961,6 @@ export const zhCN: Record<string, string> = {
   '{n} warnings': '{n} 个警告',
   '{provider} sign-in failed': '{provider} 登录失败',
   '— destructive': '— 有破坏性',
-  '— not on disk': '— 磁盘上不存在',
   '“{name}” has no mods yet': '“{name}”还没有模组',
   // Item-grid config field (a mod-declared editor for lists of game items).
   'Close list': '收起列表',

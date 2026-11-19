@@ -21,6 +21,7 @@
     "clean": "rm -rf dist .turbo src-tauri/target"
   },
   "dependencies": {
+    "@base-ui/react": "1.9.0",
     "@daveyplate/better-auth-tauri": "0.1.9",
     "@fontsource-variable/alegreya": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",

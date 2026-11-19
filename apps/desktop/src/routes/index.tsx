@@ -23,13 +23,14 @@ import {
   InkSwitch,
   MonoTag,
   Panel,
-  SectionHeader,
   StatPill,
 } from '../components/chrome';
 import { ConfigButton } from '../components/config-button';
 import { useConfirmDisableHook } from '../components/disable-hook-consent';
+import { LibraryEmptyState } from '../components/library-empty-state';
 import { ModConfigPanel } from '../components/mod-config-panel';
 import { OverlayButton } from '../components/overlay-button';
+import { ProfilePopover } from '../components/profile-popover';
 import { SetupBanner } from '../components/setup-banner';
 import { SupportNudge } from '../components/support-nudge';
 import { useDialog, useToast } from '../components/toast';
@@ -142,6 +143,18 @@ function FacetRow({
   );
 }
 
+function LibraryHeader({ subtitle, children }: { subtitle?: string; children?: ReactNode }) {
+  return (
+    <header className="rsmm-section-header flex flex-wrap items-end justify-between gap-x-6 gap-y-3 pb-4">
+      <div className="min-w-0 flex-1">
+        <ProfilePopover />
+        {subtitle ? <p className="font-serif-italic mt-2 text-base text-ash">{subtitle}</p> : null}
+      </div>
+      {children ? <div className="shrink-0">{children}</div> : null}
+    </header>
+  );
+}
+
 function LibraryPage() {
   const t = useT();
   const navigate = useNavigate();
@@ -215,14 +228,7 @@ function LibraryPage() {
       void navigate({ to: '/browse', replace: true });
       return;
     }
-    // `installed` starts empty and is deliberately not persisted. Wait for the
-    // first successful disk scan before treating that as an empty library.
-    if (localModsLoading || localModsError || !Array.isArray(localMods)) return;
-    if (localMods.length === 0) void navigate({ to: '/browse', replace: true });
-  }, [localMods, localModsError, localModsLoading, navigate]);
-  const waitingToOpenBrowse =
-    firstOpen.current ||
-    (!localModsLoading && !localModsError && Array.isArray(localMods) && localMods.length === 0);
+  }, [navigate]);
 
   const filtered = useMemo(
     () =>
@@ -444,19 +450,20 @@ function LibraryPage() {
     uninstallModStore,
   ]);
 
-  if (waitingToOpenBrowse) return null;
+  if (firstOpen.current) return null;
 
   if (installed.length === 0) {
     return (
-      <EmptyState
-        title={t('An empty grimoire')}
-        body={t('No mods installed yet. Browse the index to add your first.')}
-        action={
-          <Link to="/browse" className="btn-grim" data-variant="primary">
-            {t('Browse mods')}
-          </Link>
-        }
-      />
+      <div className="space-y-6">
+        <LibraryHeader />
+        <LibraryEmptyState
+          title={
+            <Link to="/browse" className="empty-grimoire-link">
+              {t('Browse mods to get started')} <span aria-hidden="true">→</span>
+            </Link>
+          }
+        />
+      </div>
     );
   }
 
@@ -469,7 +476,8 @@ function LibraryPage() {
     return (
       <div className="space-y-6">
         <SetupBanner />
-        <EmptyState
+        <LibraryHeader />
+        <LibraryEmptyState
           title={t('“{name}” has no mods yet', { name: profile.name })}
           body={
             unadopted.length === 0
@@ -519,51 +527,49 @@ function LibraryPage() {
       <SetupBanner />
       <SupportNudge />
       <UpdatesPanel />
-      <SectionHeader
-        title={t('Library')}
+      <LibraryHeader
         subtitle={t.n(
           installed.length,
           '{n} mod in the local folder.',
           '{n} mods in the local folder.',
         )}
-        right={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button
-              type="button"
-              onClick={() => void changeView('cards')}
-              aria-pressed={view === 'cards'}
-              variant={view === 'cards' ? 'gilt' : 'default'}
-              size="sm"
-              aria-label={t('Card view')}
-            >
-              <LayoutGrid className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              onClick={() => void changeView('list')}
-              aria-pressed={view === 'list'}
-              variant={view === 'list' ? 'gilt' : 'default'}
-              size="sm"
-              aria-label={t('List view')}
-            >
-              <List className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              onClick={() => void changeView('config')}
-              aria-pressed={view === 'config'}
-              variant={view === 'config' ? 'gilt' : 'default'}
-              size="sm"
-              aria-label={t('Config view')}
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-            </Button>
-            <Link to="/browse" className="btn-grim ml-2" data-variant="primary">
-              <Plus className="h-4 w-4" /> {t('Add mod')}
-            </Link>
-          </div>
-        }
-      />
+      >
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            type="button"
+            onClick={() => void changeView('cards')}
+            aria-pressed={view === 'cards'}
+            variant={view === 'cards' ? 'gilt' : 'default'}
+            size="sm"
+            aria-label={t('Card view')}
+          >
+            <LayoutGrid className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void changeView('list')}
+            aria-pressed={view === 'list'}
+            variant={view === 'list' ? 'gilt' : 'default'}
+            size="sm"
+            aria-label={t('List view')}
+          >
+            <List className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void changeView('config')}
+            aria-pressed={view === 'config'}
+            variant={view === 'config' ? 'gilt' : 'default'}
+            size="sm"
+            aria-label={t('Config view')}
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+          </Button>
+          <Link to="/browse" className="btn-grim ml-2" data-variant="primary">
+            <Plus className="h-4 w-4" /> {t('Add mod')}
+          </Link>
+        </div>
+      </LibraryHeader>
 
       {/* Filters live in a rail beside the list, not in a bar above it. As a
           horizontal strip they wrapped onto two or three rows at narrow widths
