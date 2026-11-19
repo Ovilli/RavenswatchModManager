@@ -37,7 +37,7 @@ importers:
         version: 1.9.4
       next:
         specifier: 15.5.28
-        version: 15.5.28(@types/node@22.10.5)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+        version: 15.5.28(@babel/core@7.29.7)(@types/node@24.12.4)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       turbo:
         specifier: 2.9.14
         version: 2.9.14
@@ -275,6 +275,18 @@ importers:
       '@dnd-kit/react':
         specifier: 0.5.3
         version: 0.5.3(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+      '@fontsource/alegreya':
+        specifier: '5'
+        version: 5.3.0
+      '@fontsource/alegreya-sans':
+        specifier: '5'
+        version: 5.3.0
+      '@fontsource/jetbrains-mono':
+        specifier: '5'
+        version: 5.3.0
+      '@fontsource/unifrakturcook':
+        specifier: '5'
+        version: 5.3.0
       '@rsmm/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
@@ -821,7 +833,7 @@ packages:
     engines: {node: '>=6.9.0'}
 
   '@babel/runtime@8.1.2':
-    resolution: {integrity: sha512-Ay6HdEKZJAeGs6KKJ/ezCK5ssjFmkvUiR0TEGv/B1abyjLWrQ2RU+M507Ppk0NikhvVFhlEFC1/rHfCiYqSUcw==, tarball: https://registry.npmjs.org/@babel/runtime/-/runtime-8.1.2.tgz}
+    resolution: {integrity: sha512-Ay6HdEKZJAeGs6KKJ/ezCK5ssjFmkvUiR0TEGv/B1abyjLWrQ2RU+M507Ppk0NikhvVFhlEFC1/rHfCiYqSUcw==}
 
   '@babel/template@7.29.7':
     resolution: {integrity: sha512-puq+Gf35oI24FeN11LkoUQFqv9uwNeWpxXZi/Ji3rRIoKAzKnxRaZ+Gkj0vKS9ZCiTESfng1N9LyOyXvo+m+Gg==}
@@ -840,7 +852,7 @@ packages:
     engines: {node: '>=6.9.0'}
 
   '@base-ui/react@1.9.0':
-    resolution: {integrity: sha512-S8CSYosASBKtpL8SWUfS78rFElfLijiCgA7oHOK22jCJ95FULsYyKwBNFOgudt0RA+/7yNc7F81bOvQnRgbBiQ==, tarball: https://registry.npmjs.org/@base-ui/react/-/react-1.9.0.tgz}
+    resolution: {integrity: sha512-S8CSYosASBKtpL8SWUfS78rFElfLijiCgA7oHOK22jCJ95FULsYyKwBNFOgudt0RA+/7yNc7F81bOvQnRgbBiQ==}
     engines: {node: '>=14.0.0'}
     peerDependencies:
       '@date-fns/tz': ^1.2.0
@@ -857,7 +869,7 @@ packages:
         optional: true
 
   '@base-ui/utils@0.5.0':
-    resolution: {integrity: sha512-dYGGcEttjkYiMoa5nHm8vLaJ2UcuTWxo3BFAwOYXeRg/q7UVVvA6cacEIXEs3FgBfK1CGtW1ptElqs7wsx+t9A==, tarball: https://registry.npmjs.org/@base-ui/utils/-/utils-0.5.0.tgz}
+    resolution: {integrity: sha512-dYGGcEttjkYiMoa5nHm8vLaJ2UcuTWxo3BFAwOYXeRg/q7UVVvA6cacEIXEs3FgBfK1CGtW1ptElqs7wsx+t9A==}
     peerDependencies:
       '@types/react': ^17 || ^18 || ^19
       react: ^17 || ^18 || ^19
@@ -1470,19 +1482,19 @@ packages:
     resolution: {integrity: sha512-SNI7EgUSiADqbqUzzMbj1ZeC/r2pa5eg3KyFOGAd3a7EsIA4qzjXQLp+ODWQtHVDKFCdGs4J3ovSJUqvKIK96g==}
 
   '@floating-ui/core@1.8.0':
-    resolution: {integrity: sha512-0CIZ5itps/8x7BG8dEIhs53BvCUH2PCoogtakwRTut+Arm58sJooJ0AuZhLw2HJYIR5cMLNPBSS728sPho2khQ==, tarball: https://registry.npmjs.org/@floating-ui/core/-/core-1.8.0.tgz}
+    resolution: {integrity: sha512-0CIZ5itps/8x7BG8dEIhs53BvCUH2PCoogtakwRTut+Arm58sJooJ0AuZhLw2HJYIR5cMLNPBSS728sPho2khQ==}
 
   '@floating-ui/dom@1.8.0':
-    resolution: {integrity: sha512-yXSrzeHZBTZadLOlfyhCkJHNeLJnHRnRInwdZ40L7ZiaAtrBwoYlsDrX3v5zB1Utk7CLfzcOVnVVWoXEky7Ceg==, tarball: https://registry.npmjs.org/@floating-ui/dom/-/dom-1.8.0.tgz}
+    resolution: {integrity: sha512-yXSrzeHZBTZadLOlfyhCkJHNeLJnHRnRInwdZ40L7ZiaAtrBwoYlsDrX3v5zB1Utk7CLfzcOVnVVWoXEky7Ceg==}
 
   '@floating-ui/react-dom@2.1.9':
-    resolution: {integrity: sha512-JDjEFGCpImxDCA7JJKviA0M9+RtmJdj0m/NVU5IMgBK+AmZouAQQ7/+2GLH0GXXY0YMw9oXPB8hKdbPYg5QLYg==, tarball: https://registry.npmjs.org/@floating-ui/react-dom/-/react-dom-2.1.9.tgz}
+    resolution: {integrity: sha512-JDjEFGCpImxDCA7JJKviA0M9+RtmJdj0m/NVU5IMgBK+AmZouAQQ7/+2GLH0GXXY0YMw9oXPB8hKdbPYg5QLYg==}
     peerDependencies:
       react: '>=16.8.0'
       react-dom: '>=16.8.0'
 
   '@floating-ui/utils@0.2.12':
-    resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==, tarball: https://registry.npmjs.org/@floating-ui/utils/-/utils-0.2.12.tgz}
+    resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
 
   '@fontsource-variable/alegreya@5.3.0':
     resolution: {integrity: sha512-K+DFrm7tnqsG6di2w3eW/o4Ic6XNFLtZCKcPldeHEnE9f8uWy4llIp1CqQAu+ByI9MFfs1C7eLv4Rv84yEIerw==}
@@ -1492,6 +1504,15 @@ packages:
 
   '@fontsource/alegreya-sans@5.3.0':
     resolution: {integrity: sha512-Uf0RbuwzhSS3NQrBFcRzEUm7TxDQW3qdAbQ6JIOhsIW6V+YN2dqlR99lhfEE38R3GHgMCMJBzqSp7aJxhNXSOw==}
+
+  '@fontsource/alegreya@5.3.0':
+    resolution: {integrity: sha512-YCsp9dHYfMNdggXxinMMS0nkGlZkzs2MvPL7qPVjSO4DM1uJ29hmKEdTC/fBP+2K4Aa+4Z44JuOQz05eDcvNJA==}
+
+  '@fontsource/jetbrains-mono@5.3.0':
+    resolution: {integrity: sha512-fqDfB5I9f1p1TV486aUgB9t8zP84P0O1FtQR5Ol9vjwPy+S+EIGlVYm1cvj2W5shcZMTg2nZFdVMoH5wFu8a1A==}
+
+  '@fontsource/unifrakturcook@5.3.0':
+    resolution: {integrity: sha512-oOeUerPztcIBR6/+krMW4n/8VLF8A4NrjCNpR1C6F/C8JLekLMoSm5JzrxfPtyn5RtJdYQdTYigk4CtUCWxBCw==}
 
   '@hono/node-server@2.1.3':
     resolution: {integrity: sha512-TA//nWMqPhbfdfneACk6t5a9eqbS9lABEPyKn0/xZTah3H3U2XaVg85rJFl0/Fyit0I552YDHgXGVSf3GwqbUw==}
@@ -4537,7 +4558,7 @@ packages:
     engines: {node: '>=0.10.0'}
 
   reselect@5.3.0:
-    resolution: {integrity: sha512-XGoLeRAVzUTcJ1qkxPQhDJyIZ5d6zzZD9nT7AEZOaaU9UbWclhycElmhO+VD5bFeLuzhPBaOV2oXC8uG35ZSpg==, tarball: https://registry.npmjs.org/reselect/-/reselect-5.3.0.tgz}
+    resolution: {integrity: sha512-XGoLeRAVzUTcJ1qkxPQhDJyIZ5d6zzZD9nT7AEZOaaU9UbWclhycElmhO+VD5bFeLuzhPBaOV2oXC8uG35ZSpg==}
 
   resolve-from@5.0.0:
     resolution: {integrity: sha512-qYg9KP24dD5qka9J47d0aVky0N+b4fTU89LN9iDnjB5waksiC49rvMB0PrUJQGoTmH50XPiqOvAjDfaijGxYZw==}
@@ -5037,7 +5058,7 @@ packages:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   use-sync-external-store@1.7.0:
-    resolution: {integrity: sha512-6L+EeigHMQhdaIPNIFUKwfWJSwWFQ8gJbJ2DLOs5sDIegTwR9fRxvnM3uciHKjIZhFz+KAv2emhWMRvDmMcY8A==, tarball: https://registry.npmjs.org/use-sync-external-store/-/use-sync-external-store-1.7.0.tgz}
+    resolution: {integrity: sha512-6L+EeigHMQhdaIPNIFUKwfWJSwWFQ8gJbJ2DLOs5sDIegTwR9fRxvnM3uciHKjIZhFz+KAv2emhWMRvDmMcY8A==}
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
@@ -6440,6 +6461,12 @@ snapshots:
 
   '@fontsource/alegreya-sans@5.3.0': {}
 
+  '@fontsource/alegreya@5.3.0': {}
+
+  '@fontsource/jetbrains-mono@5.3.0': {}
+
+  '@fontsource/unifrakturcook@5.3.0': {}
+
   '@hono/node-server@2.1.3(hono@4.13.12)':
     dependencies:
       hono: 4.13.12
@@ -7379,7 +7406,7 @@ snapshots:
 
   '@vercel/analytics@2.0.1(next@15.5.28(@types/node@24.12.4)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)':
     optionalDependencies:
-      next: 15.5.28(@babel/core@7.29.7)(@types/node@24.12.4)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+      next: 15.5.28(@types/node@24.12.4)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       react: 19.0.0
 
   '@vercel/speed-insights@2.0.0(next@15.5.28(@types/node@22.10.5)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)':
@@ -9267,7 +9294,6 @@ snapshots:
       - '@babel/core'
       - '@types/node'
       - babel-plugin-macros
-    optional: true
 
   next@15.5.28(@types/node@22.10.5)(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
     dependencies:
@@ -9292,6 +9318,31 @@ snapshots:
       - '@babel/core'
       - '@types/node'
       - babel-plugin-macros
+
+  next@15.5.28(@types/node@24.12.4)(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
+    dependencies:
+      '@next/env': 15.5.28
+      '@swc/helpers': 0.5.15
+      caniuse-lite: 1.0.30001815
+      postcss: 8.5.29
+      react: 19.0.0
+      react-dom: 19.0.0(react@19.0.0)
+      styled-jsx: 5.1.6(@babel/core@7.29.7)(react@19.0.0)
+    optionalDependencies:
+      '@next/swc-darwin-arm64': 15.5.28
+      '@next/swc-darwin-x64': 15.5.28
+      '@next/swc-linux-arm64-gnu': 15.5.28
+      '@next/swc-linux-arm64-musl': 15.5.28
+      '@next/swc-linux-x64-gnu': 15.5.28
+      '@next/swc-linux-x64-musl': 15.5.28
+      '@next/swc-win32-arm64-msvc': 15.5.28
+      '@next/swc-win32-x64-msvc': 15.5.28
+      sharp: 0.35.5(@types/node@24.12.4)
+    transitivePeerDependencies:
+      - '@babel/core'
+      - '@types/node'
+      - babel-plugin-macros
+    optional: true
 
   nextjs-nav-guard@1.1.3(next@15.5.28(@types/node@22.10.5)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0):
     dependencies:
