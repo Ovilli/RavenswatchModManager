@@ -516,3 +516,83 @@ def test_game_update_recovery_restores_an_untouched_manifest(tmp_path, monkeypat
     assert apply_mods._recover_game_update(cooking, game) is True
     assert manifest.read_text(encoding="utf-8") == "1\nA\nB\n"
     assert not bak.exists()
+
+
+@pytest.mark.parametrize("name", ["version.dll", "version.dll.", "version.dll ",
+                                  "version.dll::$DATA"])
+def test_apply_one_refuses_a_blocked_root_file_and_writes_nothing(install, name):
+    src = install.repo / "payload.bin"
+    src.write_bytes(b"MZ")
+    dest = install.game_dir / name
+    state = apply_mods.State(install.cooking)
+    with pytest.raises(apply_mods.ArchiveError, match="TestMod"):
+        apply_mods.apply_one("_root\\" + name, src, dest, "TestMod", state, False)
+    assert not state.active
+    assert sorted(p.name for p in install.game_dir.iterdir()) == ["DarkTalesResources"]
+
+
+def test_plan_apply_skips_a_blocked_root_file(tmp_path, capsys):
+    src = tmp_path / "x"
+    src.write_bytes(b"MZ")
+
+    class _M:
+        id, enabled = "m", True
+
+        def files(self):
+            return [(src, "_root/version.dll."), (src, "_root/readme.txt")]
+
+    adds, _rms, _regs, _syn = apply_mods.plan_apply(
+        [_M()], apply_mods.load_asset_map(), tmp_path, tmp_path,
+        apply_mods.State(tmp_path), True)
+    assert [a[0] for a in adds] == [apply_mods.ROOT_PREFIX + "readme.txt"]
+    assert "refusing to write 'version.dll.'" in capsys.readouterr().err
+
+
+def _plan_root(tmp_path, rel, state=None):
+    src = tmp_path / "x"
+    src.write_bytes(b"-- planted")
+
+    class _M:
+        id, enabled = "m", True
+
+        def files(self):
+            return [(src, rel)]
+
+    return apply_mods.plan_apply(
+        [_M()], apply_mods.load_asset_map(), tmp_path, tmp_path,
+        state or apply_mods.State(tmp_path), True)
+
+
+@pytest.mark.parametrize("rel", [
+    "_root/rsmm/lib/rsmm.lua",
+    "_root/RSMM./lib/rsmm.lua",
+    "_root/asset_map.json",
+    "_root/DarkTalesResources/_Cooking/.rsmm_state.json",
+    "_root/DarkTalesResources/_Cooking/.rsmm_journal.jsonl",
+    "_root/DarkTalesResources/Settings.ot.rsmm.bak",
+])
+def test_plan_apply_refuses_manager_owned_root_files(tmp_path, capsys, rel):
+    adds, _rms, _regs, _syn = _plan_root(tmp_path, rel)
+    assert adds == []
+    assert "file owned by the mod manager" in capsys.readouterr().err
+
+
+def test_apply_one_refuses_the_lua_sdk(tmp_path):
+    src = tmp_path / "x"
+    src.write_bytes(b"-- planted")
+    dest = tmp_path / "game" / "rsmm" / "lib" / "rsmm.lua"
+    with pytest.raises(apply_mods.ArchiveError, match="owned by the mod manager"):
+        apply_mods.apply_one(apply_mods.ROOT_PREFIX + "rsmm\\lib\\rsmm.lua",
+                             src, dest, "m", apply_mods.State(tmp_path), False)
+    assert not dest.exists()
+
+
+@pytest.mark.parametrize("rel", ["version.dll", "rsmm\\lib\\rsmm.lua"])
+def test_plan_apply_restores_a_refused_file_an_older_release_applied(tmp_path, capsys, rel):
+    """The warn-only release wrote the file; refusing it now has to take it back out."""
+    enc = apply_mods.ROOT_PREFIX + rel
+    state = apply_mods.State(tmp_path)
+    state.active[enc] = {"mod": "m", "src_sha256": "0" * 64}
+    adds, rms, _regs, _syn = _plan_root(tmp_path, "_root/" + rel.replace("\\", "/"), state)
+    assert adds == []
+    assert rms == [enc]

@@ -8,8 +8,10 @@ writes the cooked record into the mod's ``assets/`` tree. ``apply_mods.py``
 registers the new stem in ``UsedRscList`` so the engine loads it additively —
 the same path proven for custom items / enemies.
 
-Confidence: ``guess``. The def cooks and loads, but a NET-NEW modifier *appearing
-in the selection UI* is unproven — the challenge-UI slot count looks data-driven
+Confidence: ``experimental``. A cloned def reaches the challenge screen (in game
+2026-09-18, after the text-bank fix); its effect in a run is unproven. The
+history below predates that proof: a NET-NEW modifier *appearing in the
+selection UI* was then unproven — the challenge-UI slot count looks data-driven
 and may be pre-sized to the vanilla set (see docs/_re/kinds/game-modifiers.md,
 "#16 cap"). Ghidra 2026-07-05: the challenge UI rows are SPAWNED, not fixed
 entities — ``Dt Challenge Ui Controller`` registers ``m_oGameModifierUiSpawner``
@@ -38,7 +40,7 @@ from pathlib import Path
 from ...engine import corpus
 from ...engine import game_modifier_cook as GMC
 from ...engine import text_patches as TP
-from ..content import ContentDef, ContentError, SchemaNotMined
+from ..content import ContentDef, ContentError, SchemaNotMined, written_this_run
 from . import _common as C
 
 _log = logging.getLogger(__name__)
@@ -99,8 +101,9 @@ def _bank_prior(out_dir: Path) -> dict[str, bytes]:
     every block but the last (the bug items.py fixed the same way)."""
     bank = out_dir.joinpath(*_TEXT_BANK_DECODED.split("/"))
     out = {".Lang" + f.name[len(bank.name) + len(".Lang"):]: f.read_bytes()
-           for f in bank.parent.glob(bank.name + ".Lang*")} if bank.parent.is_dir() else {}
-    if bank.is_file():
+           for f in bank.parent.glob(bank.name + ".Lang*")
+           if written_this_run(f)} if bank.parent.is_dir() else {}
+    if written_this_run(bank):
         out["__base__"] = bank.read_bytes()
     return out
 
@@ -136,6 +139,11 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             f"pass a vanilla modifier id (the game install, or data/uncooked, must "
             f"be readable)."
         )
+
+    if corpus.shipped_stem(_MODIFIER_DIR, GMC.GEN_SUFFIX, defn.id):
+        raise ContentError(
+            f"modifier {defn.id}: a shipped modifier is already called {defn.id!r}, and a "
+            f"clone under that name would silently replace it. Pick another id.")
 
     effect = defn.fields.get("effect")
     effect_key: int | None = None

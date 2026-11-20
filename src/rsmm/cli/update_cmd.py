@@ -11,9 +11,11 @@ Workflow:
   5. Unpack into `mods/<id>/` after the user confirms.
 
 Trust:
-  unsigned        -> warn, prompt unless --yes
+  unsigned        -> warn, prompt unless --yes (no terminal + no --yes = skip)
   unknown signer  -> warn, prompt unless --yes
-  trusted signer  -> silent
+  trusted signer  -> silent; the first one pins itself to the mod
+  pinned mod signed by another key, or unsigned -> refused
+  (see `rsmm.sdk.repo.check_entry`; pins live in ~/.rsmm/keys/pins.json)
 
 Run `rsmm update --check` to list available updates without downloading.
 """
@@ -34,8 +36,24 @@ from pathlib import Path
 from rsmm.engine import net
 from rsmm.engine.paths import MODS_DIR
 from rsmm.sdk.api import _parse_v
-from rsmm.sdk.archive import safe_dir_name, safe_extract, scan_dangerous, single_top_dir
-from rsmm.sdk.repo import RepoError, RepoIndex, sha256_file, verify_file
+from rsmm.sdk.archive import (
+    ArchiveError,
+    archive_mod_id,
+    require_same_mod,
+    safe_dir_name,
+    safe_extract,
+    scan_dangerous,
+    single_top_dir,
+)
+from rsmm.sdk.repo import (
+    RepoError,
+    RepoIndex,
+    check_entry,
+    confirm_untrusted,
+    pin_lock,
+    record_pin,
+    sha256_file,
+)
 
 REPOS_FILE = Path.home() / ".rsmm" / "repos.json"
 KEYS_DIR = Path.home() / ".rsmm" / "keys"
@@ -80,47 +98,21 @@ def _installed_mods() -> dict[str, str]:
         try:
             tbl = tomllib.loads(mf.read_text(encoding="utf-8"))
             meta = tbl.get("mod", {})
-            out[str(meta.get("id", entry.name))] = str(meta.get("version", "0.0.0"))
         except (OSError, ValueError):
-            pass
+            continue
+        mid = str(meta.get("id", entry.name))
+        # The update replaces the FOLDER and checks the pin of the id, so the
+        # two have to be one mod; a mismatch is left alone, not guessed at.
+        if mid.casefold() != entry.name.casefold():
+            print(f"  [warn] {entry.name}/ holds mod {mid!r}; not updating it",
+                  file=sys.stderr)
+            continue
+        out[entry.name] = str(meta.get("version", "0.0.0"))
     return out
 
 
 def _newer(have: str, want: str) -> bool:
     return _parse_v(want) > _parse_v(have)
-
-
-def _verify_download(path: Path, expected_sha256: str,
-                     sig_b64: str, pubkey_id: str) -> tuple[bool, str]:
-    """Return (ok, reason). Reason describes signer trust state."""
-    actual = sha256_file(path)
-    if actual != expected_sha256:
-        return False, f"sha256 mismatch: {actual} vs {expected_sha256}"
-    if not sig_b64:
-        return True, "unsigned (warn)"
-    if not pubkey_id:
-        return True, "signed without pubkey_id (warn)"
-    # The id comes from the index. `../…` or an absolute path would reach a
-    # .pub file anywhere — including one shipped inside an installed mod — and
-    # turn an attacker's own key into "signature ok" with no trust prompt.
-    try:
-        safe_dir_name(pubkey_id, what="signer id")
-    except RepoError as e:
-        return False, str(e)
-    pub = KEYS_DIR / f"{pubkey_id}.pub"
-    if not pub.exists():
-        return True, f"unknown signer {pubkey_id!r} (warn)"
-    # A signature from a signer we hold a key for must verify. This used to
-    # answer (True, "verify skipped") when verification raised — with no
-    # "warn" in the reason, so not even the trust prompt fired — and in a
-    # frozen build it raised on every call, so a forged signature installed
-    # silently. Can't verify is a refusal, not a pass.
-    try:
-        if verify_file(path, sig_b64, pub):
-            return True, f"signature ok ({pubkey_id})"
-        return False, f"signature INVALID ({pubkey_id})"
-    except RepoError as e:
-        return False, f"signature could not be verified ({pubkey_id}): {e}"
 
 
 def _validate_zip_content(zf: zipfile.ZipFile, mod_id: str) -> None:
@@ -142,6 +134,8 @@ def _install_zip(zip_path: Path, mod_id: str, dry_run: bool) -> None:
         staging = Path(td) / "unpack"
         staging.mkdir()
         with zipfile.ZipFile(zip_path) as zf:
+            top, manifest_id = archive_mod_id(zf)
+            require_same_mod(mod_id, the_archive_folder=top, the_manifest_id=manifest_id)
             _validate_zip_content(zf, mod_id)
             # A packed archive carries its own `<id>/` top-level dir; a
             # hand-rolled one may be flat. Strip the former so `staging` is
@@ -229,18 +223,34 @@ def main(argv: list[str] | None = None) -> int:
             f.write(data)
             zp = Path(f.name)
         try:
-            ok, reason = _verify_download(zp, entry.sha256, entry.sig, entry.pubkey_id)
-            print(f"  verify: {reason}")
-            if not ok:
-                print(f"  refusing to install {mid}", file=sys.stderr)
-                code = 1
-                continue
-            if "warn" in reason and not args.yes:
-                ans = input(f"  install {mid} anyway? [y/N] ").strip().lower()
-                if ans != "y":
+            # The lock spans the decision, the install and the pin it records.
+            with pin_lock(KEYS_DIR):
+                try:
+                    trust = check_entry(sha256_file(zp), entry, KEYS_DIR, dest_id=mid)
+                except RepoError as e:
+                    trust = None
+                    print(f"  verify: {e}")
+                if trust is not None:
+                    print(f"  verify: {trust.reason}")
+                if trust is None or not trust.ok:
+                    print(f"  refusing to install {mid}", file=sys.stderr)
+                    code = 1
+                    continue
+                if trust.warn and not confirm_untrusted(f"{mid} ({trust.reason})", args.yes):
                     print(f"  skipped {mid}")
                     continue
-            _install_zip(zp, mid, args.dry_run)
+                try:
+                    _install_zip(zp, mid, args.dry_run)
+                except (RepoError, ArchiveError, zipfile.BadZipFile, OSError) as e:
+                    print(f"  refusing to install {mid}: {e}", file=sys.stderr)
+                    code = 1
+                    continue
+                # Pinned only once the version is in place (not on a dry run).
+                if not args.dry_run:
+                    try:
+                        record_pin(KEYS_DIR, trust)
+                    except RepoError as e:
+                        print(f"  [warn] {e}", file=sys.stderr)
             print(f"  installed {mid} -> {entry.version}")
         finally:
             try:

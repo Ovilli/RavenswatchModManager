@@ -6,9 +6,10 @@ A mod registers content via `ContentRegistry.register("item", id=..., ...)`
 which delegates to the `kinds/<kind>.py` implementation. Each kind owns
 its own template + field-patcher + emit step.
 
-Kinds that aren't fully schema-mined yet (bosses, maps, heroes at v3.0)
-register their builder but fail with a clear `SchemaNotMined` error on
-emit, so authors see exactly which class needs RE work next.
+A kind raises `SchemaNotMined` on emit when the game data it needs is not
+readable (no install or mirror) or a class it touches is not decoded yet, so
+authors see what is missing instead of a mod that emits nothing. How far each
+kind is trusted in game is `KIND_CONFIDENCE` below.
 
 :::note
 Auto-generated from `@sdk_export` registrations by `rsmm docs-gen`. Edit the docstrings in the source module, not this page.

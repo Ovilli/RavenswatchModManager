@@ -70,6 +70,11 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         raise SchemaNotMined(f"challenge {defn.id}: base {base!r} is not a shipped challenge "
                              "(the game install, or data/uncooked, must be readable)")
 
+    if corpus.shipped_stem(_DIR, CK.GEN_SUFFIX, defn.id):
+        raise ContentError(
+            f"challenge {defn.id}: a shipped challenge is already called {defn.id!r}, and a "
+            f"clone under that name would silently replace it. Pick another id.")
+
     key = f"Challenge_{defn.id}_Title"
     name = defn.fields.get("name")
     written: list[Path] = []

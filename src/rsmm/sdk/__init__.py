@@ -32,7 +32,7 @@ from __future__ import annotations
 import re
 
 from . import archive, engine
-from .api import API_VERSION, require_api, sdk_export
+from .api import API_VERSION, sdk_export
 from .archive import ArchiveError, safe_dir_name, safe_extract
 from .config import ConfigSchema, ConfigStore
 from .content import (
@@ -44,7 +44,6 @@ from .content import (
 )
 from .health import Health
 from .i18n import I18nBundle
-from .plugins import discover_plugins
 from .repo import RepoIndex, sign_file, verify_file
 from .testkit import ModExpect, assert_no_conflicts, conflicts, expect
 from .transaction import ApplyTransaction
@@ -53,11 +52,10 @@ from .versioning import GameBuildPin, check_compat, pin_exists
 _ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 
 __all__ = [
-    "API_VERSION", "sdk_export", "require_api",
+    "API_VERSION", "sdk_export",
     "Health", "ConfigSchema", "ConfigStore", "I18nBundle",
     "ContentRegistry", "ContentDef", "ContentRef",
     "KIND_CONFIDENCE", "kind_confidence",
-    "discover_plugins",
     "RepoIndex", "sign_file", "verify_file",
     "archive", "ArchiveError", "safe_extract", "safe_dir_name",
     "expect", "conflicts", "assert_no_conflicts", "ModExpect",

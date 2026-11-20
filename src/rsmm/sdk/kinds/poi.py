@@ -163,7 +163,7 @@ mesh and maps (:mod:`rsmm.engine.prop_cook`). The donors supply *structure*
     on the entrance, ``side = "in"`` with the same ``id`` in the room. Each is
     a clone of the shipped Thieves' stash teleporter
     (``Thieves_Underground_Teleporter_<Side>``) with its pair renamed to
-    ``<id>_In`` / ``<id>_Out`` and its stash event renamed. A shipped room already
+    ``<mod>_<id>_In`` / ``_Out`` and its stash event renamed. A shipped room already
     stands its own teleporter (not a plain placement, so ``clear`` keeps it):
     ``{ side = "in", id = ..., replace = "<that entity>" }`` takes it over
     instead, so it stops answering its shipped pair. A room may stand several
@@ -227,7 +227,8 @@ mesh and maps (:mod:`rsmm.engine.prop_cook`). The donors supply *structure*
     entities placed ~470 times). ``[parts.<name>] collision = [...]`` gives a
     part its own boxes, in its own space.
 
-``[marker]`` (table, optional, ``replace_base`` only)
+``[marker]`` (table, optional; needs a host: the prop ``replaces`` names, or
+the def's own prop placed with ``places = [{ entity = "@prop" }]``)
     Put the POI on the minimap and the map screen.
 
     ``icon`` (str) is the mod's own art, a file in the POI folder. ``icon_high``
@@ -303,7 +304,7 @@ from ...engine import tile_cook as TC
 from ...engine.cooked_schemas import asset_refs as AR
 from ...engine.paths import DATA_DIR
 from ...engine.prop_cook import entity_cooked_path
-from ..content import ContentDef, ContentError, SchemaNotMined
+from ..content import ContentDef, ContentError, SchemaNotMined, written_this_run
 from . import _common as C
 from . import ingredients as ING
 
@@ -1852,6 +1853,18 @@ def _validated_teleporters(defn: ContentDef) -> list[dict]:
     return out
 
 
+def _pair_id(mod_id: str, tid: str) -> str:
+    """The in-game pair name for teleporter ``id`` ``tid``: prefixed with the
+    mod, since the engine pairs teleporters by name across the whole map and
+    two mods both using ``id = "Cave"`` would answer each other's doors. Both
+    sides of a pair come from one mod, so they still match. The readable part
+    folds `-` into `_` (`night-watch` and `night_watch` read the same), so a
+    digest of the exact (mod, id) pair keeps two such mods apart."""
+    import hashlib
+    tag = hashlib.sha256(f"{mod_id}\0{tid}".encode()).hexdigest()[:8]
+    return re.sub(r"[^A-Za-z0-9_]", "_", f"{mod_id}_{tid}") + f"_{tag}"
+
+
 def _emit_teleporter(mod_id: str, defn: ContentDef, out_dir: Path, tp: dict,
                      written: list[Path]) -> str:
     """Clone the side's shipped teleporter under this mod's name with the
@@ -1871,10 +1884,11 @@ def _emit_teleporter(mod_id: str, defn: ContentDef, out_dir: Path, tp: dict,
         raise ContentError(f"poi {defn.id}: teleporter donor {donor_ref} does not carry "
                            f"one In/Out pair name (found {sorted(pair)})")
     present = {s for _sec, _off, s in ES.list_strings(raw)}
+    pid = _pair_id(mod_id, tp["id"])
     stem, new_stem = (r.rsplit("\\", 1)[-1].removesuffix(".entity.ot") for r in (donor_ref, ref))
     out = ES.replace_strings(raw, {
-        ins[0]: f"{tp['id']}_In", outs[0]: f"{tp['id']}_Out",
-        **{k: v.format(ID=tp["id"].upper()) for k, v in TELEPORTER_EVENTS.items()
+        ins[0]: f"{pid}_In", outs[0]: f"{pid}_Out",
+        **{k: v.format(ID=pid.upper()) for k, v in TELEPORTER_EVENTS.items()
            if k in present},
         # its own override labels (`[Entity 3d Node] <Stem>\\...`) follow the
         # clone's name, as the level-side labels do in a takeover
@@ -1921,7 +1935,7 @@ def _teleporter_takeovers(mod_id: str, defn: ContentDef, level_ref: str,
 _PAIR_NAME = re.compile(rb"[A-Za-z0-9_]*Entrance[A-Za-z0-9_]*_(?:In|Out)")
 
 
-def _rename_level_pair(level: bytes, defn: ContentDef) -> bytes:
+def _rename_level_pair(level: bytes, defn: ContentDef, mod_id: str) -> bytes:
     """A taken-over teleporter's pair names as its LEVEL sets them.
 
     ⚠ The level overrides them: the Thieves Gold Room's own level renames its
@@ -1949,7 +1963,7 @@ def _rename_level_pair(level: bytes, defn: ContentDef) -> bytes:
     if len(tps) != 1 or len(ins) != 1 or len(outs) != 1:
         raise ContentError(f"poi {defn.id}: the base level names teleporter pair(s) "
                            f"{sorted(found)}; cannot tell which one to take over")
-    tid = tps[0]["id"]
+    tid = _pair_id(mod_id, tps[0]["id"])
     _log.info("poi %s: level pair %s/%s -> %s_In/_Out", defn.id, ins[0], outs[0], tid)
     return LP.replace_strings(level, {ins[0]: f"{tid}_In", outs[0]: f"{tid}_Out"})
 
@@ -3167,9 +3181,9 @@ def _emit_prop_override(mod_id: str, defn: ContentDef, out_dir: Path,
     REQUESTED) paired with ``ResourceRef_Resolve`` (did it RESOLVE) showed a
     mod-introduced entity being requested AND resolved — three times, state=1 —
     alongside the mod's own tiledefs, level and geometry, with zero null
-    resolves. A level CAN reference an asset the mod introduced. This function
-    is kept because in-place override is still the only route PROVEN to render,
-    not because the additive one is impossible.
+    resolves. A level CAN reference an asset the mod introduced, and the
+    additive route has since rendered in game too (2026-09-17, ``KIND_CONFIDENCE``
+    "poi"). This function stays as the route that mints no new name.
 
     The original reasoning, kept for the record: a byte-for-byte copy of a
     shipped entity under a new name, registered in ``UsedRscList.ot`` and
@@ -3528,7 +3542,7 @@ def _assert_textures_belong_to(defn_id: str, ref: str, mats: list[str],
 
 
 def _emit_cloned_level(mod_id: str, defn: ContentDef, out_dir: Path,
-                       base: str, written: list[Path]) -> str:
+                       base: str, written: list[Path]) -> tuple[str, list[str], list[str]]:
     """Additive path with a mod-owned LEVEL but no mod-owned entity.
 
     This is the missing rung of the ladder. The two rungs either side of it are
@@ -3612,7 +3626,7 @@ def _emit_cloned_level(mod_id: str, defn: ContentDef, out_dir: Path,
                 scale=(item["scale"],) * 3)
             _log.info("poi %s: placed %s at %s scale %.2f", defn.id,
                       ent.split("\\")[-1], item["pos"], item["scale"])
-    level = _rename_level_pair(level, defn)
+    level = _rename_level_pair(level, defn, mod_id)
     # Several teleporters of one side and id (a room with more than one way
     # out) share one cloned entity: emit it once, place it each time.
     emitted: dict[tuple[str, str], str] = {}
@@ -3669,9 +3683,12 @@ def _emit_cloned_level(mod_id: str, defn: ContentDef, out_dir: Path,
 
 
 def _emit_custom_prop(mod_id: str, defn: ContentDef, out_dir: Path,
-                      base: str, written: list[Path]) -> str:
+                      base: str, written: list[Path]) -> tuple[str, list[str], list[str]]:
     """Additive path: the mod's prop, plus a cloned tile level and prefab that
-    place it. Returns the new prefab reference for the cloned tiledef."""
+    place it. Returns ``(new prefab reference, extra cache deps, borrow
+    sources)`` like :func:`_emit_cloned_level`: a ``[marker]`` prop inherits a
+    parent whose closure the tile cache must list, or it resolves to NULL at
+    level build."""
     spec = defn.fields["prop"]
     tag = f"{mod_id}_{defn.id}".replace("-", "_")
     if (defn.fields.get("prop") or {}).get("extra_models"):
@@ -3680,7 +3697,7 @@ def _emit_custom_prop(mod_id: str, defn: ContentDef, out_dir: Path,
             f"entity = \"@prop\" (and own_level): each extra mesh is an entity "
             f"of its own, stood where the prop stands, and taking over one "
             f"shipped object (`replaces`) leaves nowhere to stand the rest.")
-    ent_ref, _deps, _borrow = _emit_prop_art(mod_id, defn, out_dir, written)
+    ent_ref, deps, borrow = _emit_prop_art(mod_id, defn, out_dir, written)
 
     # Tile level: the base tile's dressing, its centrepiece swapped for ours.
     donor_prefab_dec = _prefab_ref_of(base, defn.id)
@@ -3698,7 +3715,7 @@ def _emit_custom_prop(mod_id: str, defn: ContentDef, out_dir: Path,
                _corpus(PC.entity_cooked_path(donor_prefab_dec), defn.id,
                        "the tile's prefab entity"),
                level_ref, new_level_ref, new_prefab_ref), written)
-    return new_prefab_ref
+    return new_prefab_ref, deps, borrow
 
 
 def _prefab_ref_of(base: str, defn_id: str) -> str:
@@ -3920,8 +3937,9 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # branches are not interchangeable here: one replaces an object, the other
     # adds one, and PLACES_OWN_PROP asked for the second.
     if defn.fields.get("prop") and not _places_own_prop(defn):
-        td.entity_ref = ["EntitySettings",
-                         _emit_custom_prop(mod_id, defn, out_dir, base, written)]
+        prefab_ref, own_deps, own_borrow = _emit_custom_prop(
+            mod_id, defn, out_dir, base, written)
+        td.entity_ref = ["EntitySettings", prefab_ref]
     elif defn.fields.get("own_level"):
         prefab_ref, own_deps, own_borrow = _emit_cloned_level(
             mod_id, defn, out_dir, base, written)
@@ -3985,7 +4003,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         # out_dir, so starting from vanilla each time would make the last def
         # win and silently drop the earlier ones' tiles — the same failure the
         # cross-mod merge exists to prevent, one level down.
-        if map_dest.is_file():
+        if written_this_run(map_dest):
             base_bytes = map_dest.read_bytes()
         else:
             map_rel = f"{_MAPS_DIR}/{stem}{MP.GEN_SUFFIX}"

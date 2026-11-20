@@ -1149,11 +1149,33 @@ def _extract_downloaded_zip(tmp_path: Path, target: Path, slug: str) -> None | d
                 "ok": False,
                 "error": f"{slug} zip does not contain manifest.toml (required for mod detection)",
             }
-        if target.is_dir():
-            shutil.rmtree(target)
-        elif target.exists():
-            target.unlink()
-        shutil.move(str(staging), str(target))
+        # The store checks a digest, not a signer, so it may not replace a mod
+        # pinned to one (a signed `rsmm install` first): the same rule as a
+        # direct archive URL (#229 review). Both the folder it replaces and the
+        # id the manifest claims are checked.
+        import tomllib
+
+        from rsmm.sdk import repo
+
+        from .repo_cmd import KEYS_DIR
+        try:
+            mid = tomllib.loads((staging / "manifest.toml").read_text(encoding="utf-8")) \
+                .get("mod", {}).get("id")
+        except (OSError, ValueError):
+            mid = None
+        with repo.pin_lock(KEYS_DIR):
+            for who in dict.fromkeys(x for x in (target.name, mid) if isinstance(x, str) and x):
+                try:
+                    trust = repo.check_unsigned(who, KEYS_DIR, "a store download")
+                except repo.RepoError as exc:
+                    return {"ok": False, "error": str(exc)}
+                if not trust.ok:
+                    return {"ok": False, "error": trust.reason}
+            if target.is_dir():
+                shutil.rmtree(target)
+            elif target.exists():
+                target.unlink()
+            shutil.move(str(staging), str(target))
     return None
 
 

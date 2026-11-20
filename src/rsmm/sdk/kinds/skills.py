@@ -53,7 +53,7 @@ from pathlib import Path
 
 from ...engine import corpus
 from ...engine import text_patches as TP
-from ..content import ContentDef, ContentError, SchemaNotMined
+from ..content import ContentDef, ContentError, SchemaNotMined, written_this_run
 from . import _common as C
 
 _log = logging.getLogger(__name__)
@@ -341,7 +341,7 @@ def _emit_text_override(hero_token: str, source: str, display_name, description,
     bank_name = Path(decoded_bank).name
     prior = {sib.name[len(bank_name):]: sib.read_bytes()
              for sib in out_dir.joinpath(*decoded_bank.split("/")).parent.glob(
-                 bank_name + ".Lang*")}
+                 bank_name + ".Lang*") if written_this_run(sib)}
     try:
         files = TP.override_bank_values(base_gen, overrides, prior)
     except KeyError as e:
