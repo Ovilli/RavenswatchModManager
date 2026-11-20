@@ -121,11 +121,23 @@ def safe_dir_name(name: str, *, what: str = "mod id") -> str:
         raise ArchiveError(f"unsafe {what}: {name!r}")
     if set(name) & _BAD_NAME_CHARS:
         raise ArchiveError(f"unsafe {what} (path separator or reserved char): {name!r}")
+    if name[-1] in ". ":
+        raise ArchiveError(f"unsafe {what} (trailing dot or space): {name!r}")
     if os.path.isabs(name) or os.path.normpath(name) != name:
         raise ArchiveError(f"unsafe {what} (not a plain directory name): {name!r}")
     if name.split(".", 1)[0].lower() in _WIN_RESERVED:
         raise ArchiveError(f"unsafe {what} (reserved device name on Windows): {name!r}")
     return name
+
+
+def windows_name(component: str) -> str:
+    """The name Windows creates for one path component.
+
+    ``name:stream`` is an alternate data stream of ``name``, and trailing dots
+    and spaces are stripped, so ``version.dll.``, ``version.dll `` and
+    ``version.dll::$DATA`` all land as ``version.dll``.
+    """
+    return component.split(":", 1)[0].rstrip(". ")
 
 
 def contained_path(root: Path, rel: str) -> Path:
@@ -200,7 +212,7 @@ def classify_members(names: Iterable[str]) -> tuple[list[str], list[str]]:
             continue
         parts = name.split("/", 1)
         inner = parts[1] if len(parts) > 1 else parts[0]
-        if Path(inner).suffix.lower() in DANGEROUS_EXTENSIONS:
+        if Path(windows_name(inner.rsplit("/", 1)[-1])).suffix.lower() in DANGEROUS_EXTENSIONS:
             blocked.append(raw)
         if inner.startswith(ROOT_OVERLAY_PREFIX):
             overlays.append(inner[len(ROOT_OVERLAY_PREFIX):])
@@ -285,6 +297,11 @@ def _member_rel(info: zipfile.ZipInfo, strip_prefix: str, label: str) -> str | N
     if rel.startswith(os.pardir + os.sep) or rel == os.pardir:
         raise ArchiveError(f"{label}: refusing traversal path in archive: "
                            f"{info.filename!r}")
+    for part in rel.split(os.sep):
+        if part.endswith((".", " ")) or ":" in part:
+            raise ArchiveError(f"{label}: refusing path component Windows "
+                               f"would rewrite (trailing dot/space or ':'): "
+                               f"{info.filename!r}")
     return rel
 
 

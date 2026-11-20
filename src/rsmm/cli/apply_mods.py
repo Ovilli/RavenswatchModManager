@@ -127,7 +127,7 @@ from rsmm.engine.versiondef import (
     collect_item_bans,
     sync_versiondef,
 )
-from rsmm.sdk.archive import DANGEROUS_EXTENSIONS
+from rsmm.sdk.archive import DANGEROUS_EXTENSIONS, ArchiveError, windows_name
 from rsmm.sdk.transaction import ApplyTransaction
 
 
@@ -1490,6 +1490,11 @@ def plan_apply(mods: list[Mod],
 
     for enc, (src, mod_id) in wanted.items():
         dest = encoded_to_dest(enc, cooking, game_dir)
+        if (enc.startswith(ROOT_PREFIX)
+                and Path(windows_name(dest.name)).suffix.lower() in _DANGEROUS_ROOT_EXTS):
+            print(f"  [error] {mod_id}: refusing to write {dest.name!r} into the "
+                  f"game root (blocked file type)", file=sys.stderr)
+            continue
         cur = active.get(enc)
         # Auto-cook source-format inputs (.gltf/.dds/etc) into cached cooked
         # files. Pre-cooked inputs are returned unchanged. NotReversedError
@@ -1578,9 +1583,10 @@ def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
     the install half-modded. Called without `stage` (tests, single-file
     paths) it writes directly, as before.
     """
-    if enc.startswith(ROOT_PREFIX) and dest.suffix.lower() in _DANGEROUS_ROOT_EXTS:
-        print(f"  [WARN] {mod_id} overwrites {dest.name} in game root "
-              f"(potentially dangerous)", file=sys.stderr)
+    if (enc.startswith(ROOT_PREFIX)
+            and Path(windows_name(dest.name)).suffix.lower() in _DANGEROUS_ROOT_EXTS):
+        raise ArchiveError(f"{mod_id}: refusing to write {dest.name!r} into the "
+                           f"game root (blocked file type)")
     cur = state.active.get(enc)
     # NB: `dest.parent / (dest.name + SUFFIX)`, never `with_suffix` — the
     # cooked names carry dots, so `with_suffix` would eat the last segment and

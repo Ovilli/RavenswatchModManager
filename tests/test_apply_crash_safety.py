@@ -516,3 +516,33 @@ def test_game_update_recovery_restores_an_untouched_manifest(tmp_path, monkeypat
     assert apply_mods._recover_game_update(cooking, game) is True
     assert manifest.read_text(encoding="utf-8") == "1\nA\nB\n"
     assert not bak.exists()
+
+
+@pytest.mark.parametrize("name", ["version.dll", "version.dll.", "version.dll ",
+                                  "version.dll::$DATA"])
+def test_apply_one_refuses_a_blocked_root_file_and_writes_nothing(install, name):
+    src = install.repo / "payload.bin"
+    src.write_bytes(b"MZ")
+    dest = install.game_dir / name
+    state = apply_mods.State(install.cooking)
+    with pytest.raises(apply_mods.ArchiveError, match="TestMod"):
+        apply_mods.apply_one("_root\\" + name, src, dest, "TestMod", state, False)
+    assert not state.active
+    assert sorted(p.name for p in install.game_dir.iterdir()) == ["DarkTalesResources"]
+
+
+def test_plan_apply_skips_a_blocked_root_file(tmp_path, capsys):
+    src = tmp_path / "x"
+    src.write_bytes(b"MZ")
+
+    class _M:
+        id, enabled = "m", True
+
+        def files(self):
+            return [(src, "_root/version.dll."), (src, "_root/readme.txt")]
+
+    adds, _rms, _regs, _syn = apply_mods.plan_apply(
+        [_M()], apply_mods.load_asset_map(), tmp_path, tmp_path,
+        apply_mods.State(tmp_path), True)
+    assert [a[0] for a in adds] == [apply_mods.ROOT_PREFIX + "readme.txt"]
+    assert "refusing to write 'version.dll.'" in capsys.readouterr().err
