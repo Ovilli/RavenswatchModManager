@@ -528,10 +528,17 @@ window.rsmmFetch = (input, init = {}, baseURI) => {
 
 // A saved mod exists only in this page's memory, so hand it over as a zip.
 async function afterSave(responseText) {
-  let saved = "";
-  try { const j = JSON.parse(responseText); saved = j.saved || j.path || ""; } catch { return; }
-  const m = /mods\/([^/]+)\/manifest\.toml$/.exec(saved.replace(/\\/g, "/"));
-  if (!m) return;
+  // The mod a save wrote: the answer's own `mod` when it names one (every tab
+  // but Items), else the folder of the manifest it names. Keyed on the folder
+  // name alone, a save whose answer lacked `saved` (the Hero tab's, until
+  // #243) silently never left the page.
+  let j;
+  try { j = JSON.parse(responseText); } catch { return; }
+  const saved = String(j.saved || j.path || "").replace(/\\/g, "/");
+  const fromPath = /\/([^/]+)\/manifest\.toml$/.exec(saved);
+  const mod = typeof j.mod === "string" && j.mod ? j.mod : fromPath && fromPath[1];
+  if (!mod) return;
+  const m = [null, mod];
   let blob;
   try {
     blob = new Blob([await call("zip", { mod: m[1] })], { type: "application/zip" });
