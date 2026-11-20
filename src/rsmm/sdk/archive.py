@@ -97,9 +97,9 @@ _CHUNK = 1 << 16  # 64 KiB — keeps memory flat on large assets.
 # Windows refuses these as filenames regardless of extension; rejecting them
 # up front turns a confusing mid-extract OSError into a clear diagnostic.
 _WIN_RESERVED = frozenset(
-    {"con", "prn", "aux", "nul"}
-    | {f"com{i}" for i in range(1, 10)}
-    | {f"lpt{i}" for i in range(1, 10)}
+    {"con", "prn", "aux", "nul", "conin$", "conout$"}
+    | {f"{dev}{n}" for dev in ("com", "lpt")
+       for n in (*"0123456789", "¹", "²", "³")}
 )
 
 _BAD_NAME_CHARS = frozenset('/\\:*?"<>|\0')
