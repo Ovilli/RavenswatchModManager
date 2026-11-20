@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
 import { Download, Layers, TriangleAlert, Users } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { RegistryModCover } from './registry-mod-cover';
 
 export interface RegistryListingCardData {
@@ -28,6 +28,9 @@ export function RegistryListingCard({
   href,
   onOpen,
   actions,
+  listLeading,
+  listBadges,
+  listMetadata,
   footer,
   active = false,
   headingLevel = 2,
@@ -40,6 +43,12 @@ export function RegistryListingCard({
   href?: string;
   onOpen?: () => void;
   actions?: ReactNode;
+  /** List-only controls before the thumbnail, e.g. Library load order and enable switch. */
+  listLeading?: ReactNode;
+  /** List-only status badges beside the title, in addition to the shared scope badge. */
+  listBadges?: ReactNode;
+  /** Replaces list statistics with contextual metadata. Omit for registry stats. */
+  listMetadata?: ReactNode;
   /** Content below the grid card's link, such as management controls or an updated date. */
   footer?: ReactNode;
   active?: boolean;
@@ -69,8 +78,14 @@ export function RegistryListingCard({
         `${listing.modCount.toLocaleString(locale)} ${listing.modCount === 1 ? 'mod' : 'mods'}`)
       : undefined;
   if (view === 'list') {
+    const rowActions = actions ? (
+      <div className="mod-card-list-actions" onClick={(event) => event.stopPropagation()}>
+        {actions}
+      </div>
+    ) : null;
     const row = (
       <>
+        {listLeading ? <div className="mod-card-list-leading">{listLeading}</div> : null}
         <div className="mod-card-list-art">
           {listing.imageUrl ? (
             <img src={listing.imageUrl} alt="" loading="lazy" />
@@ -91,6 +106,7 @@ export function RegistryListingCard({
                 {labels.privateOnly ?? 'Private games only'}
               </span>
             ) : null}
+            {listBadges ? <div className="mod-card-list-badges">{listBadges}</div> : null}
           </div>
           <p>
             {listing.author || labels.author || 'unknown'}
@@ -98,28 +114,36 @@ export function RegistryListingCard({
             {listing.summary ? ` — ${listing.summary}` : ''}
           </p>
         </div>
-        {listing.category ? (
-          <span className="mod-card-list-category">{listing.category}</span>
-        ) : null}
-        {hasRating && listing.rating != null ? (
-          <span className="mod-card-list-rating">★ {listing.rating.toFixed(1)}</span>
-        ) : null}
-        {listing.downloads != null ? (
-          <span className="mod-card-list-downloads">
-            {labels.downloads ?? `${listing.downloads.toLocaleString(locale)} dl`}
-          </span>
-        ) : null}
-        {modCountLabel ? <span className="mod-card-downloads">{modCountLabel}</span> : null}
-        {actions ? (
-          <div className="mod-card-list-actions" onClick={(event) => event.stopPropagation()}>
-            {actions}
+        {listMetadata !== undefined ? (
+          <div className="mod-card-list-controls">
+            <div className="mod-card-list-metadata">{listMetadata}</div>
+            {rowActions}
           </div>
-        ) : null}
+        ) : (
+          <>
+            {listing.category ? (
+              <span className="mod-card-list-category">{listing.category}</span>
+            ) : null}
+            {hasRating && listing.rating != null ? (
+              <span className="mod-card-list-rating">★ {listing.rating.toFixed(1)}</span>
+            ) : null}
+            {listing.downloads != null ? (
+              <span className="mod-card-list-downloads">
+                {labels.downloads ?? `${listing.downloads.toLocaleString(locale)} dl`}
+              </span>
+            ) : null}
+            {modCountLabel ? <span className="mod-card-list-count">{modCountLabel}</span> : null}
+            {rowActions}
+          </>
+        )}
       </>
     );
     if (href)
       return (
-        <article className="mod-card mod-card-list">
+        <article
+          className="mod-card mod-card-list"
+          data-list-layout={listMetadata !== undefined ? 'custom' : 'registry'}
+        >
           <a className="mod-card-list-link" href={href}>
             {row}
           </a>
@@ -127,29 +151,38 @@ export function RegistryListingCard({
       );
     return (
       <article
-        className={`mod-card mod-card-list mod-card-interactive${active ? ' is-active' : ''}`}
-        tabIndex={0}
-        role="link"
+        className={`mod-card mod-card-list${onOpen ? ' mod-card-interactive' : ''}${active ? ' is-active' : ''}`}
+        data-list-layout={listMetadata !== undefined ? 'custom' : 'registry'}
+        tabIndex={onOpen ? 0 : undefined}
+        role={onOpen ? 'link' : undefined}
         aria-label={
           labels.card ?? `${listing.name}${listing.author ? ` by ${listing.author}` : ''}`
         }
         aria-current={active ? 'true' : undefined}
-        onClick={(event) => {
-          if (
-            (event.target as HTMLElement).closest(
-              'a, button, input, textarea, select, [role="switch"], [role="tooltip"]',
-            )
-          )
-            return;
-          onOpen?.();
-        }}
-        onKeyDown={(event) => {
-          if (event.target !== event.currentTarget) return;
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            onOpen?.();
-          }
-        }}
+        onClick={
+          onOpen
+            ? (event) => {
+                if (
+                  (event.target as HTMLElement).closest(
+                    'a, button, input, textarea, select, [role="switch"], [role="tooltip"]',
+                  )
+                )
+                  return;
+                onOpen();
+              }
+            : undefined
+        }
+        onKeyDown={
+          onOpen
+            ? (event) => {
+                if (event.target !== event.currentTarget) return;
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  onOpen();
+                }
+              }
+            : undefined
+        }
       >
         {row}
       </article>

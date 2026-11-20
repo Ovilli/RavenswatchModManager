@@ -22,11 +22,7 @@ export interface ModToggle {
   toggle: (id: string) => void;
 }
 
-/**
- * @param onSettled Ran after a completed enable/disable (not after a cancelled
- *   prompt) — the Library uses it to clear its selection.
- */
-export function useModToggle(onSettled?: () => void): ModToggle {
+export function useModToggle(): ModToggle {
   const t = useT();
   const dialog = useDialog();
   const profile = useApp(activeProfile);
@@ -50,9 +46,8 @@ export function useModToggle(onSettled?: () => void): ModToggle {
       for (const id of plan.order) {
         if (!isEnabledIn(profile, id)) toggleMod(id);
       }
-      onSettled?.();
     },
-    [dialog, onSettled, profile, t, toggleMod],
+    [dialog, profile, t, toggleMod],
   );
 
   const disableMods = useCallback(
@@ -73,9 +68,8 @@ export function useModToggle(onSettled?: () => void): ModToggle {
       for (const id of ids) {
         if (isEnabledIn(profile, id)) toggleMod(id);
       }
-      onSettled?.();
     },
-    [dialog, onSettled, profile, t, toggleMod],
+    [dialog, profile, t, toggleMod],
   );
 
   const toggle = useCallback(

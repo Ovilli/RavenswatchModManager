@@ -7,12 +7,11 @@ import {
   RegistrySearchBar,
 } from '@rsmm/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
-import { ExternalLink, Loader2, Plus, WifiOff, X } from 'lucide-react';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { ExternalLink, Loader2, Plus, WifiOff } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, CopyButton, Panel } from '../components/chrome';
 import { InstalledState } from '../components/installed-state';
-import { ModDetail } from '../components/mod-detail';
 import { useToast } from '../components/toast';
 import { api, describeApiError, getApiBaseUrl, logApiError } from '../lib/api';
 import {
@@ -46,10 +45,6 @@ function BrowsePage() {
   const [category, setCategory] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [hideInstalled, setHideInstalled] = useState(false);
-  // The mod open in the split panel. Selecting rather than navigating is the
-  // point of the whole layout: clicking through five mods should not cost five
-  // navigations and five trips back.
-  const [selected, setSelected] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [minRating, setMinRating] = useState(0);
   const installed = useApp((s) => s.installed);
@@ -138,30 +133,6 @@ function BrowsePage() {
     if (error) logApiError('browse', error);
   }, [error]);
 
-  // Esc closes the detail panel. Registered only while one is open so it never
-  // competes with the command palette or a modal for the same key.
-  useEffect(() => {
-    if (!selected) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSelected(null);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [selected]);
-
-  // A filter that hides the open mod would otherwise leave its panel stranded
-  // beside a list that no longer contains it.
-  useEffect(() => {
-    if (selected && !list.some((m) => m.slug === selected)) setSelected(null);
-  }, [list, selected]);
-
-  // The split panel belongs to the list. Cards are the roomy view and open the
-  // full page, so a selection made in the list must not survive a switch to
-  // cards — it would sit there with nothing able to change or close it.
-  useEffect(() => {
-    if (view !== 'list') setSelected(null);
-  }, [view]);
-
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
@@ -223,160 +194,110 @@ function BrowsePage() {
         ) : null}
       </div>
 
-      {/* The shared registry filter dialog keeps filtering out of the list
-          layout, including when a mod detail is open beside it. */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-        {selected ? (
-          <section aria-label={t('Mod details')} className="min-w-0 flex-1 lg:order-2">
-            <div className="mb-2 flex items-center justify-end gap-2">
-              <Link
-                to="/mod/$slug"
-                params={{ slug: selected }}
-                className="font-mono text-xs text-ash underline-offset-2 hover:text-parchment hover:underline"
+      <div aria-busy={isLoading} className="min-w-0 space-y-4">
+        {error ? (
+          <div className="ember-banner flex flex-col gap-2 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <WifiOff className="h-4 w-4 text-crimson shrink-0" />
+              <span className="font-serif-italic text-base">{t('API unreachable.')}</span>
+              <CopyButton value={describeApiError(error)} />
+              <button
+                type="button"
+                onClick={() => window.open(getApiBaseUrl(), '_blank')}
+                className="font-mono text-xs text-ash underline-offset-2 hover:text-parchment hover:underline flex items-center gap-1"
               >
-                {t('open full page')}
-              </Link>
-              <Button type="button" size="sm" onClick={() => setSelected(null)}>
-                <X className="h-3.5 w-3.5" aria-hidden /> {t('close')}
-              </Button>
+                <ExternalLink className="h-3 w-3" /> {t('open in browser')}
+              </button>
             </div>
-            <ModDetail slug={selected} embedded />
-          </section>
+            <p className="font-serif-italic text-sm text-ash">{describeApiError(error)}</p>
+            <Panel variant="inset" className="font-mono px-2 py-1 text-xs text-ash">
+              {getApiBaseUrl()} <span className="text-oxblood/60">|</span> {t('origin:')}{' '}
+              {window.location.origin}
+            </Panel>
+          </div>
         ) : null}
 
-        {/* With a mod open the results become an index column, wide enough for
-            a name and its install button and no wider. */}
-        <div
-          aria-busy={isLoading}
-          className={
-            selected
-              ? 'min-w-0 space-y-3 lg:order-1 lg:w-[22rem] lg:shrink-0'
-              : 'min-w-0 flex-1 space-y-4 lg:order-1'
-          }
-        >
-          {error ? (
-            <div className="ember-banner flex flex-col gap-2 px-4 py-3">
-              <div className="flex items-center gap-3">
-                <WifiOff className="h-4 w-4 text-crimson shrink-0" />
-                <span className="font-serif-italic text-base">{t('API unreachable.')}</span>
-                <CopyButton value={describeApiError(error)} />
-                <button
-                  type="button"
-                  onClick={() => window.open(getApiBaseUrl(), '_blank')}
-                  className="font-mono text-xs text-ash underline-offset-2 hover:text-parchment hover:underline flex items-center gap-1"
-                >
-                  <ExternalLink className="h-3 w-3" /> {t('open in browser')}
-                </button>
-              </div>
-              <p className="font-serif-italic text-sm text-ash">{describeApiError(error)}</p>
-              <Panel variant="inset" className="font-mono px-2 py-1 text-xs text-ash">
-                {getApiBaseUrl()} <span className="text-oxblood/60">|</span> {t('origin:')}{' '}
-                {window.location.origin}
-              </Panel>
+        {installError ? (
+          <div className="ember-banner flex items-center gap-3 px-4 py-3">
+            <span className="font-serif-italic text-base text-crimson flex-1">
+              {t('Install failed: {error}', { error: installError })}
+            </span>
+            <CopyButton value={installError} />
+            <Button type="button" size="sm" onClick={() => setInstallError(null)}>
+              {t('dismiss')}
+            </Button>
+          </div>
+        ) : null}
+
+        {isLoading ? <RegistryGridSkeleton /> : null}
+
+        {tab === 'collections' ? (
+          <>
+            <div className="registry-grid">
+              {collections.map((collection) => {
+                const listing = { ...collection, author: collection.ownerName };
+                return (
+                  <RegistryListingCard
+                    key={collection.id}
+                    listing={listing}
+                    onOpen={() =>
+                      navigate({ to: '/collection/$slug', params: { slug: collection.slug } })
+                    }
+                    locale={t.tag}
+                    labels={registryCardLabels(t, listing)}
+                    footer={
+                      <p className="text-xs text-ash">
+                        {t('updated {date}', {
+                          date: new Date(collection.updatedAt).toLocaleDateString(t.tag),
+                        })}
+                      </p>
+                    }
+                  />
+                );
+              })}
             </div>
-          ) : null}
-
-          {installError ? (
-            <div className="ember-banner flex items-center gap-3 px-4 py-3">
-              <span className="font-serif-italic text-base text-crimson flex-1">
-                {t('Install failed: {error}', { error: installError })}
-              </span>
-              <CopyButton value={installError} />
-              <Button type="button" size="sm" onClick={() => setInstallError(null)}>
-                {t('dismiss')}
-              </Button>
-            </div>
-          ) : null}
-
-          {isLoading ? <RegistryGridSkeleton /> : null}
-
-          {tab === 'collections' ? (
-            <>
-              <div className="registry-grid">
-                {collections.map((collection) => {
-                  const listing = { ...collection, author: collection.ownerName };
-                  return (
-                    <RegistryListingCard
-                      key={collection.id}
-                      listing={listing}
-                      onOpen={() =>
-                        navigate({ to: '/collection/$slug', params: { slug: collection.slug } })
-                      }
-                      locale={t.tag}
-                      labels={registryCardLabels(t, listing)}
-                      footer={
-                        <p className="text-xs text-ash">
-                          {t('updated {date}', {
-                            date: new Date(collection.updatedAt).toLocaleDateString(t.tag),
-                          })}
-                        </p>
-                      }
+            {!isLoading && !error && collections.length === 0 ? (
+              <p className="font-serif-italic py-10 text-center text-ash">
+                {q.trim()
+                  ? t('No collections match that search.')
+                  : t('No public collections yet.')}
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <div className={view === 'list' ? 'registry-list' : 'registry-grid'}>
+              {list.map((m) => (
+                <RegistryListingCard
+                  key={m.id}
+                  view={view}
+                  listing={m}
+                  privateOnly={hasPrivateOnlyTag(m.tags)}
+                  onOpen={() => navigate({ to: '/mod/$slug', params: { slug: m.slug } })}
+                  actions={
+                    <InstallButton
+                      m={m}
+                      installed={installed}
+                      profile={profile}
+                      installing={installing}
+                      onInstall={handleInstall}
                     />
-                  );
-                })}
-              </div>
-              {!isLoading && !error && collections.length === 0 ? (
-                <p className="font-serif-italic py-10 text-center text-ash">
-                  {q.trim()
-                    ? t('No collections match that search.')
-                    : t('No public collections yet.')}
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <div className={view === 'list' ? 'registry-list' : 'registry-grid'}>
-                {view === 'list'
-                  ? list.map((m) => (
-                      <ModRow
-                        key={m.id}
-                        m={m}
-                        active={selected === m.slug}
-                        onOpen={() => setSelected(m.slug)}
-                        install={
-                          <InstallButton
-                            m={m}
-                            installed={installed}
-                            profile={profile}
-                            installing={installing}
-                            onInstall={handleInstall}
-                          />
-                        }
-                      />
-                    ))
-                  : list.map((m) => (
-                      <RegistryListingCard
-                        key={m.id}
-                        listing={m}
-                        privateOnly={hasPrivateOnlyTag(m.tags)}
-                        active={selected === m.slug}
-                        onOpen={() => navigate({ to: '/mod/$slug', params: { slug: m.slug } })}
-                        actions={
-                          <InstallButton
-                            m={m}
-                            installed={installed}
-                            profile={profile}
-                            installing={installing}
-                            onInstall={handleInstall}
-                          />
-                        }
-                        locale={t.tag}
-                        labels={registryCardLabels(t, m)}
-                      />
-                    ))}
-              </div>
-              {!isLoading && !error && list.length === 0 ? (
-                <p className="font-serif-italic py-10 text-center text-ash">
-                  {q.trim()
-                    ? t('No mods match that search.')
-                    : t('No mods published to the index yet.')}
-                </p>
-              ) : null}
-            </>
-          )}
-        </div>
+                  }
+                  locale={t.tag}
+                  labels={registryCardLabels(t, m)}
+                />
+              ))}
+            </div>
+            {!isLoading && !error && list.length === 0 ? (
+              <p className="font-serif-italic py-10 text-center text-ash">
+                {q.trim()
+                  ? t('No mods match that search.')
+                  : t('No mods published to the index yet.')}
+              </p>
+            ) : null}
+          </>
+        )}
       </div>
-
       {filtersOpen && tab === 'mods' ? (
         <RegistryFilterDialog
           value={{
@@ -499,48 +420,5 @@ function InstallButton({ m, installed, profile, installing, onInstall }: Install
         </>
       )}
     </Button>
-  );
-}
-
-/**
- * One mod as a dense row.
- *
- * The card view is for discovery — cover art, summary, room to breathe. This is
- * for comparison: everything on one line, so the eye can run down a column of
- * ratings or download counts instead of hopping around a grid.
- *
- * The install control is passed IN rather than rebuilt here. It carries four
- * states and a width floor, and a second copy would drift from the card's the
- * first time either was touched.
- *
- * @param compact  the row is in a narrow column (the split view's index), so
- *                 drop the stat columns. They are hidden by `md:`/`lg:`
- *                 breakpoints otherwise — and those measure the VIEWPORT, not
- *                 this row's container, so on a wide window they kept rendering
- *                 inside an 18rem column and squeezed the mod name to nothing.
- */
-function ModRow({
-  m,
-  install,
-  onOpen,
-  active,
-}: {
-  m: ModListItem;
-  install: React.ReactNode;
-  onOpen: () => void;
-  active: boolean;
-}) {
-  const t = useT();
-  return (
-    <RegistryListingCard
-      view="list"
-      listing={m}
-      privateOnly={hasPrivateOnlyTag(m.tags)}
-      active={active}
-      onOpen={onOpen}
-      actions={install}
-      locale={t.tag}
-      labels={registryCardLabels(t, m)}
-    />
   );
 }

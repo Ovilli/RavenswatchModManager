@@ -20,8 +20,8 @@ import { LaunchProvider, useLaunch } from '../components/launch';
 import { SidebarTooltip } from '../components/sidebar-tooltip';
 import { DialogProvider, ToastProvider } from '../components/toast';
 import { UpdaterBanner, VersionFooter } from '../components/updater';
-import { msg } from '../lib/i18n';
 import { LIBRARY_PREVIEW } from '../lib/browser-preview';
+import { msg } from '../lib/i18n';
 import { useT } from '../lib/i18n-react';
 import { inTauri, shortcutLabel } from '../lib/platform';
 import { quitApp } from '../lib/quit';
@@ -570,7 +570,8 @@ function RootLayout() {
               ) : null}
               <main
                 ref={mainRef}
-                className={`rsmm-main min-h-0 flex-1 overflow-y-auto px-6 pb-12 md:px-8 ${inTauri() ? 'pt-2' : 'pt-6'}`}
+                // Clear the 7rem footer fade, with another 1rem below the last item.
+                className={`rsmm-main min-h-0 flex-1 overflow-y-auto px-6 pb-32 md:px-8 ${inTauri() ? 'pt-2' : 'pt-6'}`}
               >
                 <div
                   className={`mx-auto w-full animate-page-in ${

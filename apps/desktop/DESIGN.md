@@ -101,7 +101,7 @@ Sizes are rem, so they follow the UI scale (80–150%). No arbitrary sizes below
 - **Native window chrome.** A transparent, non-shrinking `h-12` drag region sits above the main content in both sidebar states, with window controls over its right edge. Main content uses `pt-2` beneath it. Keep this region in flow so update banners stay below it and remain clickable.
 - **Sidebar footer.** Launch Modded, Settings, then Sign in/account. Settings and signed-out Sign in are direct navigation links. Settings → Diagnostics contains Game log, Launcher log, Commands (including command output), then Privacy. The former Log and Commands routes and command-palette entries open the corresponding section in Diagnostics. The signed-in account menu contains Web account and Sign out. The collapsed rail keeps a visible launch icon and Settings gear, with names in their hover/focus tooltips. The launch disclosure appears only when expanded; Launch Vanilla is also available through the command palette.
 - **Browse toolbar.** Reuse the web registry's search, filter, sort, and view controls without restyling them. The shared search/filter bar is 40px tall with an 8px radius and 32px icon/filter controls. The desktop toolbar may wrap to fit the available content width.
-- **Library toolbar.** The profile picker shares its first row with `RegistrySearchBar` and `RegistrySortControl`. Status and Category live in `RegistryFilterDialog`; Library sort options are Load order, Name, Author, and Version. List is the default Library view; Config is the only alternate. The List/Config toggles sit beside Sort on the same row, with the mod count underneath. Controls wrap when the available width requires it, and the mod list uses the full content width.
+- **Library toolbar.** The profile picker shares its first row with `RegistrySearchBar` and `RegistrySortControl`. Status and Category live in `RegistryFilterDialog`. Load order is the default sort. Category groups mods; Load order, Name, Author, and Version show a flat list. List is the default Library view; Config is the only alternate. The List/Config toggles use the shared registry view-switch styles beside Sort. Controls wrap when the available width requires it, and the mod list uses the full content width.
 - **Browse listing grid.** Mods and collections on web and desktop use `.registry-grid` from `packages/ui/src/registry.css`, including the shared `RegistryGridSkeleton`. Do not add local grid breakpoints or gap utilities. It fits one to five columns to the available content width, accounting for the sidebar, with a 280px preferred minimum card width, 32px column gaps and 48px row gaps. The grid caps at 1920px; filtered results retain their track widths. Card content uses 24px above the body, 16px between sections, and 8px within tag/stat groups. These measurements are rem-based on a 4px scale and follow Appearance scaling. Artwork remains 16:9 with a centered cover crop. List spacing also lives in the shared `.registry-list` rule. `RegistryListingCard` owns the card and row markup for both listing types; collection adapters map `ownerName` to `author` and supply `modCount`. Web `ListingCard` only adapts data and routes. Use the shared card’s `footer` slot for desktop updated dates and web management controls, rather than copying the card body.
 - **Global search.** The command palette uses `RegistrySearchBar` as the full-width, 40px top row of one 8px-radius panel, with results immediately below it. The shared registry dialog styles own its surface, border, and backdrop; its header has no nested input border or inset container. Result rows match the sidebar navigation's lightened hover and selected surfaces: char at 50%/55%, with a subtle parchment/gilt border. Keep command navigation, keyboard behavior, and desktop font/scale preferences intact.
 - **Rhythm.**
@@ -110,7 +110,7 @@ Sizes are rem, so they follow the UI scale (80–150%). No arbitrary sizes below
   - `gap-2` inside a control group.
   - `gap-3` between controls.
   - `gap-4`/`gap-6` between columns.
-- **Panels.** `Panel` pads `p-6`. Nested or dense panels use `p-3`–`p-5`. Compact density and embedded panels (`[data-embedded]`) tighten card padding from the stylesheet, so a screen never hard-codes a dense variant.
+- **Panels.** `Panel` pads `p-6`. Nested or dense panels use `p-3`–`p-5`. Compact density tightens card padding from the stylesheet, so a screen never hard-codes a dense variant.
 - **Headers.** Page and panel headers use `SectionHeader` (`compact` inside a panel). Its right slot never shrinks, and the row wraps.
 - **Breakpoints watch the viewport, not the content column.** At a 960px window the column is about 670px, yet `md:` fires. Prefer wrapping flex rows over breakpoint switches.
 
@@ -127,6 +127,31 @@ Sizes are rem, so they follow the UI scale (80–150%). No arbitrary sizes below
 - **Disabled.** `opacity-50` and `pointer-events-none`.
 
 ## Components
+
+Browse and Library list rows both use `RegistryListingCard` with `view="list"`.
+The shared component owns thumbnails, title/author/summary, scope badges, spacing,
+and row surfaces. Library supplies `listLeading` for load order and enable toggles,
+`listBadges` for dependency/conflict warnings, `listMetadata` for the installed
+version, and `actions` for configuration, overlays, and uninstall. Omitting
+`listMetadata` preserves Browse's category, rating, and download columns. Library
+omits `latestVersion` from the listing data so version appears only in its metadata
+slot. Browse cards and rows, and Library rows, open `/mod/$slug` on activation.
+There is no embedded detail panel. Toggles and action buttons operate independently
+of row navigation. Do not add a second Library row layout.
+
+List columns use named grid tracks in the shared registry stylesheet. Missing
+category, rating, or download values leave their columns empty. Library reserves
+separate version/update cells and overlay/config/uninstall action cells, including
+empty slots for unavailable controls. Keep these slots in every row. Container
+queries adapt the whole list together; individual values must not determine which
+columns a row uses or whether its controls wrap.
+
+On devices with a precise pointer and hover support, list action buttons appear
+only while their row is hovered or has visible keyboard focus. Hide them with
+opacity and pointer events so their column spacing stays fixed and keyboard
+navigation still reaches them. Touch devices keep the actions visible.
+Config and uninstall use the borderless `registry-icon-button` treatment shared
+with view controls. Uninstall turns crimson on hover; its hit area stays fixed.
 
 | Pattern | Use |
 |---|---|

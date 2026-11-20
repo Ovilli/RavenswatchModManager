@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, describeApiError, logApiError } from '../lib/api';
 import { getApiUrl } from '../lib/api-url';
 import { useSession } from '../lib/auth-client';
+import { LIBRARY_PREVIEW } from '../lib/browser-preview';
 import { useT } from '../lib/i18n-react';
 import { inTauri } from '../lib/platform';
 import { installModIntoProfile, resolveInstallTarget } from '../lib/profile-mods';
@@ -35,23 +36,14 @@ import {
   StatPill,
 } from './chrome';
 import { useConfirmDisableHook } from './disable-hook-consent';
-import { OverlayButton } from './overlay-button';
 import { ListingRatingSummary, ListingReviews } from './listing-reviews';
+import { OverlayButton } from './overlay-button';
 import { PrivateGamesOnlyBadge } from './private-games-only-badge';
 import { useDialog, useToast } from './toast';
 import { useModToggle } from './use-mod-toggle';
 
-/**
- * A mod's store page.
- *
- * Lives here rather than in the route because Browse renders it too, in a panel
- * beside the results — clicking through five mods should not mean five
- * navigations and five trips back. `/mod/$slug` is a thin wrapper over this.
- *
- * @param embedded  rendered inside another page: drop the "back to browse"
- *                  control, which is meaningless when the list is on screen.
- */
-export function ModDetail({ slug, embedded = false }: { slug: string; embedded?: boolean }) {
+/** Full mod details, reached from both Browse and Library. */
+export function ModDetail({ slug }: { slug: string }) {
   const t = useT();
   const { data: session } = useSession();
   const navigate = useNavigate();
@@ -79,7 +71,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
     queryFn: () => api.mods.get(slug),
     retry: (count, err) => (err instanceof ApiError && err.status === 404 ? false : count < 1),
     staleTime: 30_000,
-    enabled: inTauri(),
+    enabled: inTauri() || LIBRARY_PREVIEW,
   });
 
   const liveBySlug = useApp((s) => Object.values(s.localMods).find((m) => m.slug === slug));
@@ -259,17 +251,10 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
   const modFolderId = liveBySlug?.id ?? slug;
 
   return (
-    // `data-embedded` is the single lever for the density change: the panels
-    // inside are `.grimoire-card`s scattered through this file, and threading a
-    // padding prop through every one of them would be a worse kind of coupling
-    // than one CSS rule keyed off the container. See styles.css.
-    <div className={embedded ? 'space-y-3' : 'space-y-6'} data-embedded={embedded ? '' : undefined}>
-      {/* Nothing to go back TO when the list is already beside this. */}
-      {embedded ? null : (
-        <Button type="button" size="sm" onClick={goBack}>
-          <ArrowLeft className="h-3.5 w-3.5" /> {t('back')}
-        </Button>
-      )}
+    <div className="space-y-6">
+      <Button type="button" size="sm" onClick={goBack}>
+        <ArrowLeft className="h-3.5 w-3.5" /> {t('back')}
+      </Button>
 
       {fetchFailed ? (
         <div className="ember-banner flex items-center gap-3 px-4 py-2">
@@ -280,9 +265,6 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
         </div>
       ) : null}
 
-      {/* A 21:9 hero is most of the panel's height when this is a column
-          rather than a page, and it pushes the name and the install button
-          below the fold — which is the one thing the panel exists to show. */}
       <RegistryModDetailHeader
         name={name}
         summary={summary}
@@ -352,13 +334,7 @@ export function ModDetail({ slug, embedded = false }: { slug: string; embedded?:
         labels={registryGalleryLabels(t, name)}
       />
 
-      {/* Embedded, this renders in Browse's detail panel — a column of roughly
-          370px once the index takes its fixed 22rem. `md:` fires on the
-          VIEWPORT, so a three-column split was being applied inside it, and a
-          `col-span-2` child in a collapsed grid spills into an implicit
-          column rather than fitting. Both halves have to move together. */}
       <RegistryDetailContentLayout
-        className={embedded ? 'registry-detail-embedded' : ''}
         sidebarLabel={t('Mod actions and details')}
         sidebar={
           <div className="space-y-4">

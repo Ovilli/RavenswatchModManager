@@ -15,11 +15,11 @@ import { compareVersions } from './version';
 type Profile = ReturnType<typeof activeProfile>;
 
 export type LibraryStatusFilter = 'all' | 'enabled' | 'disabled' | 'outdated' | 'missingDeps';
-export type LibrarySort = 'load-order' | 'name' | 'author' | 'version';
+export type LibrarySort = 'category' | 'load-order' | 'name' | 'author' | 'version';
 
 export interface LibraryRow {
   id: string;
-  /** Position in the profile's load order — the default sort, and the drag key. */
+  /** Position in the profile's load order, independent of the display sort. */
   orderIdx: number;
   mod: Mod;
   enabled: boolean;
