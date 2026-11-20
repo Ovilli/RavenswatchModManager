@@ -1,13 +1,5 @@
 import { Link } from '@tanstack/react-router';
-import {
-  ChevronUp,
-  ExternalLink,
-  LogIn,
-  LogOut,
-  ScrollText,
-  Terminal,
-  WifiOff,
-} from 'lucide-react';
+import { ChevronUp, ExternalLink, LogIn, LogOut, WifiOff } from 'lucide-react';
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
 import { signOut, useSession } from '../lib/auth-client';
 import { useT } from '../lib/i18n-react';
@@ -28,7 +20,7 @@ const WEB_ACCOUNT_URL = 'https://rsmm.me/account';
 const MENU_ITEM =
   'flex min-h-11 w-full items-center gap-3 rounded px-3 py-2 text-left text-sm text-parchment transition-colors duration-150 hover:bg-char/60 focus-visible:bg-char/60';
 
-/** App navigation stays available while signed out, loading, or offline. */
+/** Sign in directly; signed-in players can open their account actions. */
 export function AccountStrip({ collapsed = false }: { collapsed?: boolean }) {
   const t = useT();
   const { data: session, isPending, error } = useSession();
@@ -100,6 +92,27 @@ export function AccountStrip({ collapsed = false }: { collapsed?: boolean }) {
     }
   }
 
+  if (!user) {
+    return (
+      <div className="shrink-0 border-t border-border/60 p-3">
+        <Link
+          to="/signin"
+          aria-label={t('Sign in')}
+          data-sidebar-tooltip={collapsed ? t('Sign in') : undefined}
+          className="sidebar-account-action grid h-14 w-full items-center overflow-hidden rounded border border-transparent py-1.5 text-left transition-colors duration-150 hover:bg-char/40"
+        >
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-char/60 text-parchment">
+            <LogIn className="h-4 w-4" aria-hidden />
+          </span>
+          <span className="sidebar-expanded-content min-w-0" aria-hidden={collapsed}>
+            <span className="block truncate text-base text-parchment">{t('Sign in')}</span>
+            {status ? <span className="block truncate text-xs text-ash">{status}</span> : null}
+          </span>
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div
       ref={wrapRef}
@@ -126,12 +139,10 @@ export function AccountStrip({ collapsed = false }: { collapsed?: boolean }) {
         className="sidebar-account-action grid h-14 w-full items-center overflow-hidden rounded border border-transparent py-1.5 text-left transition-colors duration-150 hover:bg-char/40"
       >
         <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-char/60 text-xs font-semibold text-parchment">
-          {user?.image ? (
+          {user.image ? (
             <img src={user.image} alt="" className="h-full w-full object-cover" />
-          ) : user ? (
-            <span>{initialsFor(user.name, user.email)}</span>
           ) : (
-            <LogIn className="h-4 w-4" aria-hidden />
+            <span>{initialsFor(user.name, user.email)}</span>
           )}
         </span>
         <span className="sidebar-expanded-content min-w-0" aria-hidden={collapsed}>
@@ -159,42 +170,22 @@ export function AccountStrip({ collapsed = false }: { collapsed?: boolean }) {
               <CopyButton value={t('API session error: {error}', { error: error.message })} />
             </div>
           ) : null}
-          {user ? (
-            <a
-              href={WEB_ACCOUNT_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => setOpen(false)}
-              role="menuitem"
-              className={MENU_ITEM}
-            >
-              <ExternalLink className="h-4 w-4 text-ash" aria-hidden />
-              {t('Web account')}
-            </a>
-          ) : (
-            <Link to="/signin" onClick={() => setOpen(false)} role="menuitem" className={MENU_ITEM}>
-              <LogIn className="h-4 w-4 text-ash" aria-hidden />
-              {t('Sign in')}
-            </Link>
-          )}
+          <a
+            href={WEB_ACCOUNT_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => setOpen(false)}
+            role="menuitem"
+            className={MENU_ITEM}
+          >
+            <ExternalLink className="h-4 w-4 text-ash" aria-hidden />
+            {t('Web account')}
+          </a>
           <div role="separator" className="my-1 border-t border-border/60" />
-          <Link to="/commands" onClick={() => setOpen(false)} role="menuitem" className={MENU_ITEM}>
-            <Terminal className="h-4 w-4 text-ash" aria-hidden />
-            {t('Commands')}
-          </Link>
-          <Link to="/log" onClick={() => setOpen(false)} role="menuitem" className={MENU_ITEM}>
-            <ScrollText className="h-4 w-4 text-ash" aria-hidden />
-            {t('Log')}
-          </Link>
-          {user ? (
-            <>
-              <div role="separator" className="my-1 border-t border-border/60" />
-              <button type="button" onClick={handleSignOut} role="menuitem" className={MENU_ITEM}>
-                <LogOut className="h-4 w-4 text-ash" aria-hidden />
-                {t('Sign out')}
-              </button>
-            </>
-          ) : null}
+          <button type="button" onClick={handleSignOut} role="menuitem" className={MENU_ITEM}>
+            <LogOut className="h-4 w-4 text-ash" aria-hidden />
+            {t('Sign out')}
+          </button>
         </div>
       ) : null}
     </div>

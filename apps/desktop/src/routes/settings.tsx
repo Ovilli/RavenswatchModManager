@@ -1,6 +1,16 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { Link, createFileRoute } from '@tanstack/react-router';
 import { invoke } from '@tauri-apps/api/core';
-import { Activity, ChevronDown, EyeOff, Github, ShieldAlert, Sparkles, Trash2 } from 'lucide-react';
+import {
+  Activity,
+  ChevronDown,
+  EyeOff,
+  Github,
+  ScrollText,
+  ShieldAlert,
+  Sparkles,
+  Terminal,
+  Trash2,
+} from 'lucide-react';
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { AboutPanels } from '../components/about-panels';
 import { Button, Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
@@ -77,7 +87,7 @@ const TABS = [
     hint: msg('Language, typeface, density, motion, content'),
   },
   { id: 'game', label: msg('Game'), hint: msg('Online server, loader features, graphics') },
-  { id: 'diagnostics', label: msg('Diagnostics'), hint: msg('Launcher log, crash reports') },
+  { id: 'diagnostics', label: msg('Diagnostics'), hint: msg('Commands, logs, crash reports') },
   { id: 'about', label: msg('About'), hint: msg('Version, release notes, credits') },
 ] as const;
 
@@ -152,6 +162,16 @@ function SettingsPage() {
         ) : null}
         {tab === 'diagnostics' ? (
           <>
+            <div className="flex flex-wrap gap-2">
+              <Link to="/commands" className="btn-grim">
+                <Terminal className="h-4 w-4" aria-hidden />
+                {t('Commands')}
+              </Link>
+              <Link to="/log" className="btn-grim">
+                <ScrollText className="h-4 w-4" aria-hidden />
+                {t('Log')}
+              </Link>
+            </div>
             <LauncherLogPanel />
             <PrivacyPanel />
           </>

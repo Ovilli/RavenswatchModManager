@@ -393,7 +393,7 @@ export const zhCN: Record<string, string> = {
   'Launcher Log': '启动器日志',
   'Launcher is on the latest version.': '启动器已是最新版本。',
   'Launcher log cleared.': '启动器日志已清空。',
-  'Launcher log, crash reports': '启动器日志、崩溃报告',
+  'Commands, logs, crash reports': '命令、日志、崩溃报告',
   Layout: '布局',
   'Leave empty to use the default rsmm mods folder': '留空则使用 rsmm 默认的模组文件夹',
   'Let clicks pass through to the game': '让鼠标点击穿透到游戏',
