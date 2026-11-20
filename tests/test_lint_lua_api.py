@@ -181,3 +181,53 @@ def test_module_without_any_binding_is_an_error(tmp_path, capsys):
     errs, warns = lint._lint_lua_api("LuaMod", d)
     assert (errs, warns) == (1, 0)
     assert "helper.lua:1" in capsys.readouterr().out
+
+
+# --- #202 lint gaps: SDK surface a mod may not use -------------------------------
+
+import pytest  # noqa: E402
+
+_SDK = 'local R = require "rsmm"\n'
+
+
+@pytest.mark.parametrize("line, needle", [
+    ('R.hook(0x1, function() end)', "R.hook installs"),
+    ("R.unhook(h)", "R.unhook removes"),
+    ("if R.ptr.plausible(p) then end", "pointer-validation"),
+    ('local E = require "rsmm.engine"', 'require "rsmm.engine"'),
+    ('local C = require("rsmm.config")', 'require "rsmm.config"'),
+    ("R.stat.get = function() return 0 end", "monkey-patching"),
+    ("R.my_helper = 1", "monkey-patching"),
+    ("function R.my_helper() end", "monkey-patching"),
+    ("function R.stat:get() end", "monkey-patching"),
+])
+def test_sdk_only_surface_is_an_error(tmp_path, capsys, line, needle):
+    errs, _warns = lint._lint_lua_api("LuaMod", _mod(tmp_path, _SDK + line + "\n"))
+    assert errs == 1 and needle in capsys.readouterr().out
+
+
+def test_the_rules_follow_any_name_the_sdk_is_bound_to(tmp_path):
+    d = _mod(tmp_path, 'local S = require("rsmm")\nS.hook(1, f)\nS.x = 2\n')
+    assert lint._lint_lua_api("LuaMod", d)[0] == 2
+
+
+def test_lookalikes_are_not_flagged():
+    src = (_SDK + 'local ok = R.stat.get("x") == 1\n'
+           'local t = { R = 1 }; t.R.hook = 2\n'
+           'R.log("R.hook and require \\"rsmm.engine\\" in a string")\n'
+           '-- R.hook(1) in a comment\n'
+           'local R2 = R\n')
+    assert lint.sdk_surface_findings(src) == []
+
+
+def test_read_block_is_a_low_level_primitive(tmp_path, capsys):
+    errs, _ = lint._lint_lua_api("LuaMod", _mod(tmp_path, _SDK + "local b = I.read_block(p, 8)\n"))
+    assert errs == 1 and "low-level primitive" in capsys.readouterr().out
+
+
+def test_r_debug_warns_unless_the_mod_is_tagged_debug_or_test(tmp_path):
+    d = _mod(tmp_path, _SDK + "R.debug.dump(e)\n")
+    assert lint._lint_lua_api("LuaMod", d) == (0, 1)
+    for tag in ("debug", "Test"):
+        (d / "manifest.toml").write_text(f'[mod]\nid = "LuaMod"\ntags = ["{tag}"]\n')
+        assert lint._lint_lua_api("LuaMod", d) == (0, 0)

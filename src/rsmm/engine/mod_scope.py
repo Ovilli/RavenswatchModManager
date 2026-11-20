@@ -94,14 +94,14 @@ _BEFORE_STATEMENT_KW = frozenset({
 })
 
 #: The engine escape hatches only the SDK may use: the native `_internal`
-#: table, raw memory reads and writes, the module base, scratch memory, raw
-#: calls and address resolution. `rsmm lint` errors on them in a mod's Lua,
+#: table, raw memory reads and writes (`read_block` included), the module base,
+#: scratch memory, raw calls and address resolution. `rsmm lint` errors on them in a mod's Lua,
 #: and installing a mod archive refuses one whose Lua uses them.
 LOWLEVEL_PRIMITIVE_RE = re.compile(
     r"""(?:\b_internal\b"""
     r"""|\.peek\(|\.poke\("""
     r"""|\.module_base\(|\.scratch\("""
-    r"""|\.read_(?:u\d+|f\d+|cstr|f32|f64)\(|\.write_(?:u\d+|f\d+|f32|f64)\("""
+    r"""|\.read_(?:u\d+|f\d+|cstr|f32|f64|block)\(|\.write_(?:u\d+|f\d+|f32|f64)\("""
     r"""|\.call_raw\(|\.engine\.resolve\()"""
 )
 
