@@ -2600,7 +2600,11 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     # diffing against a clean install tree.
     try:
         tx_recover = ApplyTransaction(cooking).recover()
-        if tx_recover != "clean":
+        if tx_recover == "interrupted":
+            print("  [apply] the previous apply was interrupted while writing game "
+                  "files; this apply rewrites them (run `rsmm doctor` afterwards "
+                  "if anything looks wrong)", file=sys.stderr)
+        elif tx_recover != "clean":
             print(f"  [apply] recovered previous staging state: {tx_recover}")
     except (OSError, ImportError) as e:
         print(f"  [apply] recover skipped: {e}", file=sys.stderr)

@@ -10,9 +10,12 @@ from the backup.
 A `COMMIT` marker file is written before phase 2 begins. On startup of a
 later apply, the presence of an orphan staging dir tells us:
 
-  * marker present + staging dir present  -> resume commit
-  * marker absent  + staging dir present  -> discard staging (crash mid-stage)
-  * marker absent  + staging dir absent   -> normal startup
+  * marker present                        -> "interrupted": a commit died
+                                             part-way (or its rollback failed);
+                                             discard and warn, the applier
+                                             re-plans from scratch
+  * marker absent  + staging dir present  -> "discarded" (crash mid-stage)
+  * marker absent  + staging dir absent   -> "clean"
 """
 
 from __future__ import annotations
@@ -70,8 +73,10 @@ class ApplyTransaction:
     def recover(self) -> str:
         """Inspect on-disk state from a previous run; return what happened.
 
-        Returns ``"clean"`` (nothing to do) or ``"discarded"`` (leftovers
-        cleared). A commit cannot be *resumed*: the staging tree records
+        Returns ``"clean"`` (nothing to do), ``"discarded"`` (a staging tree
+        from a run that died before committing, cleared) or ``"interrupted"``
+        (the commit marker survived: live files may be half-written, so the
+        applier should warn). A commit cannot be *resumed*: the staging tree records
         what to write but not where each file came from, and re-deriving
         destinations from a plan we no longer hold would be guesswork on a
         half-written install. The applier re-plans from scratch instead.
@@ -83,17 +88,17 @@ class ApplyTransaction:
         if has_stage and not has_marker:
             shutil.rmtree(self.stage_root, ignore_errors=True)
             return "discarded"
-        # Marker present: try to finish whatever the previous run started.
-        # We can't reconstruct destinations without the original plan, so
-        # the marker is treated as an error beacon for the applier to
-        # warn the user. Most reliable behaviour: discard + warn.
+        # Marker present: a commit (or its rollback) did not finish. Nothing
+        # can be resumed (see above), so the marker is only a beacon: clear it
+        # and report it, so the applier warns instead of passing it off as a
+        # routine leftover.
         if has_stage:
             shutil.rmtree(self.stage_root, ignore_errors=True)
         try:
             self.commit_marker.unlink()
         except FileNotFoundError:
             pass
-        return "discarded"
+        return "interrupted"
 
     # ---- staging ------------------------------------------------------
 
@@ -115,6 +120,12 @@ class ApplyTransaction:
         On error, every previously committed file is restored from its
         backup. Returns the list of encoded paths committed successfully
         before any failure.
+
+        Ctrl+C rolls back too (it is not an ``Exception``, and skipping the
+        rollback while ``finally`` still removed the marker left a
+        half-committed install with nothing to say so). The marker is kept
+        when the rollback itself failed, so the next ``recover()`` reports
+        ``"interrupted"``.
         """
         committed: list[StagedWrite] = []
         self.commit_marker.parent.mkdir(parents=True, exist_ok=True)
@@ -124,6 +135,7 @@ class ApplyTransaction:
         # the one that can lose it, and `recover()` would then report "clean"
         # over a half-committed install.
         atomic_write_text(self.commit_marker, "1")
+        clean = True
         try:
             for w in self.pending:
                 if w.dest.exists():
@@ -137,21 +149,23 @@ class ApplyTransaction:
                 w.dest.parent.mkdir(parents=True, exist_ok=True)
                 os.replace(w.stage, w.dest)
                 committed.append(w)
-        except Exception:
-            self._rollback(committed)
+        except BaseException:
+            clean = self._rollback(committed)
             raise
         finally:
             shutil.rmtree(self.stage_root, ignore_errors=True)
-            try:
-                self.commit_marker.unlink()
-            except FileNotFoundError:
-                pass
+            if clean:
+                try:
+                    self.commit_marker.unlink()
+                except FileNotFoundError:
+                    pass
         return [w.encoded for w in committed]
 
     # ---- internals ----------------------------------------------------
 
-    def _rollback(self, committed: list[StagedWrite]) -> None:
-        """Undo every replace this commit already made.
+    def _rollback(self, committed: list[StagedWrite]) -> bool:
+        """Undo every replace this commit already made. False when any file
+        could not be put back.
 
         Two cases, and only the first used to be handled:
 
@@ -162,6 +176,7 @@ class ApplyTransaction:
           apply still planted assets in the install, and `restore --all` had
           no `.rsmm.bak` to key on, so nothing ever cleaned them up.
         """
+        ok = True
         for w in reversed(committed):
             if w.backup and w.backup.exists():
                 try:
@@ -176,6 +191,7 @@ class ApplyTransaction:
                     # A failed rollback can leave the install half-reverted —
                     # surface it loudly; the caller/`rsmm doctor` can reconcile.
                     logger.error("rollback failed to restore %s: %s", w.dest, e)
+                    ok = False
                 continue
             try:
                 w.dest.unlink()
@@ -183,6 +199,8 @@ class ApplyTransaction:
                 pass
             except OSError as e:
                 logger.error("rollback failed to remove %s: %s", w.dest, e)
+                ok = False
+        return ok
 
     def _safe_rel(self, encoded: str) -> Path:
         """Translate the applier's encoded key into a relative staging path.
