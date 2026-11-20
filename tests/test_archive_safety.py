@@ -461,3 +461,84 @@ def test_pack_keeps_emitted_files_when_a_kind_cannot_rebuild_them(tmp_path, monk
     names = zipfile.ZipFile(tmp_path / "dist" / "ItemMod.zip").namelist()
     assert "ItemMod/assets/Items/X.gen" in names
 
+
+
+# --- low-level primitives in mod Lua ---------------------------------------
+
+_POKE = b'local R = require "rsmm"\nlocal I = R._internal\nI.write_u32(0, 1)\n'
+
+
+@pytest.mark.parametrize("lua", [
+    b'local I = R._internal\n',
+    b'R["_internal"].poke(0, 1)\n',
+    b'local v = x.read_u64(p)\n',
+    b'x.write_f32(p, 1)\n',
+    b'local b = I.module_base()\n',
+    b'R.engine.resolve("Foo")\n',
+    b'--[[ note ]] local I = R._internal\n',
+    b'local s = "--" local I = R._internal\n',
+])
+def test_lua_scan_refuses_primitives(tmp_path, lua):
+    z = _zip(tmp_path / "a.zip", {"M/init.lua": lua})
+    with zipfile.ZipFile(z) as zf, pytest.raises(ArchiveError, match="M/init.lua"):
+        archive.scan_lua_primitives(zf, "M")
+
+
+@pytest.mark.parametrize("lua", [
+    b'local R = require "rsmm"\nR.on("tick", function() end)\n',
+    b'-- R._internal is off limits\nlocal x = 1\n',
+    b'--[[\nI.write_u32(p, 1)\n]]\nlocal x = 1\n',
+    b'local internal_count = 0\n',
+])
+def test_lua_scan_passes_sdk_only_lua(tmp_path, lua):
+    z = _zip(tmp_path / "a.zip", {"M/init.lua": lua})
+    with zipfile.ZipFile(z) as zf:
+        archive.scan_lua_primitives(zf, "M")
+
+
+def test_lua_scan_reads_every_lua_file_whatever_its_case(tmp_path):
+    z = _zip(tmp_path / "a.zip", {"M/init.lua": b"local x = 1\n",
+                                  "M/lib/Mem.LUA": _POKE,
+                                  "M/notes.txt": _POKE})
+    with zipfile.ZipFile(z) as zf, pytest.raises(ArchiveError) as e:
+        archive.scan_lua_primitives(zf, "M")
+    assert "M/lib/Mem.LUA: _internal, .write_u32(" in str(e.value)
+    assert "notes.txt" not in str(e.value)
+
+
+def test_lua_scan_refuses_oversized_lua(tmp_path, monkeypatch):
+    monkeypatch.setattr(archive, "MAX_LUA_BYTES", 8)
+    z = _zip(tmp_path / "a.zip", {"M/init.lua": b"local x = 12345\n"})
+    with zipfile.ZipFile(z) as zf, pytest.raises(ArchiveError, match="limit for mod Lua"):
+        archive.scan_lua_primitives(zf, "M")
+
+
+def test_install_refuses_lua_primitives(tmp_path):
+    z = _zip(tmp_path / "a.zip", {"M/manifest.toml": b"x", "M/init.lua": _POKE})
+    mods = tmp_path / "mods"
+    with pytest.raises(ArchiveError, match="low-level primitives"):
+        cmd_install._safe_extract(z.read_bytes(), mods)
+    assert not (mods / "M").exists()
+
+
+def test_update_refuses_lua_primitives_and_keeps_going(tmp_path, monkeypatch, capsys):
+    import json as _json
+    mods = tmp_path / "mods"
+    for mid in ("A", "B"):
+        (mods / mid).mkdir(parents=True)
+        (mods / mid / "manifest.toml").write_text("old")
+    monkeypatch.setattr(update_cmd, "MODS_DIR", mods)
+    zips = {"A": _zip(tmp_path / "A.zip", {"A/init.lua": _POKE}).read_bytes(),
+            "B": _zip(tmp_path / "B.zip", {"B/manifest.toml": b"new"}).read_bytes()}
+    index = {"schema": update_cmd.RepoIndex(name="").dump()["schema"], "mods": [
+        {"id": m, "version": "2.0.0", "url": m, "sha256": "x"} for m in zips]}
+    monkeypatch.setattr(update_cmd, "_load_repos", lambda: ["idx"])
+    monkeypatch.setattr(update_cmd, "_installed_mods", lambda: {"A": "1.0.0", "B": "1.0.0"})
+    monkeypatch.setattr(update_cmd, "_fetch", lambda url: (
+        _json.dumps(index).encode() if url == "idx" else zips[url]))
+    monkeypatch.setattr(update_cmd, "_verify_download", lambda *a: (True, "ok"))
+    assert update_cmd.main([]) == 1
+    err = capsys.readouterr().err
+    assert "refusing to install A" in err and "low-level primitives" in err
+    assert (mods / "A" / "manifest.toml").read_text() == "old"
+    assert (mods / "B" / "manifest.toml").read_text() == "new"

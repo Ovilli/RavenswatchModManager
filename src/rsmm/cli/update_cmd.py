@@ -240,7 +240,12 @@ def main(argv: list[str] | None = None) -> int:
                 if ans != "y":
                     print(f"  skipped {mid}")
                     continue
-            _install_zip(zp, mid, args.dry_run)
+            try:
+                _install_zip(zp, mid, args.dry_run)
+            except RepoError as e:
+                print(f"  refusing to install {mid}: {e}", file=sys.stderr)
+                code = 1
+                continue
             print(f"  installed {mid} -> {entry.version}")
         finally:
             try:

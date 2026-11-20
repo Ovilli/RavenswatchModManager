@@ -174,3 +174,16 @@ def test_a_plain_http_index_override_is_refused(env, capsys, monkeypatch):
     json_bridge.cmd_install_mod("coolmod")
     assert _out(capsys)["ok"] is False
     assert env["calls"] == []
+
+
+def test_an_archive_whose_lua_uses_internal_is_refused(env, capsys):
+    bad = _zip({"coolmod/manifest.toml": b'[mod]\nid = "coolmod"\n',
+                "coolmod/init.lua": b'local I = require("rsmm")._internal\n'})
+    _index(env, [{"version": "1.0.0", "sha256": hashlib.sha256(bad).hexdigest(),
+                  "createdAt": "2026-01-01"}])
+    env["routes"]["/api/mods/coolmod/1.0.0/download"] = bad
+    json_bridge.cmd_install_mod("coolmod")
+    out = _out(capsys)
+    assert out["ok"] is False and "low-level primitives" in out["error"]
+    assert not (env["mods"] / "coolmod").exists()
+    assert list(env["tmp"].iterdir()) == []
