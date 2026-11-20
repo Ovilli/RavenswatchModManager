@@ -303,6 +303,52 @@ def test_transaction_rollback_restores_and_keeps_the_backup(tmp_path: Path):
     assert bak.exists() and bak.read_bytes() == b"vanilla"   # and still there
 
 
+def test_a_failed_update_rolls_back_to_the_previous_mod_not_vanilla(tmp_path: Path):
+    """#229 review: rollback restored `.rsmm.bak` (vanilla) over mod-v1, so a
+    failed update silently uninstalled the mod."""
+    cooking = tmp_path / "cooking"
+    dest = cooking / "sub" / "asset"
+    dest.parent.mkdir(parents=True)
+    dest.write_bytes(b"mod-v1")
+    (dest.parent / "asset.rsmm.bak").write_bytes(b"vanilla")
+    v2 = tmp_path / "v2"
+    v2.write_bytes(b"mod-v2")
+
+    tx = ApplyTransaction(cooking)
+    tx.stage_write("sub/asset", v2, dest)
+    tx.stage_write("sub/other", v2, cooking / "sub" / "other").stage.unlink()
+    with pytest.raises(OSError):
+        tx.commit()
+
+    assert dest.read_bytes() == b"mod-v1"
+    assert (dest.parent / "asset.rsmm.bak").read_bytes() == b"vanilla"
+    assert not (cooking / "sub" / "other").exists()
+    assert not tx.commit_marker.exists() and not tx.undo_root.exists()
+
+
+def test_an_interrupted_rollback_keeps_the_commit_marker(tmp_path: Path, monkeypatch):
+    """#229 review: `clean` started true, so Ctrl+C inside the rollback
+    cleared the marker over a half-written install."""
+    cooking = tmp_path / "cooking"
+    dest = cooking / "asset"
+    dest.parent.mkdir(parents=True)
+    dest.write_bytes(b"old")
+    new = tmp_path / "new"
+    new.write_bytes(b"new")
+
+    tx = ApplyTransaction(cooking)
+    tx.stage_write("asset", new, dest)
+    tx.stage_write("other", new, cooking / "other").stage.unlink()
+
+    def interrupted(_committed):
+        raise KeyboardInterrupt
+    monkeypatch.setattr(tx, "_rollback", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        tx.commit()
+    assert tx.commit_marker.exists()
+    assert ApplyTransaction(cooking).recover() == "interrupted"
+
+
 def test_transaction_rejects_path_escape(tmp_path: Path):
     cooking = tmp_path / "cooking"
     cooking.mkdir()
@@ -1022,11 +1068,15 @@ def test_transaction_ctrl_c_mid_commit_rolls_back(tmp_path: Path, monkeypatch):
     real = os.replace
     calls = []
 
+    undo_fails = []
+
     def replace(a, b):
         if ".rsmm_stage" not in Path(b).parts and ".rsmm_stage" in Path(a).parts:  # stage -> live
             calls.append(b)
             if len(calls) == 2:
                 raise KeyboardInterrupt
+        if undo_fails and ".rsmm_undo" in Path(a).parts:  # rollback: undo -> live
+            raise OSError("disk")
         real(a, b)
 
     monkeypatch.setattr(T.os, "replace", replace)
@@ -1040,7 +1090,7 @@ def test_transaction_ctrl_c_mid_commit_rolls_back(tmp_path: Path, monkeypatch):
     tx = ApplyTransaction(cooking)
     tx.stage_write("a", tmp_path / "src0", dests[0])
     tx.stage_write("b", tmp_path / "src1", dests[1])
-    monkeypatch.setattr(T, "atomic_copy", lambda *a: (_ for _ in ()).throw(OSError("disk")))
+    undo_fails.append(True)
     with pytest.raises(KeyboardInterrupt):
         tx.commit()
     assert tx.commit_marker.exists()

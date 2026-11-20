@@ -5,7 +5,10 @@ are taken next to originals (existing behavior, unchanged).
 
 Phase 2 — commit: atomic `os.replace` from staged path to live path. On
 the first mid-commit error, every successful replace is rolled back
-from the backup.
+to the bytes it replaced. Those come from a transaction-local snapshot in
+`<cooking>/.rsmm_undo/`, NOT from `.rsmm.bak`: the backup holds VANILLA, and
+an update over an installed mod has to fall back to the previous mod
+version, not to vanilla. `.rsmm.bak` is only for uninstall.
 
 A `COMMIT` marker file is written before phase 2 begins. On startup of a
 later apply, the presence of an orphan staging dir tells us:
@@ -32,6 +35,7 @@ from rsmm.logging import get_logger
 logger = get_logger(__name__)
 
 STAGE_DIR_NAME = ".rsmm_stage"
+UNDO_DIR_NAME = ".rsmm_undo"
 COMMIT_MARKER_NAME = ".rsmm_stage.COMMIT"
 
 
@@ -41,7 +45,8 @@ class StagedWrite:
     src: Path                    # mod's source file
     dest: Path                   # final live path under _Cooking/
     stage: Path                  # temp path under .rsmm_stage/
-    backup: Path | None = None   # set during commit if dest existed
+    backup: Path | None = None   # vanilla backup, set during commit if dest existed
+    undo: Path | None = None     # this commit's snapshot of dest's previous bytes
 
 
 @dataclass
@@ -65,6 +70,10 @@ class ApplyTransaction:
         return self.cooking / STAGE_DIR_NAME
 
     @property
+    def undo_root(self) -> Path:
+        return self.cooking / UNDO_DIR_NAME
+
+    @property
     def commit_marker(self) -> Path:
         return self.cooking / COMMIT_MARKER_NAME
 
@@ -83,6 +92,8 @@ class ApplyTransaction:
         """
         has_stage = self.stage_root.is_dir()
         has_marker = self.commit_marker.exists()
+        if not has_marker:
+            shutil.rmtree(self.undo_root, ignore_errors=True)
         if not has_stage and not has_marker:
             return "clean"
         if has_stage and not has_marker:
@@ -94,6 +105,7 @@ class ApplyTransaction:
         # routine leftover.
         if has_stage:
             shutil.rmtree(self.stage_root, ignore_errors=True)
+        shutil.rmtree(self.undo_root, ignore_errors=True)
         try:
             self.commit_marker.unlink()
         except FileNotFoundError:
@@ -117,15 +129,17 @@ class ApplyTransaction:
     def commit(self) -> list[str]:
         """Atomically move every staged file into place.
 
-        On error, every previously committed file is restored from its
-        backup. Returns the list of encoded paths committed successfully
-        before any failure.
+        On error, every previously committed file is put back to the bytes it
+        held before this commit (its undo snapshot), or removed when this
+        commit created it. Returns the list of encoded paths committed
+        successfully before any failure.
 
         Ctrl+C rolls back too (it is not an ``Exception``, and skipping the
         rollback while ``finally`` still removed the marker left a
         half-committed install with nothing to say so). The marker is kept
-        when the rollback itself failed, so the next ``recover()`` reports
-        ``"interrupted"``.
+        unless the commit or its rollback positively finished, so a rollback
+        that failed or was itself interrupted leaves the next ``recover()``
+        reporting ``"interrupted"``.
         """
         committed: list[StagedWrite] = []
         self.commit_marker.parent.mkdir(parents=True, exist_ok=True)
@@ -135,7 +149,8 @@ class ApplyTransaction:
         # the one that can lose it, and `recover()` would then report "clean"
         # over a half-committed install.
         atomic_write_text(self.commit_marker, "1")
-        clean = True
+        shutil.rmtree(self.undo_root, ignore_errors=True)
+        clean = False
         try:
             for w in self.pending:
                 if w.dest.exists():
@@ -146,15 +161,18 @@ class ApplyTransaction:
                         # install and call it recovered.
                         atomic_copy(w.dest, bak)
                     w.backup = bak
+                    w.undo = self._snapshot(w)
                 w.dest.parent.mkdir(parents=True, exist_ok=True)
                 os.replace(w.stage, w.dest)
                 committed.append(w)
+            clean = True
         except BaseException:
             clean = self._rollback(committed)
             raise
         finally:
             shutil.rmtree(self.stage_root, ignore_errors=True)
             if clean:
+                shutil.rmtree(self.undo_root, ignore_errors=True)
                 try:
                     self.commit_marker.unlink()
                 except FileNotFoundError:
@@ -163,13 +181,28 @@ class ApplyTransaction:
 
     # ---- internals ----------------------------------------------------
 
+    def _snapshot(self, w: StagedWrite) -> Path:
+        """Keep ``w.dest``'s current bytes under the undo tree. A hard link
+        costs nothing and survives the ``os.replace`` (that swaps the
+        directory entry, not the inode); copy where links are refused."""
+        undo = self.undo_root / self._safe_rel(w.encoded)
+        undo.parent.mkdir(parents=True, exist_ok=True)
+        undo.unlink(missing_ok=True)
+        try:
+            os.link(w.dest, undo)
+        except OSError:
+            atomic_copy(w.dest, undo)
+        return undo
+
     def _rollback(self, committed: list[StagedWrite]) -> bool:
         """Undo every replace this commit already made. False when any file
         could not be put back.
 
         Two cases, and only the first used to be handled:
 
-        * the write REPLACED an existing asset — restore it from the backup;
+        * the write REPLACED an existing file — put back what it held before
+          this commit (the undo snapshot: the previous mod version on an
+          update, vanilla on a first apply);
         * the write CREATED a file that was not there before (a new asset
           registered through UsedRscList) — there is no backup to restore, so
           the file itself must be removed. Leaving it behind meant a failed
@@ -178,15 +211,13 @@ class ApplyTransaction:
         """
         ok = True
         for w in reversed(committed):
-            if w.backup and w.backup.exists():
+            if w.undo is not None:
                 try:
-                    # Copy, don't move. `os.replace` restored the asset but
-                    # consumed the backup, so a failed apply left the install
-                    # holding vanilla bytes with no `.rsmm.bak` — destroying the
-                    # only copy of the originals at the exact moment something
-                    # had already gone wrong. atomic_copy is equally atomic and
-                    # keeps it.
-                    atomic_copy(w.backup, w.dest)
+                    # Never from `.rsmm.bak`: that is vanilla, and restoring it
+                    # over an installed mod's previous version silently
+                    # uninstalled the mod on a failed update. The backup stays
+                    # untouched for `restore`.
+                    os.replace(w.undo, w.dest)
                 except OSError as e:
                     # A failed rollback can leave the install half-reverted —
                     # surface it loudly; the caller/`rsmm doctor` can reconcile.
