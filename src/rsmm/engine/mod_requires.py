@@ -34,6 +34,31 @@ def parse_requires(value) -> dict[str, int]:
     return out
 
 
+def parse_min_loader(value) -> int | None:
+    """``[mod] min_loader`` as a loader version: ``58``, ``"58"``, ``"v58"`` or
+    ``">=58"``. It is the older spelling of ``[requires] loader`` and is checked
+    the same way at apply (#202). Raises ValueError on anything else."""
+    import re
+    if value is None:
+        return None
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 1:
+        return value
+    m = re.fullmatch(r"\s*(?:>=\s*)?v?(\d+)\s*", value) if isinstance(value, str) else None
+    if not m or int(m.group(1)) < 1:
+        raise ValueError(f"[mod] min_loader must be a loader version such as 58 or \">=58\", "
+                         f"got {value!r}")
+    return int(m.group(1))
+
+
+def with_min_loader(requires: dict[str, int], min_loader) -> dict[str, int]:
+    """``requires`` with ``min_loader`` folded into its loader requirement (the
+    stricter of the two)."""
+    need = parse_min_loader(min_loader)
+    if need is None:
+        return requires
+    return {**requires, "loader": max(need, requires.get("loader", 0))}
+
+
 def running_cli_version() -> int:
     from rsmm.engine.cli_update import own_stamp
     return own_stamp()[0]

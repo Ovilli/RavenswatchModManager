@@ -60,7 +60,7 @@
           "description": "Game build this mod needs."
         },
         "min_loader": {
-          "description": "Oldest loader version this mod works with."
+          "description": "Oldest loader version this mod works with (e.g. 58 or \">=58\"); checked at apply like [requires] loader."
         },
         "load_order": {
           "type": "integer",

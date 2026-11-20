@@ -131,9 +131,10 @@ def lint_one(entry: Path) -> tuple[int, int]:
     warns += _lint_store_metadata(mod_s, m)
     warns += _report_unknown(mod_s, "[mod]", m, MS.MOD_FIELDS, warn=True)
     warns += _report_unknown(mod_s, "top level", t, MS.TOP_LEVEL, warn=True)
-    from rsmm.engine.mod_requires import parse_requires
+    from rsmm.engine.mod_requires import parse_min_loader, parse_requires
     try:
         parse_requires(t.get("requires"))
+        parse_min_loader(m.get("min_loader"))
     except ValueError as e:
         print(f"  {_T_FAIL} {mod_s}: {e}")
         errs += 1

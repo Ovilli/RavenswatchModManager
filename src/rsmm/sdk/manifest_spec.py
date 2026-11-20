@@ -123,7 +123,8 @@ MOD_FIELDS: dict[str, str] = {
     "homepage_url": "Homepage URL.",
     "tags": "Store discovery tags (≤16, each ≤32 chars).",
     "game_build": "Game build this mod needs.",
-    "min_loader": "Oldest loader version this mod works with.",
+    "min_loader": "Oldest loader version this mod works with (e.g. 58 or \">=58\"); "
+                  "checked at apply like [requires] loader.",
     "load_order": "Lower loads first (default 100); later wins a conflict.",
     "priority": "Tie-breaker within one load_order.",
     "requires": "Mods that must be installed: [\"other-mod >=1.0\"].",
