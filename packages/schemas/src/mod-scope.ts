@@ -69,6 +69,8 @@ export function isClientOnlyAsset(decoded: string): boolean {
   const p = decoded.replace(/\\/g, '/');
   const name = p.slice(p.lastIndexOf('/') + 1);
   if (name.endsWith('.Texture.dxt') || name.endsWith('.Texture.nrm')) return true;
+  // A cooked mesh: same resource name, drawn on this machine only.
+  if (name.endsWith('.Geometry.gen')) return true;
   if (p.startsWith('Audio/') && name.endsWith('.bank')) return true;
   return p.startsWith('Text/') && name.endsWith('.LocalText.gen');
 }
@@ -238,21 +240,48 @@ export function luaReasons(src: string): string[] {
   return [...reasons].sort();
 }
 
+/** `[[content]]` kinds whose whole output is a presentation-only asset
+ *  (engine: CLIENT_KINDS). `mesh` cooks one .Geometry.gen over a shipped mesh. */
+export const CLIENT_KINDS: ReadonlySet<string> = new Set(['mesh']);
+
 /** Why a manifest.toml changes the game: `[[content]]` or `[[patch]]` blocks
- *  (or those keys written any other TOML way, at the top level). */
+ *  (or those keys written any other TOML way, at the top level). A
+ *  `[[content]]` block counts unless its own `kind = "..."` line names a
+ *  CLIENT_KINDS kind; a sub-table (`[content.transform]`) of a block is part
+ *  of it, and one with no block before it counts on its own. */
 export function manifestReasons(text: string): string[] {
   const reasons: string[] = [];
   let content = 0;
   let patch = 0;
   let topLevel = true;
+  // The [[content]] block being read; `kind` is '' when it is set twice.
+  let block: { kind: string | null } | null = null;
+  let atBlockRoot = false;
+  const closeBlock = () => {
+    if (block && !(block.kind && CLIENT_KINDS.has(block.kind))) content += 1;
+    block = null;
+  };
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     const header = /^\[\[?\s*["']?([A-Za-z_][\w-]*)["']?\s*[\].]/.exec(line);
     if (header) {
       topLevel = false;
-      if (header[1] === 'content') content += 1;
+      atBlockRoot = false;
+      const sub = header[1] === 'content' && /^\[\s*["']?content["']?\s*\./.test(line);
+      if (sub && block) continue; // [content.x] belongs to the current block
+      closeBlock();
+      if (header[1] === 'content') {
+        if (/^\[\[\s*["']?content["']?\s*\]\]/.test(line)) {
+          block = { kind: null };
+          atBlockRoot = true;
+        } else content += 1;
+      }
       if (header[1] === 'patch') patch += 1;
       continue;
+    }
+    if (atBlockRoot && block) {
+      const kind = /^["']?kind["']?\s*=\s*(["'])([^"']*)\1\s*(#.*)?$/.exec(line);
+      if (kind) block.kind = block.kind === null ? (kind[2] as string) : '';
     }
     if (topLevel) {
       const key = /^["']?(content|patch)["']?\s*[=.]/.exec(line);
@@ -260,6 +289,7 @@ export function manifestReasons(text: string): string[] {
       if (key?.[1] === 'patch') patch += 1;
     }
   }
+  closeBlock();
   if (content) reasons.push(`adds or changes game content (${content} [[content]] entries)`);
   if (patch) reasons.push(`patches game data (${patch} [[patch]] entries)`);
   return reasons;

@@ -171,11 +171,17 @@ MANIFEST_CASES = [
     '[mod]\nid = "a"\n\n[[patch]]\ntarget = "x"\n',
     'content = [{ kind = "hero" }]\n[mod]\nid = "a"\n',
     '[mod]\nid = "a"\n\n[overlay]\ncontent = "hud"\n',
+    # A mesh swap is presentation; any other block beside it is not.
+    '[mod]\nid = "a"\n\n[[content]]\nkind = "mesh"\ntarget = "X.fbx"\n\n'
+    '[content.transform]\nkind = "hero"\nskin = "gltf"\n',
+    '[mod]\nid = "a"\n\n[[content]]\nkind = "mesh"\n\n[[content]]\nkind = "item"\n',
+    '[mod]\nid = "a"\n\n[[content]]\ntarget = "X.fbx"\n\n[content.transform]\nkind = "mesh"\n',
 ]
 ASSET_CASES = [
     "3D/Characters/x.tga.Texture.dxt", "Audio/Music.bank", "Text/Common~GAM.xls.LocalText.gen",
     "EntitySettings/Heroes/Hero_X.entity.ot.EntitySettingsResource.gen",
     "Definitions/Heroes/X.herodef.ot.DtHeroDefinition.gen", "_root/DarkTalesResources/x.ot",
+    "3D/Characters/Heroes/X/X_GEO.fbx.Geometry.gen",
 ]
 
 
@@ -210,3 +216,4 @@ def test_the_store_lists_the_same_client_only_sdk_calls():
         return set(re.findall(r"'([\w.]+)'", block.group(1)))
     assert names("CLIENT_NAMESPACES") == set(MS.CLIENT_NAMESPACES)
     assert names("CLIENT_CALLS") == set(MS.CLIENT_CALLS)
+    assert names("CLIENT_KINDS") == set(MS.CLIENT_KINDS)

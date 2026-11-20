@@ -184,7 +184,7 @@ def test_comments_and_strings_are_not_code():
     ("Audio/Music.bank", True),
     ("Text/Refugees~GAM.xls.LocalText.gen", True),
     ("Definitions/Heroes/Merlin.herodef.ot.DtHeroDefinition.gen", False),
-    ("3D/Characters/Enemies\\X\\X_GEO.fbx.Geometry.gen", False),  # a model, not a texture
+    ("3D/Characters/Enemies\\X\\X_GEO.fbx.Geometry.gen", True),  # a model swap: drawn only
     ("Audio/Not/A/Bank.gen", False),
 ])
 def test_asset_families(path, ok):
@@ -204,8 +204,16 @@ def test_a_texture_swap_is_client_only(tmp_path):
     assert classify_mod_dir(mod).client_only
 
 
+def test_a_mesh_skin_is_client_only(tmp_path):
+    mod = make_mod(tmp_path / "skin",
+                   manifest='[[content]]\nkind = "mesh"\ntarget = "X.fbx"\nmodel = "a.glb"\n',
+                   assets=("3D/X/X_GEO.fbx.Geometry.gen", "3D/X/T_A_ALB.tga.Texture.dxt"))
+    assert classify_mod_dir(mod).client_only
+
+
 @pytest.mark.parametrize("manifest", [
     '[[content]]\nkind = "item"\n',
+    '[[content]]\nkind = "mesh"\n\n[[content]]\nkind = "item"\n',
     '[[patch]]\ntarget = "x"\n',
 ])
 def test_content_and_patches_are_gameplay(tmp_path, manifest):
