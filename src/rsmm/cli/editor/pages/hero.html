@@ -1467,7 +1467,10 @@ $("save").addEventListener("click", async () => {
         S.problems = j.problems; draw(); tellShell();
         setStatus(j.problems.length ? "bad" : "ok", j.problems.length
           ? `Saved ${j.block} in ${j.mod}, with ${j.problems.length} problem${j.problems.length === 1 ? "" : "s"} rsmm apply will refuse (see the Hero section).`
-          : `✓ Saved ${j.block} in ${j.mod}. Then: rsmm restore --all, rsmm apply, rsmm install-loader, and find it on the hero select screen.`);
+          : window.RSMM_HOSTED
+            // The web editor keeps the mod in this page and hands it over as a zip.
+            ? `✓ Saved ${j.block} in ${j.mod}: ${j.mod}.zip is downloading. Unzip it into your mods folder, then rsmm restore --all, rsmm apply, rsmm install-loader, and find it on the hero select screen.`
+            : `✓ Saved ${j.block} in ${j.mod}. Then: rsmm restore --all, rsmm apply, rsmm install-loader, and find it on the hero select screen.`);
         return;
       } catch (e) { if (!got) throw e; error = e.message; }
     }

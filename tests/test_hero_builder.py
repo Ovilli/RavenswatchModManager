@@ -182,6 +182,7 @@ def test_a_saved_hero_is_handed_to_the_web_editor_as_a_download(mods):
     from pathlib import Path
     page = (Path(__file__).resolve().parents[1] / "apps/docs/src/pages/editor/index.astro"
             ).read_text(encoding="utf-8")
-    assert "saved = j.saved" in page and r"mods\/([^/]+)\/manifest\.toml$" in page
+    assert "j.mod" in page and "j.saved" in page            # what afterSave reads
     got = HB._save(_req(mods, {"mod": "m", "block": "Nyx", "hero": _block(mods)}))
+    assert got["mod"] == "m"
     assert got["saved"] == str(mods / "m" / "manifest.toml")    # <mods>/<id>/manifest.toml
