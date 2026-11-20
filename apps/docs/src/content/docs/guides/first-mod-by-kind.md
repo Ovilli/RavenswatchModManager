@@ -1306,7 +1306,7 @@ bottom:
 
 ```toml
 [content.kit]
-form = "wolf"                      # Scarlet-type heroes: "wolf" or "human"
+form = { lock = "alt" }            # two-form heroes (Scarlet): "alt" or "base"
 dash = "none"
 power = { replace = true, steps = [
     { anim = "Characters\\Heroes\\RED\\Animations\\Skills\\RED_Wolf_Dash_Default.fbx" },
