@@ -740,7 +740,7 @@ def _lint_content(modname: str, blocks: list[dict],
             # surface. A mod carrying the picker is edited through it — the
             # manifest is a mirror — and "nothing banned" is a state the player
             # can legitimately be in, which `_emit_ban` already accepts. Failing
-            # it here made the shippable state of the managed `banned-items` mod
+            # it here made the shippable state of the managed item-ban mod
             # unlintable.
             if not c.get("items") and not _has_ban_picker(mod_root):
                 print(f"  {_T_FAIL} {_ST.bold(modname)}: item "
