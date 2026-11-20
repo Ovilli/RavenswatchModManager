@@ -33,8 +33,24 @@ from pathlib import Path
 
 from rsmm.engine import net
 from rsmm.engine.paths import MODS_DIR
-from rsmm.sdk.archive import require_single_top_dir, safe_dir_name, safe_extract, scan_dangerous
-from rsmm.sdk.repo import RepoError, RepoIndex, check_entry, confirm_untrusted
+from rsmm.sdk.archive import (
+    ArchiveError,
+    archive_mod_id,
+    require_same_mod,
+    require_single_top_dir,
+    safe_dir_name,
+    safe_extract,
+    scan_dangerous,
+)
+from rsmm.sdk.repo import (
+    RepoError,
+    RepoIndex,
+    check_entry,
+    check_unsigned,
+    confirm_untrusted,
+    pin_lock,
+    record_pin,
+)
 
 # Reuse the same locations the `repo`/`sign` commands use.
 from .repo_cmd import KEYS_DIR, _load_repos
@@ -212,45 +228,63 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _finish(data: bytes, entry, no_verify: bool, force: bool, yes: bool = False) -> int:
-    # SHA256 + signature + the signer pinned for this mod. Verified from the
-    # digest in memory: no temp file to reopen (Windows refused the reopen of a
-    # NamedTemporaryFile, which failed every signed install there).
-    if not no_verify:
-        if entry is None:
-            if not confirm_untrusted("direct archive URL (no index entry, no checksum)", yes):
-                return 1
-        else:
-            try:
-                trust = check_entry(hashlib.sha256(data).hexdigest(), entry, KEYS_DIR)
-            except RepoError as e:
-                print(f"refusing {entry.id}: {e}", file=sys.stderr)
-                return 1
-            print(f"  verify: {trust.reason}")
-            if not trust.ok:
-                print(f"refusing {entry.id}", file=sys.stderr)
-                return 1
-            if trust.warn and not confirm_untrusted(f"{entry.id} ({trust.reason})", yes):
-                return 1
-
-    # Peek the mod id without extracting, to honor --force / collisions.
+    # One destination identity: the folder the archive lands in. The index
+    # entry and the manifest have to name the same mod, and the signer pin
+    # consulted is that folder's, on every route (#229 review).
     try:
         mod_id = _peek_mod_id(data)
-    except (RepoError, zipfile.BadZipFile) as e:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            _top, manifest_id = archive_mod_id(zf)
+        require_same_mod(mod_id, the_manifest_id=manifest_id,
+                         the_index_entry=entry.id if entry else None)
+    except (RepoError, ArchiveError, zipfile.BadZipFile) as e:
         print(f"install failed: {e}", file=sys.stderr)
-        return 1
-    if (MODS_DIR / mod_id).exists() and not force:
-        print(f"{mod_id} already installed at {MODS_DIR / mod_id}; "
-              f"use --force to overwrite", file=sys.stderr)
         return 1
 
-    # The old code deleted the destination here, before extracting. Deleting
-    # is now _safe_extract's last step, after a full staged unpack succeeded,
-    # so a bad archive can no longer remove a working install.
-    try:
-        installed = _safe_extract(data, MODS_DIR)
-    except (RepoError, zipfile.BadZipFile) as e:
-        print(f"install failed: {e}", file=sys.stderr)
-        return 1
+    # The lock spans the decision, the install and the pin it records, so a
+    # concurrent install cannot pin the same mod to another signer meanwhile.
+    with pin_lock(KEYS_DIR):
+        try:
+            if entry is not None and not no_verify:
+                # SHA256 + signature + pin, from the digest in memory: no temp
+                # file to reopen (Windows refused the NamedTemporaryFile reopen).
+                trust = check_entry(hashlib.sha256(data).hexdigest(), entry, KEYS_DIR,
+                                    dest_id=mod_id)
+            else:
+                what = ("--no-verify install" if no_verify
+                        else "direct archive URL (no index entry, no checksum)")
+                trust = check_unsigned(mod_id, KEYS_DIR, what)
+        except RepoError as e:
+            print(f"refusing {mod_id}: {e}", file=sys.stderr)
+            return 1
+        print(f"  verify: {trust.reason}")
+        if not trust.ok:
+            print(f"refusing {mod_id}", file=sys.stderr)
+            return 1
+        # --no-verify is the user's own answer to "install unverified?".
+        if trust.warn and not no_verify and not confirm_untrusted(
+                f"{mod_id} ({trust.reason})", yes):
+            return 1
+
+        if (MODS_DIR / mod_id).exists() and not force:
+            print(f"{mod_id} already installed at {MODS_DIR / mod_id}; "
+                  f"use --force to overwrite", file=sys.stderr)
+            return 1
+
+        # The old code deleted the destination here, before extracting. Deleting
+        # is now _safe_extract's last step, after a full staged unpack succeeded,
+        # so a bad archive can no longer remove a working install.
+        try:
+            installed = _safe_extract(data, MODS_DIR)
+        except (RepoError, zipfile.BadZipFile) as e:
+            print(f"install failed: {e}", file=sys.stderr)
+            return 1
+        # Pinned only now: a rejected archive or a refused overwrite must not
+        # bind the mod's future updates to a signer that never installed.
+        try:
+            record_pin(KEYS_DIR, trust)
+        except RepoError as e:
+            print(f"  [warn] {e}", file=sys.stderr)
     print(f"installed {installed} -> {MODS_DIR / installed}")
     return 0
 

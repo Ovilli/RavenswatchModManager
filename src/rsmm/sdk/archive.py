@@ -200,6 +200,40 @@ def require_single_top_dir(zf: zipfile.ZipFile, *, what: str = "mod id") -> str:
     return safe_dir_name(top, what=what)
 
 
+def archive_mod_id(zf: zipfile.ZipFile) -> tuple[str | None, str | None]:
+    """``(top dir, manifest [mod].id)`` of an archive, each None when absent.
+
+    Install, update and the desktop app replace a folder under ``mods/`` and
+    pin a signer to a mod id; both have to be the SAME mod, so callers check
+    these against each other with :func:`require_same_mod`.
+    """
+    import tomllib
+    top = single_top_dir(zf)
+    name = f"{top}/manifest.toml" if top else "manifest.toml"
+    try:
+        raw = zf.read(name)
+    except KeyError:
+        return top, None
+    try:
+        mid = tomllib.loads(raw.decode("utf-8")).get("mod", {}).get("id")
+    except (UnicodeDecodeError, ValueError, AttributeError):
+        # Names no mod, so it cannot name a different one; apply refuses to
+        # load it anyway.
+        return top, None
+    return top, (mid if isinstance(mid, str) and mid else None)
+
+
+def require_same_mod(dest: str, **ids: str | None) -> None:
+    """Raise unless every given id names ``dest`` (case-insensitively: one
+    folder on Windows). The index entry, the archive folder and the manifest
+    id used to be trusted separately, so a mislabelled entry could check one
+    mod's signer pin and replace another."""
+    for what, mid in ids.items():
+        if mid is not None and mid.casefold() != dest.casefold():
+            raise ArchiveError(f"{what.replace('_', ' ')} is {mid!r} but the install "
+                               f"replaces {dest!r}; refusing")
+
+
 def classify_members(names: Iterable[str]) -> tuple[list[str], list[str]]:
     """Split archive member names into ``(blocked, root_overlays)``.
 

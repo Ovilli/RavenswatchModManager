@@ -36,8 +36,24 @@ from pathlib import Path
 from rsmm.engine import net
 from rsmm.engine.paths import MODS_DIR
 from rsmm.sdk.api import _parse_v
-from rsmm.sdk.archive import safe_dir_name, safe_extract, scan_dangerous, single_top_dir
-from rsmm.sdk.repo import RepoError, RepoIndex, check_entry, confirm_untrusted, sha256_file
+from rsmm.sdk.archive import (
+    ArchiveError,
+    archive_mod_id,
+    require_same_mod,
+    safe_dir_name,
+    safe_extract,
+    scan_dangerous,
+    single_top_dir,
+)
+from rsmm.sdk.repo import (
+    RepoError,
+    RepoIndex,
+    check_entry,
+    confirm_untrusted,
+    pin_lock,
+    record_pin,
+    sha256_file,
+)
 
 REPOS_FILE = Path.home() / ".rsmm" / "repos.json"
 KEYS_DIR = Path.home() / ".rsmm" / "keys"
@@ -82,9 +98,16 @@ def _installed_mods() -> dict[str, str]:
         try:
             tbl = tomllib.loads(mf.read_text(encoding="utf-8"))
             meta = tbl.get("mod", {})
-            out[str(meta.get("id", entry.name))] = str(meta.get("version", "0.0.0"))
         except (OSError, ValueError):
-            pass
+            continue
+        mid = str(meta.get("id", entry.name))
+        # The update replaces the FOLDER and checks the pin of the id, so the
+        # two have to be one mod; a mismatch is left alone, not guessed at.
+        if mid.casefold() != entry.name.casefold():
+            print(f"  [warn] {entry.name}/ holds mod {mid!r}; not updating it",
+                  file=sys.stderr)
+            continue
+        out[entry.name] = str(meta.get("version", "0.0.0"))
     return out
 
 
@@ -111,6 +134,8 @@ def _install_zip(zip_path: Path, mod_id: str, dry_run: bool) -> None:
         staging = Path(td) / "unpack"
         staging.mkdir()
         with zipfile.ZipFile(zip_path) as zf:
+            top, manifest_id = archive_mod_id(zf)
+            require_same_mod(mod_id, the_archive_folder=top, the_manifest_id=manifest_id)
             _validate_zip_content(zf, mod_id)
             # A packed archive carries its own `<id>/` top-level dir; a
             # hand-rolled one may be flat. Strip the former so `staging` is
@@ -198,26 +223,34 @@ def main(argv: list[str] | None = None) -> int:
             f.write(data)
             zp = Path(f.name)
         try:
-            try:
-                trust = check_entry(sha256_file(zp), entry, KEYS_DIR)
-            except RepoError as e:
-                trust = None
-                print(f"  verify: {e}")
-            if trust is not None:
-                print(f"  verify: {trust.reason}")
-            if trust is None or not trust.ok:
-                print(f"  refusing to install {mid}", file=sys.stderr)
-                code = 1
-                continue
-            if trust.warn and not confirm_untrusted(f"{mid} ({trust.reason})", args.yes):
-                print(f"  skipped {mid}")
-                continue
-            try:
-                _install_zip(zp, mid, args.dry_run)
-            except RepoError as e:
-                print(f"  refusing to install {mid}: {e}", file=sys.stderr)
-                code = 1
-                continue
+            # The lock spans the decision, the install and the pin it records.
+            with pin_lock(KEYS_DIR):
+                try:
+                    trust = check_entry(sha256_file(zp), entry, KEYS_DIR, dest_id=mid)
+                except RepoError as e:
+                    trust = None
+                    print(f"  verify: {e}")
+                if trust is not None:
+                    print(f"  verify: {trust.reason}")
+                if trust is None or not trust.ok:
+                    print(f"  refusing to install {mid}", file=sys.stderr)
+                    code = 1
+                    continue
+                if trust.warn and not confirm_untrusted(f"{mid} ({trust.reason})", args.yes):
+                    print(f"  skipped {mid}")
+                    continue
+                try:
+                    _install_zip(zp, mid, args.dry_run)
+                except (RepoError, ArchiveError) as e:
+                    print(f"  refusing to install {mid}: {e}", file=sys.stderr)
+                    code = 1
+                    continue
+                # Pinned only once the version is in place (not on a dry run).
+                if not args.dry_run:
+                    try:
+                        record_pin(KEYS_DIR, trust)
+                    except RepoError as e:
+                        print(f"  [warn] {e}", file=sys.stderr)
             print(f"  installed {mid} -> {entry.version}")
         finally:
             try:

@@ -537,7 +537,8 @@ def test_update_refuses_lua_primitives_and_keeps_going(tmp_path, monkeypatch, ca
     monkeypatch.setattr(update_cmd, "_fetch", lambda url: (
         _json.dumps(index).encode() if url == "idx" else zips[url]))
     monkeypatch.setattr(update_cmd, "check_entry",
-                        lambda *a: Trust(ok=True, warn=False, reason="ok"))
+                        lambda *a, **kw: Trust(ok=True, warn=False, reason="ok"))
+    monkeypatch.setattr(update_cmd, "KEYS_DIR", tmp_path / "keys")
     assert update_cmd.main([]) == 1
     err = capsys.readouterr().err
     assert "refusing to install A" in err and "low-level primitives" in err
