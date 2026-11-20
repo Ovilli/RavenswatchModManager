@@ -54,7 +54,15 @@ export function useDeclaredOverlays(enabled = true) {
   });
 }
 
-export function OverlayButton({ modId, className }: { modId: string; className?: string }) {
+export function OverlayButton({
+  modId,
+  className,
+  iconOnly = false,
+}: {
+  modId: string;
+  className?: string;
+  iconOnly?: boolean;
+}) {
   const t = useT();
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -97,6 +105,7 @@ export function OverlayButton({ modId, className }: { modId: string; className?:
               .join('\n')
       }
       aria-pressed={isOpen}
+      aria-label={iconOnly ? `${isOpen ? t('Hide overlay') : t('Overlay')} — ${name}` : undefined}
       className={className}
       onClick={(e) => {
         // An overlay reopens where it was left, so a window dragged off a
@@ -136,7 +145,8 @@ export function OverlayButton({ modId, className }: { modId: string; className?:
         })();
       }}
     >
-      <Gauge className="h-4 w-4" /> {isOpen ? t('Hide overlay') : t('Overlay')}
+      <Gauge className="h-4 w-4" aria-hidden />
+      {iconOnly ? null : isOpen ? t('Hide overlay') : t('Overlay')}
     </Button>
   );
 }

@@ -19,6 +19,7 @@
   display: flex;
   flex-direction: column;
   gap: .75rem;
+  container-type: inline-size;
 }
 
 .mod-card{--mod-card-secondary:hsl(32 17% 68%);display:flex;flex-direction:column;min-width:0;width:100%;background:transparent}
@@ -57,24 +58,62 @@
 .mod-card-star{font-size:1.125rem;color:hsl(var(--gilt))}
 .mod-card-downloads{display:inline-flex;align-items:center;flex-wrap:wrap;gap:.5rem;color:var(--mod-card-secondary);font-size:.875rem;line-height:1.3;font-variant-numeric:tabular-nums}
 .mod-card-downloads svg{flex-shrink:0}
-.mod-card-list{display:flex;flex-direction:row;align-items:center;gap:.75rem;padding:.5rem .75rem;border-radius:12px;transition:background-color 150ms ease-out}
+.mod-card-list{--mod-list-columns:[art] 4rem [identity] minmax(0,1fr) [category] 6rem [rating] 3.5rem [count] 5rem [actions] 7.5rem;display:grid;grid-template-columns:var(--mod-list-columns);align-items:center;gap:.75rem;padding:.5rem .75rem;border-radius:12px;transition:background-color 150ms ease-out}
+.mod-card-list[data-list-layout="custom"]{--mod-list-columns:[art] 4rem [identity] minmax(0,1fr) [controls] 19.5rem}
+.mod-card-list[data-list-layout="custom"]:has(.mod-card-list-leading){--mod-list-columns:[leading] 5.25rem [art] 4rem [identity] minmax(0,1fr) [controls] 19.5rem}
 .mod-card-list:hover,.mod-card-list.is-active{background:hsl(var(--surface-1))}
-.mod-card-list-link{display:flex;flex:1;min-width:0;align-items:center;gap:.75rem;color:inherit;text-decoration:none}
-.mod-card-list-art{display:none;width:4rem;height:2.5rem;flex-shrink:0;overflow:hidden;border-radius:4px;background:hsl(var(--surface-2))}
+.mod-card-list:has(>.mod-card-list-link){display:block}
+.mod-card-list-link{display:grid;grid-template-columns:var(--mod-list-columns);min-width:0;align-items:center;gap:.75rem;color:inherit;text-decoration:none}
+.mod-card-list-art{grid-column:art;width:4rem;height:2.5rem;overflow:hidden;border-radius:4px;background:hsl(var(--surface-2))}
 .mod-card-list-art img,.mod-card-list-art>div{width:100%;height:100%;object-fit:cover}
-.mod-card-list-identity{flex:1;min-width:0}
-.mod-card-list-name{display:flex;align-items:baseline;gap:8px;min-width:0}
+.mod-card-list-identity{grid-column:identity;min-width:0}
+.mod-card-list-name{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:8px;row-gap:4px;min-width:0}
 .mod-card-list-name h2,.mod-card-list-name h3{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1rem}
 .mod-card-list-name>span{flex-shrink:0;color:hsl(var(--gilt))}
 .mod-card-list-identity>p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--mod-card-secondary);font-size:.75rem}
-.mod-card-list-category,.mod-card-list-rating,.mod-card-list-downloads{display:none;flex-shrink:0;font-size:.75rem}
-.mod-card-list-category{width:6rem;color:hsl(var(--foreground));}
-.mod-card-list-rating{width:3.5rem;text-align:right;color:hsl(var(--gilt));}
-.mod-card-list-downloads{width:5rem;text-align:right;color:var(--mod-card-secondary);}
-.mod-card-list-actions{display:flex;flex-shrink:0;align-items:center;gap:4px}
-@media(min-width:640px){.mod-card-list-art{display:block}}
-@media(min-width:768px){.mod-card-list-category{display:block}}
-@media(min-width:1024px){.mod-card-list-rating,.mod-card-list-downloads{display:block}}
+.mod-card-list-category,.mod-card-list-rating,.mod-card-list-downloads,.mod-card-list-count{min-width:0;font-size:.75rem}
+.mod-card-list-category{grid-column:category;color:hsl(var(--foreground));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mod-card-list-rating{grid-column:rating;text-align:right;color:hsl(var(--gilt))}
+.mod-card-list-downloads,.mod-card-list-count{grid-column:count;text-align:right;color:var(--mod-card-secondary);overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.mod-card-list-actions{grid-column:actions;display:flex;min-width:0;align-items:center;justify-content:flex-end;gap:4px}
+.mod-card-list-actions>.registry-install-button{width:100%;white-space:normal}
+.mod-card-list-leading{grid-column:leading;display:flex;align-items:center;gap:.75rem}
+.mod-card-list-badges{display:flex;flex-wrap:wrap;gap:.5rem}
+/* Contextual metadata and actions keep their cells even when a control is absent. */
+.mod-card-list-controls{grid-column:controls;display:grid;grid-template-columns:minmax(0,1fr) 7.25rem;align-items:center;gap:.75rem;width:19.5rem;max-width:100%}
+.mod-card-list-metadata{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:center;gap:.5rem;min-width:0;color:var(--mod-card-secondary);font-size:.75rem;font-variant-numeric:tabular-nums}
+.mod-card-list-version{grid-column:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mod-card-list-update{grid-column:2;display:flex;justify-content:flex-end;min-width:0}
+.mod-card-list-update>span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mod-card-list-controls .mod-card-list-actions{grid-column:auto;display:grid;grid-template-columns:repeat(3,2.25rem);gap:.25rem;justify-items:center}
+.mod-card-list-action-slot{display:flex;align-items:center;justify-content:center;width:2.25rem;min-width:0}
+.mod-card-list-actions [data-action="overlay"]{grid-column:1}
+.mod-card-list-actions [data-action="config"]{grid-column:2}
+.mod-card-list-actions [data-action="uninstall"]{grid-column:3}
+.mod-card-list-controls .mod-card-list-actions button{width:2.25rem;height:2.25rem;min-width:0;justify-content:center;padding:0}
+/* Reveal row actions without collapsing their columns or removing keyboard access. */
+@media(hover:hover) and (pointer:fine){
+  .mod-card-list-actions{opacity:0;pointer-events:none}
+  .mod-card-list:hover .mod-card-list-actions,.mod-card-list:focus-visible .mod-card-list-actions,.mod-card-list:has(:focus-visible) .mod-card-list-actions{opacity:1;pointer-events:auto}
+}
+/* Adapt the entire list at once; missing values never choose a row's layout. */
+@container(max-width:48rem){
+  .mod-card-list[data-list-layout="registry"]{--mod-list-columns:[art] 4rem [identity] minmax(0,1fr) [count] 5rem [actions] 7.5rem}
+  .mod-card-list-category,.mod-card-list-rating{display:none}
+  .mod-card-list[data-list-layout="custom"]{--mod-list-columns:[art] 4rem [identity] minmax(0,1fr)}
+  .mod-card-list[data-list-layout="custom"]:has(.mod-card-list-leading){--mod-list-columns:[leading] 5.25rem [art] 4rem [identity] minmax(0,1fr)}
+  .mod-card-list-controls{grid-column:1/-1;grid-row:2;justify-self:end}
+}
+@container(max-width:36rem){
+  .mod-card-list[data-list-layout="registry"]{--mod-list-columns:[art] 4rem [identity] minmax(0,1fr) [actions] 7.5rem}
+  .mod-card-list-downloads,.mod-card-list-count{display:none}
+}
+@container(max-width:24rem){
+  .mod-card-list-art{display:none}
+  .mod-card-list[data-list-layout="registry"]{--mod-list-columns:[identity] minmax(0,1fr) [actions] 7.5rem}
+  .mod-card-list[data-list-layout="custom"]{--mod-list-columns:[identity] minmax(0,1fr)}
+  .mod-card-list[data-list-layout="custom"]:has(.mod-card-list-leading){--mod-list-columns:[leading] 5.25rem [identity] minmax(0,1fr)}
+}
 @media(prefers-reduced-motion:reduce){.mod-card .mod-card-identity h2,.mod-card .mod-card-identity h3,.mod-card-actions--overlay .registry-install-button,.mod-card-actions--overlay .registry-install-label{transition:none}}
 
 /* Shared registry search and filter controls used by the website and desktop client. */
@@ -99,6 +138,7 @@
 .registry-view-switch{display:flex;gap:4px;padding-left:16px;border-left:1px solid hsl(var(--char)/.6)}
 .registry-icon-button{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:40px;height:40px;border-radius:8px;color:hsl(32 17% 68%)}
 .registry-icon-button:hover,.registry-icon-button[aria-pressed="true"]{color:hsl(var(--parchment));background:hsl(var(--surface-2))}
+.registry-icon-button[data-variant="danger"]:hover{color:hsl(var(--crimson-text))}
 .registry-chip{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;gap:8px;min-height:44px;padding:9px 18px;border:1px solid hsl(var(--char));border-radius:999px;font-size:.9375rem;line-height:1.4;white-space:nowrap;transition:background-color 140ms ease-out,border-color 140ms ease-out}
 .registry-chip:hover{background:hsl(var(--surface-2));border-color:hsl(var(--parchment)/.5)}
 .registry-chip[aria-pressed="true"]{background:hsl(var(--crimson)/.2);border-color:hsl(var(--crimson-text))}

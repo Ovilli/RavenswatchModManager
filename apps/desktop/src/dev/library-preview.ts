@@ -1,10 +1,15 @@
+import heroOne from '../assets/library-heroes/hero-1.png';
+import heroTwo from '../assets/library-heroes/hero-2.png';
+import heroThree from '../assets/library-heroes/hero-3.png';
+import heroFour from '../assets/library-heroes/hero-4.png';
+import type { LocalMod, ModConfigField, ModConfigResponse, ModConfigValue } from '../lib/rsmm';
 /** Fictional fixtures for the development-only Library preview. */
 import { type Profile, useApp } from '../store';
-import type { LocalMod, ModConfigField, ModConfigResponse, ModConfigValue } from '../lib/rsmm';
 
 type Fixture = Pick<LocalMod, 'id' | 'name' | 'summary' | 'tags'> &
   Partial<LocalMod> & {
     latestVersion?: string;
+    image?: string;
   };
 
 const fixtures: Fixture[] = [
@@ -19,7 +24,8 @@ const fixtures: Fixture[] = [
     id: 'expanded-talents',
     name: 'Expanded Talents',
     summary: 'New talent combinations and alternate upgrade paths for every hero.',
-    tags: ['gameplay'],
+    tags: ['gameplay', 'private-only'],
+    image: heroOne,
     version: '1.3.0',
     latestVersion: '1.4.2',
     hasConfig: true,
@@ -30,13 +36,15 @@ const fixtures: Fixture[] = [
     name: 'Scarlet Reimagined',
     summary: 'A fresh take on Scarlet’s day and night forms, with new combat rhythms.',
     tags: ['gameplay'],
+    image: heroTwo,
     hasConfig: true,
   },
   {
     id: 'nightmare-plus',
     name: 'Nightmare+',
     summary: 'Denser encounters, tougher elites, and a little less room for mistakes.',
-    tags: ['difficulty'],
+    tags: ['difficulty', 'private-only'],
+    image: heroThree,
     version: '3.1.0',
     hasConfig: true,
   },
@@ -74,6 +82,7 @@ const fixtures: Fixture[] = [
     name: 'Moonlit Cloaks',
     summary: 'Cool silver and midnight blue outfits for the heroes of Reverie.',
     tags: ['cosmetic'],
+    image: heroFour,
     writes: ['heroes/scarlet/cloak.texture'],
   },
   {
@@ -81,6 +90,7 @@ const fixtures: Fixture[] = [
     name: 'Crimson Scarlet',
     summary: 'A deep crimson cloak with subtle embroidered details for Scarlet.',
     tags: ['cosmetic'],
+    image: heroTwo,
     writes: ['heroes/scarlet/cloak.texture'],
   },
   {
@@ -88,6 +98,7 @@ const fixtures: Fixture[] = [
     name: 'Balanced Dreams',
     summary: 'Gentle adjustments to underused talents and magical objects.',
     tags: ['balance'],
+    image: heroOne,
     version: '0.9.0',
     latestVersion: '1.0.0',
     enabled: false,
@@ -96,7 +107,7 @@ const fixtures: Fixture[] = [
     id: 'generous-wishing-well',
     name: 'Generous Wishing Well',
     summary: 'More rewards from wishing wells, with a configurable price to match.',
-    tags: ['balance'],
+    tags: ['balance', 'private-only'],
     hasConfig: true,
   },
   {
@@ -104,12 +115,13 @@ const fixtures: Fixture[] = [
     name: 'Reverie Soundscape',
     summary: 'Alternate ambient music for quieter moments between encounters.',
     tags: ['audio'],
+    image: heroThree,
   },
   {
     id: 'boss-rush',
     name: 'Boss Rush',
     summary: 'Face the nightmares back to back in a dedicated challenge run.',
-    tags: ['gameplay'],
+    tags: ['gameplay', 'private-only'],
     dependencies: { 'encounter-framework': '>=1.0' },
     enabled: false,
   },
@@ -124,7 +136,8 @@ const fixtures: Fixture[] = [
     id: 'practice-room',
     name: 'Practice Room',
     summary: 'Try builds, practice attack patterns, and reset encounters on demand.',
-    tags: ['utility'],
+    tags: ['utility', 'private-only'],
+    image: heroFour,
     enabled: false,
   },
 ];
@@ -253,16 +266,17 @@ export function previewCommand(
       const mods = structuredClone(folders.get(profileId) ?? []);
       useApp.getState().syncLocalMods(mods, profileId);
       if (profileId === useApp.getState().activeProfileId) {
-        useApp
-          .getState()
-          .patchRemoteInfo(
-            Object.fromEntries(
-              fixtures.map((mod) => [
-                mod.id,
-                { latestVersion: mod.latestVersion ?? mod.version ?? '1.0.0' },
-              ]),
-            ),
-          );
+        useApp.getState().patchRemoteInfo(
+          Object.fromEntries(
+            fixtures.map((mod) => [
+              mod.id,
+              {
+                latestVersion: mod.latestVersion ?? mod.version ?? '1.0.0',
+                image: mod.image,
+              },
+            ]),
+          ),
+        );
       }
       return mods;
     }

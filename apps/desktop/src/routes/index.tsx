@@ -1,26 +1,16 @@
-import { RegistryFilterDialog, RegistrySearchBar, RegistrySortControl } from '@rsmm/ui';
+import { hasPrivateOnlyTag } from '@rsmm/schemas';
+import {
+  RegistryFilterDialog,
+  RegistryListingCard,
+  RegistrySearchBar,
+  RegistrySortControl,
+} from '@rsmm/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
-import {
-  AlertTriangle,
-  ExternalLink,
-  GripVertical,
-  List,
-  SlidersHorizontal,
-  Trash2,
-} from 'lucide-react';
+import { AlertTriangle, Rows3, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import {
-  Button,
-  CopyButton,
-  EmptyState,
-  Fleuron,
-  InkSwitch,
-  MonoTag,
-  Panel,
-  StatPill,
-} from '../components/chrome';
+import { Button, CopyButton, EmptyState, Fleuron, InkSwitch, MonoTag } from '../components/chrome';
 import { ConfigButton } from '../components/config-button';
 import { useConfirmDisableHook } from '../components/disable-hook-consent';
 import { LibraryEmptyState } from '../components/library-empty-state';
@@ -46,6 +36,7 @@ import {
   groupByCategory,
 } from '../lib/library-filter';
 import type { ModCategory } from '../lib/mod-types';
+import { registryCardLabels } from '../lib/registry-labels';
 import { disableHookWarning, listLocalMods, uninstallLocalMod } from '../lib/rsmm';
 import {
   activeProfile,
@@ -99,13 +90,7 @@ const STATUS_LABEL: Record<LibraryStatusFilter, string> = {
   missingDeps: msg('Missing deps'),
 };
 
-function LibraryHeader({
-  subtitle,
-  controls,
-}: {
-  subtitle?: string;
-  controls?: ReactNode;
-}) {
+function LibraryHeader({ controls }: { controls?: ReactNode }) {
   return (
     <header className="rsmm-section-header space-y-3 pb-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
@@ -114,7 +99,6 @@ function LibraryHeader({
         </div>
         {controls}
       </div>
-      {subtitle ? <p className="font-serif-italic text-base text-ash">{subtitle}</p> : null}
     </header>
   );
 }
@@ -139,7 +123,6 @@ function LibraryPage() {
   const [category, setCategory] = useState<ModCategory | 'all'>('all');
   const [status, setStatus] = useState<LibraryStatusFilter>('all');
   const [sort, setSort] = useState<LibrarySort>('load-order');
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dirtyConfigs, setDirtyConfigs] = useState<Set<string>>(new Set());
   const localModsState = useApp((s) => s.localMods);
   // Library is *profile-scoped*: a mod is in the user's library iff
@@ -152,10 +135,6 @@ function LibraryPage() {
     return [...cats];
   }, [localModsState]);
 
-  const enabledCount = useMemo(
-    () => profile.loadOrder.filter((id) => localModsState[id] && isEnabledIn(profile, id)).length,
-    [profile, localModsState],
-  );
   // Mods the CLI found on disk that this profile hasn't opted into — a mod
   // folder copied in by hand, or one installed while another profile was
   // active. Without surfacing these, dropping a folder into mods/ looked
@@ -198,23 +177,18 @@ function LibraryPage() {
     [category, localModsState, profile, query, sort, status],
   );
 
-  const grouped = useMemo(() => groupByCategory(filtered), [filtered]);
-
-  const selectedRows = useMemo(
-    () => filtered.filter((row) => selected.has(row.id)),
-    [filtered, selected],
-  );
-  const selectedMissingDeps = useMemo(
-    () => selectedRows.reduce((count, row) => count + row.missingDeps, 0),
-    [selectedRows],
-  );
+  const sections = useMemo(() => {
+    if (filtered.length === 0) return [];
+    return sort === 'category'
+      ? groupByCategory(filtered).map(([category, items]) => ({ category, items }))
+      : [{ category: null, items: filtered }];
+  }, [filtered, sort]);
 
   const missingDepCounts = useMemo(() => buildMissingDepCounts(filtered), [filtered]);
 
   // Search has its own clear control; the badge counts dialog filters only.
   const filterCount = countLibraryFilters({ category, status, query: '' });
   const hasDirtyConfigs = dirtyConfigs.size > 0;
-  const hasSelection = selected.size > 0;
   const markConfigDirty = useCallback((id: string, dirty: boolean) => {
     setDirtyConfigs((current) => {
       const next = new Set(current);
@@ -233,15 +207,6 @@ function LibraryPage() {
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [hasDirtyConfigs]);
-
-  useEffect(() => {
-    setSelected((current) => {
-      if (current.size === 0) return current;
-      const visibleIds = new Set(filtered.map((row) => row.id));
-      const next = new Set([...current].filter((id) => visibleIds.has(id)));
-      return next.size === current.size ? current : next;
-    });
-  }, [filtered]);
 
   const changeView = async (next: ViewMode) => {
     if (view === 'config' && next !== 'config' && hasDirtyConfigs) {
@@ -262,33 +227,9 @@ function LibraryPage() {
     void navigate({ to: '/', search: next === 'list' ? {} : { view: next }, replace: true });
   };
 
-  const clearSelection = useCallback(() => setSelected(new Set()), []);
-  const toggleSelected = useCallback((id: string) => {
-    setSelected((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-  const selectAllVisible = useCallback(() => {
-    setSelected(new Set(filtered.map((row) => row.id)));
-  }, [filtered]);
-
   // Shared with the mod detail page so both screens honour the same
   // dependency prompts.
-  const {
-    enableMods: requestEnableMods,
-    disableMods: requestDisableMods,
-    toggle: handleToggle,
-  } = useModToggle(clearSelection);
-
-  const bulkEnable = useCallback(() => {
-    void requestEnableMods([...selected]);
-  }, [requestEnableMods, selected]);
-  const bulkDisable = useCallback(() => {
-    void requestDisableMods([...selected]);
-  }, [requestDisableMods, selected]);
+  const { toggle: handleToggle } = useModToggle();
   const queryClient = useQueryClient();
   const refreshLocalMods = useCallback(async () => {
     const local = await listLocalMods();
@@ -350,62 +291,6 @@ function LibraryPage() {
     },
     [dialog, refreshLocalMods, removeLocalMod, t, toast, uninstallModStore],
   );
-
-  const bulkUninstall = useCallback(() => {
-    void (async () => {
-      const ids = [...selected];
-      if (ids.length === 0) return;
-      const ok = await dialog.confirm({
-        title: t.n(ids.length, 'Uninstall {n} mod?', 'Uninstall {n} mods?'),
-        body: t('This deletes them from disk. There is no undo.'),
-        confirmLabel: t('Uninstall'),
-        destructive: true,
-      });
-      if (!ok) return;
-
-      setUninstalling(new Set(ids));
-      const warnings: string[] = [];
-      const failures: string[] = [];
-      let done = 0;
-      // One `try` PER MOD. Wrapping the whole loop meant the first failure
-      // left every remaining mod neither uninstalled nor reported, skipped
-      // `clearSelection`, and showed a single error for an N-item operation.
-      for (const id of ids) {
-        try {
-          const warning = disableHookWarning(await removeLocalMod(id));
-          if (warning) warnings.push(warning);
-          uninstallModStore(id);
-          done += 1;
-        } catch (err) {
-          failures.push(
-            `${getMod(id)?.name ?? id}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-      }
-      await refreshLocalMods();
-      clearSelection();
-      setUninstalling(new Set());
-      if (failures.length) {
-        toast.push(
-          `${t('{done} of {total} uninstalled.', { done, total: ids.length })} ${failures.join(' ')}`,
-          'error',
-        );
-      } else if (warnings.length) {
-        toast.push(warnings.join(' '), 'error');
-      } else {
-        toast.push(t('Selected mods uninstalled.'), 'success');
-      }
-    })();
-  }, [
-    clearSelection,
-    dialog,
-    refreshLocalMods,
-    removeLocalMod,
-    selected,
-    t,
-    toast,
-    uninstallModStore,
-  ]);
 
   if (firstOpen.current) return null;
 
@@ -479,10 +364,7 @@ function LibraryPage() {
   }
 
   return (
-    // pb-24 is permanent, not conditional: the bulk-action bar below is a
-    // fixed overlay so selecting a mod never pushes the list down, and the
-    // padding keeps the last row reachable above it either way.
-    <div className="space-y-6 pb-24">
+    <div className="space-y-6">
       <SetupBanner />
       <SupportNudge />
       <UpdatesPanel />
@@ -505,50 +387,44 @@ function LibraryPage() {
                 onOpenFilters={() => setFiltersOpen(true)}
               />
             </div>
-            <div className="flex shrink-0 items-center gap-4">
+            <div className="registry-result-controls shrink-0">
               <RegistrySortControl<LibrarySort>
                 value={sort}
                 onChange={setSort}
                 label={t('Sort by')}
                 ariaLabel={t('Sort mods')}
                 options={[
+                  { value: 'category', label: t('Category') },
                   { value: 'load-order', label: t('Load order') },
                   { value: 'name', label: t('Name') },
                   { value: 'author', label: t('Author') },
                   { value: 'version', label: t('Version') },
                 ]}
               />
-              <fieldset className="flex shrink-0 items-center gap-2">
+              <fieldset className="registry-view-switch">
                 <legend className="sr-only">{t('Layout')}</legend>
-                <Button
+                <button
                   type="button"
+                  className="registry-icon-button"
                   onClick={() => void changeView('list')}
                   aria-pressed={view === 'list'}
-                  variant={view === 'list' ? 'gilt' : 'default'}
-                  size="sm"
                   aria-label={t('List view')}
                 >
-                  <List className="h-4 w-4" />
-                </Button>
-                <Button
+                  <Rows3 size={18} aria-hidden />
+                </button>
+                <button
                   type="button"
+                  className="registry-icon-button"
                   onClick={() => void changeView('config')}
                   aria-pressed={view === 'config'}
-                  variant={view === 'config' ? 'gilt' : 'default'}
-                  size="sm"
                   aria-label={t('Config view')}
                 >
-                  <SlidersHorizontal className="h-4 w-4" />
-                </Button>
+                  <SlidersHorizontal size={18} aria-hidden />
+                </button>
               </fieldset>
             </div>
           </>
         }
-        subtitle={t.n(
-          installed.length,
-          '{n} mod in the local folder.',
-          '{n} mods in the local folder.',
-        )}
       />
 
       {filtersOpen ? (
@@ -667,21 +543,24 @@ function LibraryPage() {
           </Link>
         ) : null}
 
-        {grouped.map(([category, items]) => (
-          <section key={category} className="space-y-3">
-            <h3 className="font-fraktur text-xl text-parchment">{t(CATEGORY_LABEL[category])}</h3>
-            <Fleuron />
+        {sections.map(({ category, items }) => (
+          <section key={category ?? 'all'} className="space-y-3">
+            {category ? (
+              <>
+                <h3 className="font-fraktur text-xl text-parchment">
+                  {t(CATEGORY_LABEL[category])}
+                </h3>
+                <Fleuron />
+              </>
+            ) : null}
             {view === 'list' ? (
               <ListView
                 items={items}
                 profile={profile}
-                onOpen={(slug) => navigate({ to: '/mod/$slug', params: { slug } })}
                 onToggle={handleToggle}
                 onUninstall={uninstall}
                 uninstalling={uninstalling}
                 onReorder={reorderMod}
-                selected={selected}
-                onSelect={toggleSelected}
                 conflictCounts={conflictCountByMod}
                 missingDeps={missingDepCounts}
               />
@@ -728,13 +607,6 @@ function LibraryPage() {
           </div>
         ) : null}
 
-        <div className="font-mono pt-6 text-center text-ash">
-          <div className="flex justify-center">
-            <StatPill value={installed.length} label={t('in folder')} />
-            <StatPill value={enabledCount} label={t('enabled in profile')} className="ml-2" />
-          </div>
-        </div>
-
         {!localModsLoading && filtered.length === 0 ? (
           <EmptyState
             title={t('No mods match those filters')}
@@ -757,49 +629,6 @@ function LibraryPage() {
           />
         ) : null}
       </div>
-
-      {hasSelection ? (
-        <Panel className="fixed inset-x-0 bottom-0 z-40 flex flex-wrap items-center justify-between gap-3 rounded-none border-x-0 border-b-0">
-          <div className="min-w-0">
-            <h3 className="font-fraktur text-lg text-parchment">
-              {t('{n} selected', { n: selected.size })}
-            </h3>
-            <p className="font-serif-italic text-sm text-ash">
-              {t('Bulk actions apply to the active profile.')}
-              {selectedMissingDeps > 0
-                ? ` ${t.n(
-                    selectedMissingDeps,
-                    '{n} missing dependency across the selection.',
-                    '{n} missing dependencies across the selection.',
-                  )}`
-                : ''}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" size="sm" variant="primary" onClick={bulkEnable}>
-              {t('Enable selected')}
-            </Button>
-            <Button type="button" size="sm" onClick={bulkDisable}>
-              {t('Disable selected')}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="danger"
-              onClick={bulkUninstall}
-              disabled={uninstalling.size > 0}
-            >
-              {uninstalling.size > 0 ? t('Uninstalling…') : t('Uninstall selected')}
-            </Button>
-            <Button type="button" size="sm" onClick={selectAllVisible}>
-              {t('Select filtered')}
-            </Button>
-            <Button type="button" size="sm" onClick={clearSelection}>
-              {t('Clear')}
-            </Button>
-          </div>
-        </Panel>
-      ) : null}
     </div>
   );
 }
@@ -807,15 +636,12 @@ function LibraryPage() {
 interface RowProps {
   items: { id: string; orderIdx: number }[];
   profile: ReturnType<typeof activeProfile>;
-  onOpen?: (slug: string) => void;
   onToggle: (id: string) => void;
   onUninstall: (id: string) => void;
   /** Ids whose uninstall is in flight — their controls are disabled so a slow
    *  sidecar cannot be handed the same delete twice. */
   uninstalling: Set<string>;
   onReorder?: (id: string, toIndex: number) => void;
-  selected: Set<string>;
-  onSelect: (id: string) => void;
   conflictCounts: Map<string, number>;
   missingDeps: Map<string, number>;
 }
@@ -827,24 +653,19 @@ function ListView({
   onReorder,
   onUninstall,
   uninstalling,
-  selected,
-  onSelect,
   conflictCounts,
   missingDeps,
-  onOpen,
 }: RowProps) {
   const t = useT();
-  const [dragId, setDragId] = useState<string | null>(null);
+  const navigate = useNavigate();
   const reorderable = Boolean(onReorder);
 
   return (
-    <ul className="grimoire-card divide-y divide-border">
+    <ul className="registry-list">
       {items.map(({ id, orderIdx }) => {
         const mod = getMod(id);
         if (!mod) return null;
         const enabled = isEnabledIn(profile, id);
-        const isDragging = dragId === id;
-        const isSelected = selected.has(id);
         const flags =
           (missingDeps.get(id) ?? 0) > 0
             ? t('missing deps')
@@ -854,55 +675,10 @@ function ListView({
         return (
           <li
             key={id}
-            draggable={reorderable}
-            onDragStart={
-              reorderable
-                ? (e) => {
-                    setDragId(id);
-                    e.dataTransfer.effectAllowed = 'move';
-                  }
-                : undefined
-            }
-            onDragEnd={reorderable ? () => setDragId(null) : undefined}
-            onDragOver={
-              reorderable
-                ? (e) => {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'move';
-                  }
-                : undefined
-            }
-            onDrop={
-              reorderable
-                ? (e) => {
-                    e.preventDefault();
-                    if (dragId && onReorder) onReorder(dragId, orderIdx);
-                    setDragId(null);
-                  }
-                : undefined
-            }
-            // Clicking the row SELECTS it. It used to open the mod's store
-            // page, so a mis-aimed click navigated away from the library; and
-            // selection needed its own checkbox sitting right beside the
-            // enable switch, two lookalike controls doing opposite things.
-            // Now the row is the checkbox and the switch is the only toggle.
-            onClick={(e) => {
-              if ((e.target as HTMLElement).closest('button, a, input, [role="switch"]')) return;
-              onSelect(id);
-            }}
-            // The row itself is the control: an <input type="checkbox"> cannot
-            // wrap a switch, tags and four buttons — which is exactly why the
-            // separate checkbox column went away.
-            // biome-ignore lint/a11y/useSemanticElements: composite row, see above
-            // biome-ignore lint/a11y/noNoninteractiveElementToInteractiveRole: same
-            role="checkbox"
-            aria-checked={isSelected}
-            tabIndex={0}
+            // Focus enables the load-order keyboard shortcuts.
+            tabIndex={reorderable ? 0 : undefined}
             onKeyDown={(e) => {
-              // Alt+Arrow reorders. Load order is the entire reason the list
-              // view exists, and it was reachable only by dragging with a
-              // mouse — the grip is decorative and the row's key handler did
-              // nothing but select. Alt, so plain arrows keep scrolling.
+              // Alt+Arrow changes load order; plain arrows keep scrolling.
               if (reorderable && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
                 e.preventDefault();
                 const to = orderIdx + (e.key === 'ArrowUp' ? -1 : 1);
@@ -920,78 +696,90 @@ function ListView({
                 });
                 return;
               }
-              if (e.key !== 'Enter' && e.key !== ' ') return;
-              e.preventDefault();
-              onSelect(id);
             }}
             data-mod-id={id}
             aria-keyshortcuts={reorderable ? 'Alt+ArrowUp Alt+ArrowDown' : undefined}
-            className={[
-              'flex items-center gap-3 px-3 py-1.5 text-sm transition-colors',
-              isSelected ? 'bg-gilt/15' : 'hover:bg-oxblood/10',
-              isDragging ? 'opacity-40' : '',
-              dragId && !isDragging ? 'opacity-60' : '',
-            ].join(' ')}
+            className="min-w-0 rounded-xl"
           >
-            {reorderable ? (
-              <GripVertical
-                className="h-3.5 w-3.5 shrink-0 cursor-grab text-ash"
-                aria-hidden="true"
-              />
-            ) : null}
-            <span className="font-data w-7 shrink-0 text-right text-xs text-ash">
-              {orderIdx + 1}
-            </span>
-            <InkSwitch
-              on={enabled}
-              onClick={() => onToggle(id)}
-              label={
-                enabled
-                  ? t('Disable {name}', { name: mod.name })
-                  : t('Enable {name}', { name: mod.name })
+            <RegistryListingCard
+              view="list"
+              headingLevel={3}
+              onOpen={() => navigate({ to: '/mod/$slug', params: { slug: mod.slug } })}
+              listing={{
+                slug: mod.slug,
+                name: mod.name,
+                author: mod.author,
+                summary: mod.summary,
+                imageUrl: mod.image,
+                nsfw: mod.nsfw,
+              }}
+              privateOnly={hasPrivateOnlyTag(mod.tags)}
+              locale={t.tag}
+              labels={registryCardLabels(t, mod)}
+              listLeading={
+                <>
+                  <InkSwitch
+                    on={enabled}
+                    onClick={() => onToggle(id)}
+                    label={
+                      enabled
+                        ? t('Disable {name}', { name: mod.name })
+                        : t('Enable {name}', { name: mod.name })
+                    }
+                  />
+                  <span
+                    className="font-data w-7 text-right text-xs text-ash"
+                    title={t('Load order')}
+                  >
+                    {orderIdx + 1}
+                  </span>
+                </>
+              }
+              listBadges={flags ? <MonoTag tone="crimson">{flags}</MonoTag> : null}
+              listMetadata={
+                <>
+                  <span className="mod-card-list-version" title={`${t('Version')}: ${mod.version}`}>
+                    v{mod.version}
+                  </span>
+                  <span
+                    className="mod-card-list-update"
+                    title={mod.version !== mod.latestVersion ? mod.latestVersion : undefined}
+                  >
+                    {mod.version !== mod.latestVersion ? (
+                      <MonoTag tone="gilt">→ {mod.latestVersion}</MonoTag>
+                    ) : null}
+                  </span>
+                </>
+              }
+              actions={
+                <>
+                  <span className="mod-card-list-action-slot" data-action="overlay">
+                    <OverlayButton modId={id} iconOnly />
+                  </span>
+                  <span className="mod-card-list-action-slot" data-action="config">
+                    <ConfigButton
+                      modId={id}
+                      modName={mod.name}
+                      hasConfig={mod.hasConfig}
+                      enabled={enabled}
+                      onToggleEnabled={() => onToggle(id)}
+                    />
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onUninstall(id)}
+                    disabled={uninstalling.has(id)}
+                    className="registry-icon-button"
+                    data-action="uninstall"
+                    data-variant="danger"
+                    title={t('Uninstall this mod')}
+                    aria-label={t('Uninstall {name}', { name: mod.name })}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </>
               }
             />
-            {/* One line. The old row stacked name, author, a reserved tag
-                strip and a dependency strip — four blocks tall, so a dozen
-                mods no longer fit on screen. */}
-            <span className="min-w-0 flex-1 truncate text-parchment" title={mod.name}>
-              {mod.name}
-            </span>
-            <span className="font-data hidden shrink-0 text-xs text-ash sm:inline">
-              {mod.author} · v{mod.version}
-            </span>
-            {mod.version !== mod.latestVersion ? (
-              <MonoTag tone="gilt">→ {mod.latestVersion}</MonoTag>
-            ) : null}
-            {flags ? <MonoTag tone="crimson">{flags}</MonoTag> : null}
-            <ConfigButton
-              modId={id}
-              modName={mod.name}
-              hasConfig={mod.hasConfig}
-              enabled={enabled}
-              onToggleEnabled={() => onToggle(id)}
-            />
-            <OverlayButton modId={id} />
-            <button
-              type="button"
-              onClick={() => onOpen?.(mod.slug)}
-              className="btn-grim shrink-0 px-2 py-1.5"
-              title={t("Open this mod's store page")}
-              aria-label={t('Open the store page for {name}', { name: mod.name })}
-            >
-              <ExternalLink className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => onUninstall(id)}
-              disabled={uninstalling.has(id)}
-              className="btn-grim shrink-0 px-2 py-1.5"
-              data-variant="danger"
-              title={t('Uninstall this mod')}
-              aria-label={t('Uninstall {name}', { name: mod.name })}
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
           </li>
         );
       })}

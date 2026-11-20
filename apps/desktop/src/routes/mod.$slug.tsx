@@ -1,11 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { ModDetail } from '../components/mod-detail';
 
-/**
- * The full-page store entry. The page itself is `ModDetail`, which Browse also
- * renders in its split view — see that component for why it is not defined
- * here.
- */
+/** The full-page destination for Browse and Library mod listings. */
 export const Route = createFileRoute('/mod/$slug')({
   component: ModDetailRoute,
 });

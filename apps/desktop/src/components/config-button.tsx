@@ -79,7 +79,7 @@ export function ConfigButton({
     <>
       <button
         type="button"
-        className={`btn-grim shrink-0 px-2 py-1.5 ${className ?? ''}`}
+        className={`registry-icon-button ${className ?? ''}`}
         title={t("Configure — open this mod's settings")}
         aria-label={t('Configure this mod')}
         aria-haspopup="dialog"

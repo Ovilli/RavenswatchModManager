@@ -814,27 +814,6 @@
   }
 }
 
-/* Panels rendered INSIDE another page rather than as the page.
- *
- * The store page is laid out for a full-width route — `p-6` cards, roomy
- * headings, a wide gap between sections. Browse renders that same component in
- * a side column, where the padding alone eats a third of the width and the
- * whole thing reads as oversized.
- *
- * One rule on the container rather than a `dense` prop threaded through every
- * Panel, MonoTag and heading in that file: the markup is unchanged, and the
- * component decides its density by where it is, not by what it is. */
-[data-embedded] .grimoire-card {
-  padding: 0.85rem;
-}
-[data-embedded] .grimoire-card h3 {
-  font-size: 1rem;
-  margin-bottom: 0.4rem;
-}
-[data-embedded] .rule-fleuron {
-  margin-block: 0.35rem;
-}
-
 /* Scrollbars — slim, warm, and rounded like everything else.
    The old thumb was a 10px bar with a 2px solid-background border and a 4px
    radius, which reads as the browser default wearing a brown coat: square ends
