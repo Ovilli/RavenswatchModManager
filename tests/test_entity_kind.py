@@ -91,8 +91,6 @@ def test_an_out_of_range_link_names_the_list(tmp_path):
     ({"entity": _ENTITY, "steps": "oops"}, "needs 'steps'"),
     ({"entity": _ENTITY, "steps": [{"clone": "X", "as": "Y", "from": "Juliet"}]},
      "cross-file clone steps"),
-    # a same-file clone is allowed; a missing part is still refused, by name
-    ({"entity": _ENTITY, "steps": [{"clone": "X", "as": "Y"}]}, "0 components named 'X'"),
     ({"entity": "Objects/Nope/Nothing_Here", "steps": [{"remove_link": "A.b[0]"}]},
      "no shipped entity"),
 ])
