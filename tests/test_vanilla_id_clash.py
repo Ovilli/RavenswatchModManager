@@ -15,7 +15,10 @@ _CASES = pytest.mark.parametrize("variant", [str, str.lower, str.upper])
 
 
 def _ships(monkeypatch, *names):
+    """The game ships ``names`` (and any base a kind reads), with no corpus."""
     monkeypatch.setattr(corpus, "stems", lambda directory, suffix: sorted(names))
+    monkeypatch.setattr(corpus, "exists", lambda rel: True)
+    monkeypatch.setattr(corpus, "read", lambda rel: b"x")
 
 
 @_CASES

@@ -2009,7 +2009,6 @@ def _strings(path: Path) -> list[str]:
     return [s for _sec, _off, s in entity_strings.list_strings(path.read_bytes())]
 
 
-@needs_corpus
 def test_teleporter_pair_names_keep_lookalike_mod_ids_apart():
     """#229 review: `night-watch` and `night_watch` both made night_watch_Cave."""
     a, b = poi._pair_id("night-watch", "Cave"), poi._pair_id("night_watch", "Cave")
@@ -2017,6 +2016,7 @@ def test_teleporter_pair_names_keep_lookalike_mod_ids_apart():
     assert poi._pair_id("m", "Cave") == poi._pair_id("m", "Cave")
 
 
+@needs_corpus
 def test_entrance_needs_room_and_teleporters_pair_by_mod_id(tmp_path):
     from rsmm.engine import level_placements as LP
     from rsmm.engine import rsc_cache as RC
