@@ -303,7 +303,7 @@ from ...engine import tile_cook as TC
 from ...engine.cooked_schemas import asset_refs as AR
 from ...engine.paths import DATA_DIR
 from ...engine.prop_cook import entity_cooked_path
-from ..content import ContentDef, ContentError, SchemaNotMined
+from ..content import ContentDef, ContentError, SchemaNotMined, written_this_run
 from . import _common as C
 from . import ingredients as ING
 
@@ -3985,7 +3985,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
         # out_dir, so starting from vanilla each time would make the last def
         # win and silently drop the earlier ones' tiles — the same failure the
         # cross-mod merge exists to prevent, one level down.
-        if map_dest.is_file():
+        if written_this_run(map_dest):
             base_bytes = map_dest.read_bytes()
         else:
             map_rel = f"{_MAPS_DIR}/{stem}{MP.GEN_SUFFIX}"
