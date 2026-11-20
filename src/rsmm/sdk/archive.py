@@ -26,6 +26,9 @@ What every extraction through here is guaranteed:
   size, but the meter is what bounds the total across members.
 * **No executable payloads.** Mods ship data, not binaries;
   :data:`DANGEROUS_EXTENSIONS` is refused outright.
+* **No engine escape hatches in mod Lua.** A ``.lua`` member that uses
+  ``_internal``, raw memory reads or writes, or the other primitives only the
+  SDK may use is refused (:func:`scan_lua_primitives`).
 
 Stdlib only: the CLI ships frozen with no runtime dependencies.
 """
@@ -89,6 +92,10 @@ MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024      # 2 GiB uncompressed
 MAX_COMPRESSION_RATIO = 200                    # 42.zip is ~10^9:1
 
 _CHUNK = 1 << 16  # 64 KiB — keeps memory flat on large assets.
+
+#: Largest ``.lua`` member read for the primitive scan. Mod Lua runs to tens of
+#: KB; a bigger one is refused rather than read into memory.
+MAX_LUA_BYTES = 8 * 1024 * 1024
 
 # Windows refuses these as filenames regardless of extension; rejecting them
 # up front turns a confusing mid-extract OSError into a clear diagnostic.
@@ -233,6 +240,34 @@ def scan_dangerous(zf: zipfile.ZipFile, label: str) -> list[str]:
     return overlays
 
 
+def scan_lua_primitives(zf: zipfile.ZipFile, label: str) -> None:
+    """Refuse an archive whose Lua uses a low-level primitive.
+
+    Raises :class:`ArchiveError` naming each ``.lua`` member and what it uses.
+    The rule is lint's (:data:`rsmm.engine.mod_scope.LOWLEVEL_PRIMITIVE_RE`):
+    a mod reaches the engine only through ``R.*``.
+    """
+    from rsmm.engine.mod_scope import lowlevel_primitives
+
+    hits = []
+    for info in zf.infolist():
+        if info.is_dir() or not info.filename.lower().endswith(".lua"):
+            continue
+        if info.file_size > MAX_LUA_BYTES:
+            raise ArchiveError(
+                f"{label}: {info.filename!r} is over the {MAX_LUA_BYTES}-byte "
+                "limit for mod Lua")
+        with zf.open(info) as src:
+            text = src.read(MAX_LUA_BYTES + 1).decode("utf-8", errors="replace")
+        found = lowlevel_primitives(text)
+        if found:
+            hits.append(f"{_norm(info.filename)}: {', '.join(found)}")
+    if hits:
+        raise ArchiveError(
+            f"{label} uses low-level primitives only the SDK may use "
+            "(_internal, raw memory, raw calls):\n  " + "\n  ".join(hits[:20]))
+
+
 def check_limits(zf: zipfile.ZipFile, label: str, *,
                  max_entries: int = MAX_ENTRIES,
                  max_total_bytes: int = MAX_TOTAL_BYTES,
@@ -323,6 +358,7 @@ def safe_extract(zf: zipfile.ZipFile, dest_root: Path, *,
     """
     check_limits(zf, label, max_entries=max_entries,
                  max_total_bytes=max_total_bytes, max_ratio=max_ratio)
+    scan_lua_primitives(zf, label)
     dest_root = Path(dest_root)
     dest_root.mkdir(parents=True, exist_ok=True)
     written = 0
