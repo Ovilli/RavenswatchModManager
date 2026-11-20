@@ -4,7 +4,7 @@ into ``engine/ability_edit.py`` steps at build time.
 The kit is declarative, so a mod stays data and a friend can write it by hand::
 
     [content.kit]
-    form    = "wolf"                   # alt-form heroes (Scarlet): always wolf
+    form    = { lock = "alt" }         # a two-form hero (Scarlet) stays in its alt form
     dash    = "none"                   # any slot can be "none"
     power   = { fire = "Enemies/Tentacle_Nightmares/Projectile_Tentacle_Nightmare_Laser_Shot" }
     special = { fire = "...", when = "Event Wolf Secondary Ability Active" }
@@ -13,12 +13,14 @@ Each block finds what it needs in the base's own entity by pattern rather than
 from a per-hero table, so it works on any base that has the parts, and refuses
 with the reason on one that does not:
 
-* ``form = "wolf"``: the Blood Wolf recipe (a community manifest, PROVEN in game
-  2026-10-29: a wolf in the run, preview fixed by the in-run gate). Scarlet's
-  init fires the transformation, only outside the select screen (Hero_Common's
-  own "not in preview" check), and both ways back are cut: the passive (night)
-  transform and the trait button. ``"human"`` cuts the same two without the
-  init transform (hood-test, unplaytested).
+* ``form = { lock = "alt" }``: a two-form hero stays in its alt form (PROVEN in
+  game 2026-10-29 on Scarlet: a wolf in the run, preview fixed by the in-run
+  gate). Its init fires the transformation, only outside the select screen
+  (Hero_Common's own "not in preview" check), and both ways back are cut: the
+  passive (night) transform and the trait button. ``lock = "base"`` cuts the
+  same two without the init transform (unplaytested). The parts come from
+  :data:`ALT_FORMS`, the table of bases that switch forms; ``"wolf"`` and
+  ``"human"`` are the old spellings of ``alt`` and ``base`` and still work.
 * ``<slot> = "none"``: every link in the hero's files to that slot's ability
   controller (``Dash Controller Selector``, ``Alt Primary Ability Controller``,
   ...) is removed. A base whose abilities are switched on only in Hero_Common
@@ -27,7 +29,7 @@ with the reason on one that does not:
   (its aim parts are the hero's, so they stay bound) aimed at ``entity`` (any
   shipped entity: an enemy projectile, another hero's) and fired when the
   slot's ability goes off: the slot group's ``Event ... Active`` state (the
-  Wolf/Alt variant under ``form = "wolf"``), or ``when``. Whether an ENEMY
+  alt form's variant under ``lock = "alt"``), or ``when``. Whether an ENEMY
   projectile fired this way hurts enemies is unproven.
 * ``talents = [{ when = <state>, steps = [...] }, ...]``: timelines hung on any
   state, free of the slots (a talent's own event, e.g. ``Event Skill Trait
@@ -56,8 +58,52 @@ SLOTS = {
     "trait": ("Trait", "Trait Ability"),
     "dash": ("Dash", "Dash"),
 }
-FORMS = ("wolf", "human")
 _KEYS = {"form", "pets", "talents", *SLOTS}
+
+
+@dataclass(frozen=True)
+class AltForm:
+    """The parts a base switches forms with, by name: what ``form = { lock }``
+    reads and cuts. ``words`` are the group words of the alt form's own
+    ability groups (``Ability Wolf Primary``), tried before the base form's."""
+    init: str              # start-up state that fires the transformation
+    passive: str           # the passive (night) transform's tester
+    transform: str         # the event that transforms
+    alt_enabled: str       # on while the alt form's abilities are
+    trait: str             # the trait button's controller (the way back)
+    words: tuple[str, ...]
+
+
+#: Bases that switch forms, by stem. A base is matched by having every part,
+#: so a hero written from scratch on one of these rigs matches too.
+ALT_FORMS: dict[str, AltForm] = {
+    "Hero_Red": AltForm("Child Event Initialize", "Passive Transform Tester",
+                        "Event Trait Ability Transform", "State Alt Form Abilities Enabled",
+                        "Trait Ability Controller", ("Wolf", "Alt")),
+}
+LOCKS = ("alt", "base")
+#: The first spellings, one mod's words: still read.
+_OLD_FORMS = {"wolf": "alt", "human": "base"}
+
+
+def form_lock(form) -> str | None:
+    """``"alt"``, ``"base"`` or None (no lock) from a kit's ``form``."""
+    if form is None:
+        return None
+    if isinstance(form, str) and form in _OLD_FORMS:
+        return _OLD_FORMS[form]
+    if isinstance(form, dict) and set(form) == {"lock"} and form["lock"] in LOCKS:
+        return str(form["lock"])
+    raise KitError(f"kit form = {form!r}: {{ lock = \"alt\" }} or {{ lock = \"base\" }}")
+
+
+def _alt_form(names: set[str]) -> AltForm:
+    """The table entry whose parts this base has."""
+    for af in ALT_FORMS.values():
+        if {af.init, af.passive, af.transform, af.alt_enabled} <= names:
+            return af
+    raise KitError("kit form: this base does not switch forms (a base listed in "
+                   f"hero_kit.ALT_FORMS: {', '.join(ALT_FORMS)})")
 _PREVIEW_GATE = "Activate Hero Controller Tester"     # Hero_Common: on only in a run
 
 
@@ -135,9 +181,12 @@ def _expand(kit: dict, main: bytes, name: str, *, hid: str,
     g = EG.parse(main, name)
     names = {c.name for c in g.components}
     steps: list[dict] = []
-    form = kit.get("form")
-    if form is not None:
-        steps += _form(str(form), names)
+    lock = form_lock(kit.get("form"))
+    alt: tuple[str, ...] = ()
+    if lock is not None:
+        af = _alt_form(names)
+        steps += _form(lock, af)
+        alt = af.words if lock == "alt" else ()
     for slot in SLOTS:
         if slot not in kit:
             continue
@@ -145,9 +194,9 @@ def _expand(kit: dict, main: bytes, name: str, *, hid: str,
         if v == "none":
             steps += _remove(slot, g)
         elif isinstance(v, dict) and set(v) <= {"fire", "when"} and v.get("fire"):
-            steps += _fire(slot, v, g, form == "wolf", ctx)
+            steps += _fire(slot, v, g, alt, ctx)
         elif isinstance(v, dict) and set(v) <= {"steps", "when", "replace"}:
-            steps += _moves(slot, v, g, form == "wolf", ctx)
+            steps += _moves(slot, v, g, alt, ctx)
         else:
             raise KitError(f"kit {slot} = {v!r}: \"none\", or "
                            "{ fire = <entity> }, or { steps = [...], replace = true }")
@@ -162,33 +211,27 @@ def _expand(kit: dict, main: bytes, name: str, *, hid: str,
             if not h.get("when") or set(h) - {"steps", "when"}:
                 raise KitError(f"kit talents[{n}]: {{ when = <state>, steps = [...] }} "
                                "(when is required; replace is for slots only)")
-            steps += _moves(f"talent {n}", h, g, form == "wolf", ctx)
+            steps += _moves(f"talent {n}", h, g, alt, ctx)
     # After the slots: a talent-gated pets block holds off what they built.
     if kit.get("pets") is not None:
-        steps += _pets(kit["pets"], g, form == "wolf", ctx, steps)
+        steps += _pets(kit["pets"], g, alt, ctx, steps)
     return steps
 
 
-def _form(form: str, names: set[str]) -> list[dict]:
-    if form not in FORMS:
-        raise KitError(f"kit form = {form!r}: one of {', '.join(FORMS)}")
-    need = {"Child Event Initialize", "Passive Transform Tester",
-            "Event Trait Ability Transform", "State Alt Form Abilities Enabled"}
-    if need - names:
-        raise KitError("kit form: this base does not switch forms the way Scarlet does "
-                       f"(no {', '.join(sorted(need - names))})")
+def _form(lock: str, af: AltForm) -> list[dict]:
+    """Cut both ways out of the current form; for ``alt``, transform at
+    start-up too, in a run only."""
     steps: list[dict] = [
-        {"remove_link": "Child Event Initialize.activates", "to": "Passive Transform Tester"},
-        {"link": "Passive Transform Tester.on_true", "to": ""},
-        {"remove_link": "State Alt Form Abilities Enabled.activates",
-         "to": "Trait Ability Controller"},
+        {"remove_link": f"{af.init}.activates", "to": af.passive},
+        {"link": f"{af.passive}.on_true", "to": ""},
+        {"remove_link": f"{af.alt_enabled}.activates", "to": af.trait},
     ]
-    if form == "wolf":
-        gate = "Wolf Lock In Run Tester"
+    if lock == "alt":
+        gate = f"{af.words[0]} Lock In Run Tester"
         steps[1:1] = [
             {"clone": [_PREVIEW_GATE], "from": "Hero_Common", "rename": {_PREVIEW_GATE: gate}},
-            {"link": f"{gate}.on_true", "to": "Event Trait Ability Transform"},
-            {"add_link": "Child Event Initialize.activates", "to": gate},
+            {"link": f"{gate}.on_true", "to": af.transform},
+            {"add_link": f"{af.init}.activates", "to": gate},
         ]
     return steps
 
@@ -237,13 +280,13 @@ def _trigger_step(empty, name: str) -> dict:
     return {"clone": [empty.name], "rename": {empty.name: name}}
 
 
-def _trigger(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool) -> str:
+def _trigger(slot: str, spec: dict, g: EG.EntityGraph, alt: tuple[str, ...]) -> str:
     """The state that goes off when ``slot``'s ability is used."""
     states = {c.name for c in g.components if c.cls == "oCEntityCpntStateSettings"}
     when = spec.get("when")
     if when is None:
         word = SLOTS[slot][0]
-        groups = [f"Ability Wolf {word}", f"Ability Alt {word}"] if wolf else []
+        groups = [f"Ability {w} {word}" for w in alt]
         groups.append(f"Ability {word}")
         for grp in groups:
             # Best first: the event that fires as the ability goes off, a state
@@ -268,10 +311,11 @@ def _trigger(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool) -> str:
     return str(when)
 
 
-def _fire(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> list[dict]:
+def _fire(slot: str, spec: dict, g: EG.EntityGraph, alt: tuple[str, ...],
+          ctx: _Ctx) -> list[dict]:
     """The simple form: ``{ fire = <entity> }`` is a one-step timeline."""
     return _moves(slot, {"when": spec.get("when"), "steps": [{"fire": spec["fire"]}]}, g,
-                  wolf, ctx)
+                  alt, ctx)
 
 
 # ---- a built ability: a timeline of blocks --------------------------------------
@@ -421,8 +465,9 @@ def timeline(steps, t: float = 0.0) -> list[tuple[float, dict]]:
     return out
 
 
-def _moves(slot: str, spec: dict, g: EG.EntityGraph, wolf: bool, ctx: _Ctx) -> list[dict]:
-    trigger = _trigger(slot, spec, g, wolf)
+def _moves(slot: str, spec: dict, g: EG.EntityGraph, alt: tuple[str, ...],
+           ctx: _Ctx) -> list[dict]:
+    trigger = _trigger(slot, spec, g, alt)
     plan = timeline(spec.get("steps") or [])
     if not any("fire" in b or "hit" in b or "heal" in b or "summon" in b for _, b in plan):
         return _replace(trigger, g) if spec.get("replace") else []
@@ -747,7 +792,8 @@ def anim_swaps(kit: dict, main: bytes, name: str) -> dict[str, str]:
     ``references`` swap, in this hero's own files only. A clip of the same
     hero keeps the skeleton (another hero's bones would not move it)."""
     g = EG.parse(main, name)
-    wolf = kit.get("form") == "wolf"
+    lock = form_lock(kit.get("form"))
+    alt = _alt_form({c.name for c in g.components}).words if lock == "alt" else ()
     clips = set(hero_clips(main))
     out: dict[str, str] = {}
     for slot in SLOTS:
@@ -760,9 +806,9 @@ def anim_swaps(kit: dict, main: bytes, name: str) -> dict[str, str]:
         if new[-1] not in clips:
             raise KitError(f"kit {slot}: anim {new[-1]!r} is not one of this hero's clips")
         word = SLOTS[slot][0]
-        groups = ([f"Ability Wolf {word}"] if wolf else []) + [f"Ability {word}"]
+        groups = [f"Ability {w} {word}" for w in alt] + [f"Ability {word}"]
         # A slot fired from a named state plays that state's group's clip (a
-        # hero locked in its wolf form names its wolf state).
+        # hero locked in its alt form names its alt state).
         when = next((c.group for c in g.components if c.name == v.get("when")
                      and c.cls == "oCEntityCpntStateSettings"), None)
         if when:
@@ -954,7 +1000,7 @@ _PET_KEYS = {"entity", "count", "button", "talent", "when", "counter", "appear",
              "count_talents", "count_card", "look", "name", "upgrade"}
 
 
-def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
+def _pets(spec, g: EG.EntityGraph, alt: tuple[str, ...], ctx: _Ctx,
           earlier: list[dict] = ()) -> list[dict]:
     """``pets = { entity = <enemy>, count = 1, button = "trait" }``: pets that
     follow the hero, Piper's way. The enemy is copied onto Hero_Pet_Model
@@ -1071,8 +1117,8 @@ def _pets(spec, g: EG.EntityGraph, wolf: bool, ctx: _Ctx,
     # spawns them. Not in the select screen: the preview copy runs Initialize
     # too, and an enemy body there (no preview behaviour, as Piper's rats
     # have) fell through the floor. Hero_Common's "in a run" tester gates it,
-    # as it gates Blood Wolf's wolf lock.
-    trigger = _trigger(button, {"when": spec.get("when")}, g, wolf)
+    # as it gates the alt-form lock.
+    trigger = _trigger(button, {"when": spec.get("when")}, g, alt)
     start = trigger if spawn == "button" else talent
     if start is None:
         start = "Kit Pet Spawn"

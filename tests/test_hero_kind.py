@@ -1832,3 +1832,34 @@ def test_a_scratch_heros_edits_reach_its_own_parts_and_entities(tmp_path):
     ids = struct.unpack_from(f"<{n}I", d.body, f.offset + 4)
     seed = ef.component("Seed Modifier").guid
     assert any(seed in bytes(ef.objects[i]) for i in ids)
+
+
+def test_kit_form_reads_the_lock_and_the_old_spellings():
+    """B1 (#202): `form = { lock = "alt" | "base" }`; "wolf" and "human" were
+    one mod's words for the same and still read."""
+    from rsmm.engine import hero_kit as HK
+    assert HK.form_lock({"lock": "alt"}) == HK.form_lock("wolf") == "alt"
+    assert HK.form_lock({"lock": "base"}) == HK.form_lock("human") == "base"
+    assert HK.form_lock(None) is None
+    for bad in ("bear", {"lock": "wolf"}, {"lock": "alt", "x": 1}):
+        with pytest.raises(HK.KitError, match="lock"):
+            HK.form_lock(bad)
+
+
+@needs_corpus
+def test_a_form_lock_builds_the_same_steps_under_either_spelling():
+    """The table entry's parts, not Scarlet's names in the code: the new and
+    the old spelling expand identically, and a base with no table entry is
+    refused."""
+    from rsmm.engine import hero_kit as HK
+    red = corpus.read(_RED)
+    for new, old in (({"lock": "alt"}, "wolf"), ({"lock": "base"}, "human")):
+        assert HK.expand({"form": new}, red, "Hero_Red") == HK.expand({"form": old}, red,
+                                                                      "Hero_Red")
+    alt = HK.expand({"form": {"lock": "alt"}}, red, "Hero_Red")
+    assert {"add_link": "Child Event Initialize.activates",
+            "to": "Wolf Lock In Run Tester"} in alt
+    other = next(r for r in corpus.rels("EntitySettings/Heroes/Hero_Piper/", ".gen")
+                 if r.endswith("/Hero_Piper.entity.ot.EntitySettingsResource.gen"))
+    with pytest.raises(HK.KitError, match="ALT_FORMS"):
+        HK.expand({"form": {"lock": "alt"}}, corpus.read(other), "Hero_Piper")
