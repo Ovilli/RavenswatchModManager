@@ -505,6 +505,24 @@ def test_install_refuses_lua_primitives(tmp_path):
     assert not (mods / "M").exists()
 
 
+_BYTECODE = b"\x1bLuaT\x00\x19\x93\r\n\x1a\n\x04\x08\x08"
+
+
+def test_lua_scan_refuses_precompiled_bytecode(tmp_path):
+    z = _zip(tmp_path / "a.zip", {"M/init.lua": _BYTECODE})
+    with zipfile.ZipFile(z) as zf, pytest.raises(ArchiveError, match="bytecode") as e:
+        archive.scan_lua_primitives(zf, "M")
+    assert "M/init.lua" in str(e.value)
+
+
+def test_install_refuses_precompiled_bytecode(tmp_path):
+    z = _zip(tmp_path / "a.zip", {"M/manifest.toml": b"x", "M/init.lua": _BYTECODE})
+    mods = tmp_path / "mods"
+    with pytest.raises(ArchiveError, match="bytecode"):
+        cmd_install._safe_extract(z.read_bytes(), mods)
+    assert not (mods / "M").exists()
+
+
 def test_update_refuses_lua_primitives_and_keeps_going(tmp_path, monkeypatch, capsys):
     import json as _json
     mods = tmp_path / "mods"

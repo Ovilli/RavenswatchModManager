@@ -2438,9 +2438,53 @@ int lua_shared_set(lua_State* L) {
 // library in `package.loaded`, so `local io = require "io"` handed the mod
 // back the very table we had just hidden — and `package.loadlib` / a
 // `package.cpath` search could load an arbitrary DLL into the game process.
-// Both holes are closed here, and the loaders list is trimmed to the Lua-file
-// searcher so `require` can still find SDK modules but can never load native
-// code.
+// Both holes are closed here, and the searchers list is replaced with
+// { preload, lua_sdk_searcher }. Our searcher looks only in <game>/rsmm/lib
+// and the mod's own directory and loads with mode "t", so `require` can find
+// SDK modules but can never load native code or precompiled bytecode (Lua 5.4
+// does not verify bytecode; a crafted chunk corrupts the VM).
+int lua_sdk_searcher(lua_State* L) {
+    const char* name = luaL_checkstring(L, 1);
+    const std::string mod = name;
+    if (mod.empty() || mod.find_first_of("/\\:") != std::string::npos ||
+        mod.find("..") != std::string::npos) {
+        lua_pushfstring(L, "\n\tno file for module '%s' (invalid name)", name);
+        return 1;
+    }
+    std::string rel = mod;
+    for (char& c : rel) if (c == '.') c = '/';
+
+    std::vector<std::filesystem::path> candidates;
+    const auto sdk = Loader::get().game_dir() / "rsmm" / "lib";
+    candidates.push_back(sdk / (rel + ".lua"));
+    candidates.push_back(sdk / rel / "init.lua");
+    lua_getfield(L, LUA_REGISTRYINDEX, "__rsmm_mod_root");
+    if (lua_isstring(L, -1) && lua_rawlen(L, -1) > 0) {
+        const std::filesystem::path root = lua_tostring(L, -1);
+        candidates.push_back(root / (rel + ".lua"));
+        candidates.push_back(root / rel / "init.lua");
+    }
+    lua_pop(L, 1);
+
+    std::string tried;
+    for (const auto& p : candidates) {
+        std::error_code ec;
+        const std::string path = p.string();
+        if (!std::filesystem::is_regular_file(p, ec)) {
+            tried += "\n\tno file '" + path + "'";
+            continue;
+        }
+        if (luaL_loadfilex(L, path.c_str(), "t") != LUA_OK) {
+            return luaL_error(L, "error loading module '%s' from file '%s':\n\t%s",
+                              name, path.c_str(), lua_tostring(L, -1));
+        }
+        lua_pushstring(L, path.c_str());
+        return 2;
+    }
+    lua_pushstring(L, tried.c_str());
+    return 1;
+}
+
 void apply_sandbox(lua_State* L) {
     static const char* const kDropGlobals[] = {
         "dofile", "loadfile", "load", "collectgarbage", "debug", "io",
@@ -2469,14 +2513,17 @@ void apply_sandbox(lua_State* L) {
     if (lua_istable(L, -1)) {
         lua_pushnil(L); lua_setfield(L, -2, "loadlib");
         lua_pushstring(L, ""); lua_setfield(L, -2, "cpath");
-        // searchers = { preload, lua-file }. Dropping searchers 3 and 4 (the
-        // C-library loaders) is what makes an empty cpath un-bypassable.
+        // searchers = { preload, lua_sdk_searcher }. Replacing the stock Lua
+        // file searcher (mode NULL, accepts bytecode) and dropping the C-library
+        // loaders keeps `require` text-only and native-code free.
         lua_getfield(L, -1, "searchers");
         if (lua_istable(L, -1)) {
-            for (int i = static_cast<int>(lua_rawlen(L, -1)); i >= 3; --i) {
+            for (int i = static_cast<int>(lua_rawlen(L, -1)); i >= 2; --i) {
                 lua_pushnil(L);
                 lua_rawseti(L, -2, i);
             }
+            lua_pushcfunction(L, lua_sdk_searcher);
+            lua_rawseti(L, -2, 2);
         }
         lua_pop(L, 1);
     }
@@ -2654,26 +2701,6 @@ std::string first_line(const std::string& msg) {
     if (out.size() > kMax) out = out.substr(0, kMax) + "...";
     return out;
 }
-// Prepend `<game>/rsmm/lib/?.lua` to package.path so `require "rsmm"` (and
-// friends) resolve to the SDK module that ships next to the loader. Without
-// this Lua's default search path would only find mods/<id>/init.lua. The
-// native `rsmm` global stays available as a fallback for low-level scripts
-// that don't want the wrapper.
-void prepend_sdk_path(lua_State* L) {
-    const auto sdk_lib_dir = Loader::get().game_dir() / "rsmm" / "lib";
-    const std::string entry =
-        sdk_lib_dir.string() + "/?.lua;" +
-        sdk_lib_dir.string() + "/?/init.lua;";
-    lua_getglobal(L, "package");
-    if (lua_istable(L, -1)) {
-        lua_getfield(L, -1, "path");
-        const std::string cur = lua_isstring(L, -1) ? lua_tostring(L, -1) : "";
-        lua_pop(L, 1);
-        lua_pushstring(L, (entry + cur).c_str());
-        lua_setfield(L, -2, "path");
-    }
-    lua_pop(L, 1);
-}
 }  // namespace
 
 bool script_run_mod_init(const std::string& mod_id,
@@ -2699,10 +2726,11 @@ bool script_run_mod_init(const std::string& mod_id,
 
     lua_pushstring(L, mod_id.c_str());
     lua_setfield(L, LUA_REGISTRYINDEX, "__rsmm_mod_id");
+    // Read by lua_sdk_searcher; set before any `require` can run.
+    lua_pushstring(L, mod_root.string().c_str());
+    lua_setfield(L, LUA_REGISTRYINDEX, "__rsmm_mod_root");
     load_mod_config(L, mod_root);
     register_api(L);
-
-    prepend_sdk_path(L);
 
     ModScript& s = g_scripts[mod_id];
     s.L    = L;
@@ -2764,7 +2792,6 @@ bool script_run_builtin_init() {
     lua_pushstring(L, id.c_str());
     lua_setfield(L, LUA_REGISTRYINDEX, "__rsmm_mod_id");
     register_api(L);
-    prepend_sdk_path(L);
 
     ModScript& s = g_scripts[id];
     s.L       = L;
