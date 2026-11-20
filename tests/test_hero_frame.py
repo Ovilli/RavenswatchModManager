@@ -938,3 +938,21 @@ def test_a_custom_dash_replaces_the_shared_one():
     assert ctl["ref_2"].endswith("State Custom Dash Ability")
     assert "Dash Cooldown Default" in ctl["value_4"]
     assert ef.component("Dash Ability Anim").override is not None
+
+
+@needs_corpus
+@needs_install
+def test_show_counter_sets_the_flag_after_the_cards_icon():
+    """The byte after a skill controller's icon is its counter badge: set on
+    the 29 shipped quest / stack cards, 0 on the other 391 (#192)."""
+    icon = "Heroes\\Geppetto\\Skill Dash Deals Damage.png"
+    ef = _hero("Hero_T")
+    hc = HF.common(_read)
+    for name, on in (("Attack Plain", False), ("Attack Quest", True)):
+        HF.add_talent(ef, hc, name, bank="B", name_key="n", desc_key="d", icon=icon,
+                      seed="t", show_counter=on)
+        p = bytes(ef.objects[ef.component(f"Skill Controller {name}").index - 1])
+        assert p[p.find(icon.encode()) + len(icon)] == int(on)
+    with pytest.raises(HF.FrameError, match="counter"):
+        HF.add_talent(ef, hc, "Attack Blank", bank="B", name_key="n", desc_key="d",
+                      icon="", seed="t", show_counter=True)

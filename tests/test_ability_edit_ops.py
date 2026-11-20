@@ -129,3 +129,41 @@ def test_unlink_reads_drops_the_value_reads():
     assert _part(_raw(), _OP).refs
     out = _apply([{"unlink_reads": _OP}])
     assert len(_part(out, _OP).refs) < len(_part(_raw(), _OP).refs)
+
+
+# --- talent scaling ops (#202, from #192) ---------------------------------------
+
+_MEL = "EntitySettings/Heroes/Hero_Melusine/Hero_Melusine.entity.ot.EntitySettingsResource.gen"
+
+
+def _mel_apply(steps):
+    from rsmm.engine import corpus
+    raw = corpus.read(_MEL)
+    if raw is None:
+        pytest.skip("no Melusine entity")
+    out = AE.apply({"Hero_Melusine": raw}, steps, main="Hero_Melusine",
+                   seed="t").files["Hero_Melusine"]
+    assert EC.check(out, raw, name="Hero_Melusine") == []
+    return {c.name: c for c in EG.parse(out).components}
+
+
+def _names(c):
+    return [r.path.rsplit("\\", 1)[-1] for r in c.refs]
+
+
+@needs_corpus
+def test_scale_by_talent_scales_a_node_by_the_talents_factor():
+    node = "Secondary Ability Attack Width"
+    g = _mel_apply([{"scale_by_talent": node, "talent": "Trait Dash",
+                     "values": 0.3, "tag": "W", "percent": False}])
+    assert _names(g[node]) == [f"{node} Scaled"]
+    assert _names(g[f"{node} Scaled"])[0] == f"{node} Base"
+
+
+@needs_corpus
+def test_talent_number_adds_a_per_rarity_value_of_the_talent():
+    g = _mel_apply([{"talent_number": "Dash Stacks", "talent": "Trait Dash",
+                     "values": [1, 2, 3, 4]}])
+    assert _names(g["Dash Stacks"]) == ["Dash Stacks Selector"]
+    with pytest.raises(AE.AbilityEditError, match="talent = <name>"):
+        _mel_apply([{"talent_number": "X", "values": [1]}])

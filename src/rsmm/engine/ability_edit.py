@@ -63,6 +63,17 @@ One step per table::
                                           its sub-objects) that reads another
                                           part keeps its own number instead
 
+    scale_by_talent = ["Bite Damage"]     value / multiply nodes scaled by a
+    talent = "Attack Feral Bite"          talent's per-rarity factor (``tag``
+    values = [10, 20, 30, 40]             "Attack" by default; ``percent``
+                                          true: the values are percents);
+                                          ``factor = <part>`` reuses one
+
+    talent_number = "Bleed Stacks"        a per-rarity value node of the
+    talent = "Attack Feral Bite"          talent, also shown on its card as
+    values = [1, 2, 3, 4]                 the next ``{N}``; ``flag = true``
+                                          adds the talent's owned flag
+
     add_subobject = "Wolf Basic Attack Combo.bytes_4"   append a copy of entry
     donor_index = 1                       ``donor_index`` of that id list (a
     replace_ref = { "Step 2" = "Step 3" } combo's steps), its links to the
@@ -86,12 +97,13 @@ from .entity_graph_edit import EntityEditError, EntityFile, id_list_pad
 _OPS = ("clone", "set", "link", "add_link", "remove_link", "percent", "add_subobject",
         "replace_subobject", "switch_off", "override", "retarget", "retarget_targets", "event",
         "append_operand", "add_cinebloc", "animatic_speed", "add_selector", "unlink_reads",
-        "swap_ref", "scale_with_level")
+        "swap_ref", "scale_by_talent", "talent_number", "scale_with_level")
 #: Every key a step may carry; anything else is a typo that would otherwise be
 #: ignored silently (a `rename` the old clone did not read left its copies
 #: under the default suffix, and the next step found nothing).
 _KEYS = {*_OPS, "value", "to", "entity", "as", "suffix", "from", "rename",
-         "donor_index", "donor", "replace_ref", "node", "from_kind", "when"}
+         "donor_index", "donor", "replace_ref", "node", "from_kind", "when", "talent",
+         "values", "tag", "flag", "factor"}
 
 
 class AbilityEditError(ValueError):
@@ -144,7 +156,10 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
     for n, step in enumerate(steps, 1):
         if not isinstance(step, dict):
             raise AbilityEditError(f"ability step {n} is not a table")
-        ops = [op for op in _OPS if op in step]
+        # `percent` is also scale_by_talent's / talent_number's bool option;
+        # only a slot name (a string) makes it the percent step.
+        ops = [op for op in _OPS
+               if op in step and not (op == "percent" and isinstance(step[op], bool))]
         if len(ops) != 1:
             raise AbilityEditError(f"ability step {n} needs exactly one of {', '.join(_OPS)}")
         unknown = set(step) - _KEYS
@@ -201,6 +216,10 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
                 if not step.get("to"):
                     raise AbilityEditError("append_operand needs to = <part>")
                 ef.append_operand(str(step[op]), str(step["to"]))
+            elif op == "scale_by_talent":
+                edits[ef.name] = _scale_by_talent(ef, step, f"{seed}:{n}")
+            elif op == "talent_number":
+                edits[ef.name] = _talent_number(ef, step, f"{seed}:{n}")
             elif op == "scale_with_level":
                 if "value" not in step:
                     raise AbilityEditError("scale_with_level needs value = <ratio>")
@@ -346,6 +365,55 @@ def _clone(ef: EntityFile, step: dict, seed: str, read) -> None:
     ef.clone(names, rename={x: str(rename.get(x, x + suffix)) for x in names},
              group=regroup, seed=seed,
              source=None if src is ef else src)
+
+
+def _scale_by_talent(ef: EntityFile, step: dict, seed: str) -> EntityFile:
+    """Scale one or more value / multiply nodes by a talent's per-rarity factor:
+    a new factor (``talent`` + ``values``), or an existing one (``factor``)."""
+    from . import talent_range as TR
+    targets = step["scale_by_talent"]
+    nodes = [targets] if isinstance(targets, str) else [str(x) for x in targets]
+    if not nodes:
+        raise AbilityEditError("scale_by_talent needs at least one node to scale")
+    if step.get("factor"):
+        raw, factor_name = ef.to_bytes(), str(step["factor"])
+    else:
+        if not step.get("talent") or "values" not in step:
+            raise AbilityEditError(
+                "scale_by_talent needs talent = <name> and values = [...] (or factor = <part>)")
+        raw, factor = TR.add_factor(ef.to_bytes(), talent=str(step["talent"]),
+                                    values=step["values"], tag=str(step.get("tag") or "Attack"),
+                                    percent=bool(step.get("percent", True)), seed=seed)
+        factor_name = factor.name
+    for node in nodes:
+        raw = TR.scale_node(raw, node=node, factor=factor_name,
+                            seed=f"{seed}:{node}", scope=ef.name)
+    return EntityFile(raw, ef.name)
+
+
+def _talent_number(ef: EntityFile, step: dict, seed: str) -> EntityFile:
+    """A per-rarity number of ``talent`` (``values``, one per rarity) as the
+    value node ``talent_number``, shown on the card as the next ``{N}`` of its
+    description; ``flag = true`` also gives the talent its owned flag."""
+    from . import entity_graph as EG
+    from . import talent_add_stat as TA
+    from . import talent_status as TS
+    from . import talent_writer as TW
+
+    if not step.get("talent") or "values" not in step:
+        raise AbilityEditError("talent_number needs talent = <name> and values = [...]")
+    talent, name = str(step["talent"]), str(step["talent_number"])
+    raw = ef.to_bytes()
+    if step.get("flag"):
+        raw, _ = TS.add_flag(raw, talent=talent, seed=seed)
+    ctl, _state, fmt = TA.card_parts(EG.parse(raw), talent)
+    out = EntityFile(raw, ef.name)
+    w = TW.TalentWriter(out, f"{seed}:num:{name}", f"Skill {talent}")
+    sel = f"{name} Selector"
+    w.value_of(name, w.rarity(sel, TW.link_to(out, ctl.name), TA.normalise_values(step["values"])))
+    if fmt:
+        out.add_format_slot(fmt.name, sel, percent=bool(step.get("percent", False)))
+    return out
 
 
 def _scale_with_level(ef: EntityFile, target: str, ratio: float, seed: str) -> None:
