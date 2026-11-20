@@ -956,3 +956,26 @@ def test_show_counter_sets_the_flag_after_the_cards_icon():
     with pytest.raises(HF.FrameError, match="counter"):
         HF.add_talent(ef, hc, "Attack Blank", bank="B", name_key="n", desc_key="d",
                       icon="", seed="t", show_counter=True)
+
+
+@needs_corpus
+@needs_install
+def test_moving_or_loop_ability_sound_sets_event_flag():
+    """A sound a state's ``activates`` switches on (moving / loop) must be a
+    one-frame event, or it stays on after the first cast and never replays
+    (#192)."""
+    from rsmm.engine import entity_graph as EG
+    from rsmm.engine import hero_ability as HA
+    from rsmm.engine.entity_graph_edit import EntityFile
+    for slot, extra in (("defense", {"moving": True}), ("ultimate2", {"loop": True})):
+        ef = _hero("Hero_T")
+        ab = HA.Ability.parse(slot, {
+            "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+            "duration": 0.9,
+            "sound": "DarkHills\\Jack\\Jack_NPC_Model.entity.ot | Beanstalk ShakeImpact FMod Event",
+            **extra,
+        })
+        HA.build(ef, HF.common(_read), ab, seed="t")
+        e2 = EntityFile(ef.to_bytes(), "Hero_T")
+        tag = slot.capitalize() if slot != "ultimate2" else "Ultimate2"
+        assert e2.component(f"{tag} Ability Sound").flags & EG.EVENT_FLAG, slot

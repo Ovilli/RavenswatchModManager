@@ -196,3 +196,29 @@ def test_owner_read_reads_the_owners_part_and_switches_on_at_start_up():
     with pytest.raises(AE.AbilityEditError, match="itself"):
         AE.apply(files, [{"owner_read": "X", "node": "Raw Max Health"}],
                  main="Hero_Melusine", seed="t")
+
+
+# --- presentation (#202, from #192) ----------------------------------------------
+
+
+@needs_corpus
+def test_sound_volume_sets_the_decoded_volume_field():
+    from rsmm.engine import entity_fields as EF
+    snd = "Agressive Defense FMod Event Active"
+    out = _apply([{"sound_volume": snd, "value": 0.5}])
+    c = next(c for c in EG.parse(out, "Hero_Red").components if c.name == snd)
+    assert next(f.text for f in EF.fields(c) if f.name == "volume") == "f32 0.5"
+    with pytest.raises(AE.AbilityEditError, match="not a sound"):
+        _apply([{"sound_volume": "Dash Ability Anim", "value": 0.5}])
+
+
+@needs_corpus
+def test_animatic_clip_swaps_the_clip_path():
+    clip = "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx"
+    out = _apply([{"animatic_clip": "Dash Ability Anim", "value": clip}])
+    c = next(c for c in EG.parse(out, "Hero_Red").components if c.name == "Dash Ability Anim")
+    assert clip.encode() in c.body
+    with pytest.raises(AE.AbilityEditError, match=".fbx"):
+        _apply([{"animatic_clip": "Dash Ability Anim", "value": "x.png"}])
+    with pytest.raises(AE.AbilityEditError, match="not an animatic"):
+        _apply([{"animatic_clip": "Agressive Defense FMod Event Active", "value": clip}])

@@ -47,6 +47,13 @@ One step per table::
                                           links held in the part's own
                                           sub-objects (an FX emitter) move too
 
+    animatic_clip = "Dash Ability Anim"   play another clip in an animatic,
+    value = "Characters\\Heroes\\X\\Animations\\X_Dash.fbx"
+                                          its length taken from the clip
+
+    sound_volume = "Dash FMod Event"      a sound's volume (1 = as shipped)
+    value = 0.5
+
     swap_ref = "Wolf FX Spawner"          re-point every link in the part (and
     node = "Old Hit FX"                   its sub-objects) from ``node`` to
     to = "New Hit FX"                     ``to``, any kind; ``from`` reads
@@ -102,7 +109,8 @@ from .entity_graph_edit import EntityEditError, EntityFile, id_list_pad
 
 _OPS = ("clone", "set", "link", "add_link", "remove_link", "percent", "add_subobject",
         "replace_subobject", "switch_off", "override", "retarget", "retarget_targets", "event",
-        "append_operand", "add_cinebloc", "animatic_speed", "add_selector", "unlink_reads",
+        "append_operand", "add_cinebloc", "animatic_speed", "animatic_clip", "sound_volume",
+        "add_selector", "unlink_reads",
         "swap_ref", "scale_by_talent", "talent_number", "owner_read", "scale_with_level")
 #: Every key a step may carry; anything else is a typo that would otherwise be
 #: ignored silently (a `rename` the old clone did not read left its copies
@@ -204,6 +212,17 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
                 if "value" not in step:
                     raise AbilityEditError("animatic_speed needs value = <rate>")
                 ef.set_animatic_speed(str(step["animatic_speed"]), float(step["value"]))
+            elif op == "animatic_clip":
+                if not step.get("value"):
+                    raise AbilityEditError("animatic_clip needs value = <.fbx clip path>")
+                _animatic_clip(ef, str(step["animatic_clip"]), str(step["value"]))
+            elif op == "sound_volume":
+                if "value" not in step:
+                    raise AbilityEditError("sound_volume needs value = <volume>")
+                c = ef.component(str(step["sound_volume"]))
+                if c.cls != "oCEntityCpntFModEventSettings":
+                    raise AbilityEditError(f"{c.name!r} is a {c.cls}, not a sound (FMod event)")
+                ef.set_value(c.name, "volume", float(step["value"]))
             elif op == "add_selector":
                 if not step.get("to") or not step.get("when"):
                     raise AbilityEditError("add_selector needs to = <part> and when = <condition>")
@@ -373,6 +392,25 @@ def _clone(ef: EntityFile, step: dict, seed: str, read) -> None:
     ef.clone(names, rename={x: str(rename.get(x, x + suffix)) for x in names},
              group=regroup, seed=seed,
              source=None if src is ef else src)
+
+
+def _animatic_clip(ef: EntityFile, part: str, clip: str) -> None:
+    """Swap an animatic's ``.fbx`` clip and match its duration to the clip."""
+    import re
+
+    from . import hero_frame as HF
+    c = ef.component(part)
+    if c.cls != "oCEntityCpntAnimaticSettings":
+        raise AbilityEditError(f"{part!r} is a {c.cls}, not an animatic")
+    if not clip.lower().endswith(".fbx"):
+        raise AbilityEditError(f"animatic_clip: {clip!r} is not an .fbx clip path")
+    old = re.search(rb"Characters\\[ -~]*?\.fbx", c.body)
+    if old is None:
+        raise AbilityEditError(f"{part!r} holds no animation clip path")
+    HF.replace_in_slot(ef, part, old.group(0).decode(), clip)
+    length = HF.clip_length(clip)
+    if length:
+        HF._set_duration(ef, part, length)
 
 
 def _scale_by_talent(ef: EntityFile, step: dict, seed: str) -> EntityFile:
