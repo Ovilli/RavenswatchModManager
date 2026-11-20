@@ -100,7 +100,8 @@ def test_saving_an_edit_keeps_every_hand_written_line(mods):
     nyx = _block(mods)
     nyx["frame"]["abilities"]["power"]["cooldown"] = 8
     got = HB._save(_req(mods, {"mod": "m", "block": "Nyx", "hero": nyx}))
-    assert got == {"mod": "m", "block": "Nyx", "problems": []}
+    assert got == {"mod": "m", "block": "Nyx", "problems": [],
+                   "saved": str(mods / "m" / "manifest.toml")}
     text = (mods / "m" / "manifest.toml").read_text(encoding="utf-8")
     assert "# Jack, by hand." in text and '"anim:Chop"     # his own clip' in text
     assert "cooldown = 8" in text and _block(mods) == nyx
@@ -171,3 +172,16 @@ def test_the_shipped_lists_offer_names_in_the_form_the_build_reads(install_only)
     assert not any("Merlin" in x for x in s["sounds"])     # DLC hero: not handed out
     assert "DEF.Chest" in HB.rig("Hero_Kintaro")["bones"]
     assert "Heroes\\Kintaro\\Portrait_Kintaro_01.png" in s["pictures"]
+
+
+def test_a_saved_hero_is_handed_to_the_web_editor_as_a_download(mods):
+    """The web editor keeps a saved mod only in page memory and zips it for the
+    player when the save answer names `<mods>/<id>/manifest.toml` (`afterSave`
+    in apps/docs/src/pages/editor/index.astro). The Hero tab's answer did not,
+    so "Save hero" there created the mod and nothing ever reached the disk."""
+    from pathlib import Path
+    page = (Path(__file__).resolve().parents[1] / "apps/docs/src/pages/editor/index.astro"
+            ).read_text(encoding="utf-8")
+    assert "saved = j.saved" in page and r"mods\/([^/]+)\/manifest\.toml$" in page
+    got = HB._save(_req(mods, {"mod": "m", "block": "Nyx", "hero": _block(mods)}))
+    assert got["saved"] == str(mods / "m" / "manifest.toml")    # <mods>/<id>/manifest.toml

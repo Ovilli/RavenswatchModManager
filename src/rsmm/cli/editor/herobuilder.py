@@ -708,7 +708,12 @@ def _save(req: Request) -> dict:
         if created:
             shutil.rmtree(req.ctx.mods_dir / mod_id, ignore_errors=True)   # no half-made mod
         raise
-    return {"mod": mod_id, "block": hid, "problems": problems(hero, path.parent)}
+    # `saved` is what the web editor keys its download on: a saved mod lives
+    # only in that page's memory, so it hands the folder over as a zip. The
+    # other editors returned it; without it a hero saved on docs.rsmm.me/editor
+    # never reached the player's disk.
+    return {"mod": mod_id, "block": hid, "problems": problems(hero, path.parent),
+            "saved": str(path)}
 
 
 def _delete(req: Request) -> dict:
