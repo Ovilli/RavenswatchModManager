@@ -119,6 +119,7 @@ export default defineConfig({
           items: [
             { label: 'Authoring mods', slug: 'guides/modding' },
             { label: 'Build a mod with an AI assistant', slug: 'guides/ai-assistant' },
+            { label: '用 AI 助手制作 Mod（中文）', slug: 'guides/ai-assistant-zh' },
             { label: 'Custom items', slug: 'guides/custom-items' },
             { label: 'Custom enemies', slug: 'guides/custom-enemies' },
             { label: 'Talent modding, step by step', slug: 'guides/talent-tutorial' },

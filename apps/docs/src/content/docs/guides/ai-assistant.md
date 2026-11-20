@@ -22,6 +22,10 @@ invent a mod format. Then help me build: <what you want>.
 Any assistant that can fetch a URL will then be working from the real
 manifest grammar, the real content kinds, and the real CLI.
 
+**Chinese speakers / DeepSeek users:** [用 AI 助手制作 Mod（中文）](/guides/ai-assistant-zh/)
+is a self-contained Chinese prompt for assistants that can't fetch URLs. It
+covers installing mods, the `rsmm` tools, custom skins, 3D models and uploading.
+
 ## The machine-readable entry points
 
 | URL | What it is | When to use it |

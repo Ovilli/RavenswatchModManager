@@ -26,7 +26,11 @@ const INCLUDE_PAGES = new Set(['index', 'architecture/overview']);
  * they may act on (mod Lua is forbidden from touching engine symbols at all —
  * `rsmm lint` fails it).
  */
-const EXCLUDE_PAGES = new Set(['reference/symbols']);
+const EXCLUDE_PAGES = new Set([
+  'reference/symbols',
+  // A Chinese copy-paste prompt that restates pages already in this corpus.
+  'guides/ai-assistant-zh',
+]);
 
 const wanted = (id: string) =>
   !EXCLUDE_PAGES.has(id) &&
