@@ -44,3 +44,16 @@ def test_apply_sandbox_installs_our_searcher():
     src = _code(LOADER / "src" / "script_lua.cpp")
     assert "lua_pushcfunction(L, lua_sdk_searcher)" in src
     assert "prepend_sdk_path" not in src
+
+
+def test_searcher_checks_the_resolved_path_against_its_root():
+    src = _code(LOADER / "src" / "script_lua.cpp")
+    body = src[src.index("int lua_sdk_searcher("):src.index("void apply_sandbox(")]
+    # Names that would build an empty path component (".x", "x.") are refused,
+    # and every candidate passes resolves_within before it is loaded.
+    assert "mod.front() == '.'" in body and "mod.back() == '.'" in body
+    assert body.index("resolves_within(p, root)") < body.index("luaL_loadfilex(")
+    helper = src[src.index("static bool resolves_within("):src.index("int lua_sdk_searcher(")]
+    assert "std::filesystem::canonical(file" in helper
+    assert "std::filesystem::canonical(root" in helper
+    assert '*rel.begin() != ".."' in helper

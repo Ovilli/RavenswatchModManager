@@ -2442,36 +2442,55 @@ int lua_shared_set(lua_State* L) {
 // { preload, lua_sdk_searcher }. Our searcher looks only in <game>/rsmm/lib
 // and the mod's own directory and loads with mode "t", so `require` can find
 // SDK modules but can never load native code or precompiled bytecode (Lua 5.4
-// does not verify bytecode; a crafted chunk corrupts the VM).
+// does not verify bytecode; a crafted chunk corrupts the VM). A file loads
+// only when its resolved path (links followed) is still inside the root it
+// was built from.
+static bool resolves_within(const std::filesystem::path& file,
+                            const std::filesystem::path& root) {
+    std::error_code ec;
+    const auto real_file = std::filesystem::canonical(file, ec);
+    if (ec) return false;
+    const auto real_root = std::filesystem::canonical(root, ec);
+    if (ec) return false;
+    const auto rel = real_file.lexically_relative(real_root);
+    return !rel.empty() && *rel.begin() != ".." && !rel.is_absolute();
+}
+
 int lua_sdk_searcher(lua_State* L) {
     const char* name = luaL_checkstring(L, 1);
     const std::string mod = name;
     if (mod.empty() || mod.find_first_of("/\\:") != std::string::npos ||
-        mod.find("..") != std::string::npos) {
+        mod.find("..") != std::string::npos || mod.front() == '.' ||
+        mod.back() == '.') {
         lua_pushfstring(L, "\n\tno file for module '%s' (invalid name)", name);
         return 1;
     }
     std::string rel = mod;
     for (char& c : rel) if (c == '.') c = '/';
 
-    std::vector<std::filesystem::path> candidates;
+    // (root, file) pairs: each file is checked against the root it came from.
+    std::vector<std::pair<std::filesystem::path, std::filesystem::path>> candidates;
     const auto sdk = Loader::get().game_dir() / "rsmm" / "lib";
-    candidates.push_back(sdk / (rel + ".lua"));
-    candidates.push_back(sdk / rel / "init.lua");
+    candidates.emplace_back(sdk, sdk / (rel + ".lua"));
+    candidates.emplace_back(sdk, sdk / rel / "init.lua");
     lua_getfield(L, LUA_REGISTRYINDEX, "__rsmm_mod_root");
     if (lua_isstring(L, -1) && lua_rawlen(L, -1) > 0) {
         const std::filesystem::path root = lua_tostring(L, -1);
-        candidates.push_back(root / (rel + ".lua"));
-        candidates.push_back(root / rel / "init.lua");
+        candidates.emplace_back(root, root / (rel + ".lua"));
+        candidates.emplace_back(root, root / rel / "init.lua");
     }
     lua_pop(L, 1);
 
     std::string tried;
-    for (const auto& p : candidates) {
+    for (const auto& [root, p] : candidates) {
         std::error_code ec;
         const std::string path = p.string();
         if (!std::filesystem::is_regular_file(p, ec)) {
             tried += "\n\tno file '" + path + "'";
+            continue;
+        }
+        if (!resolves_within(p, root)) {
+            tried += "\n\tskipped '" + path + "' (resolves outside its root)";
             continue;
         }
         if (luaL_loadfilex(L, path.c_str(), "t") != LUA_OK) {
