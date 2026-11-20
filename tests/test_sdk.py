@@ -497,38 +497,6 @@ def test_docs_gen_writes_per_module(tmp_path: Path):
     assert "SDK v3 API reference" in idx
 
 
-def test_migrations_no_chain_returns_empty():
-    from rsmm.sdk.migrations import chain
-    assert chain("item", 1, 1) == [1]
-    assert chain("item", 2, 1) == []
-    # No migrations on disk -> jumping versions yields empty chain.
-    assert chain("item", 1, 5) == []
-
-
-def test_migrations_runs_when_present(tmp_path: Path, monkeypatch):
-    """Drop a synthetic migration into the package and run it."""
-    import rsmm.sdk.kinds as k
-    migr_dir = Path(k.__file__).parent / "item" / "migrations"
-    migr_dir.mkdir(parents=True, exist_ok=True)
-    (migr_dir / "__init__.py").write_text("", encoding="utf-8")
-    (migr_dir.parent / "__init__.py").touch()
-    f = migr_dir / "1_to_2.py"
-    f.write_text(
-        "def migrate(d):\n"
-        "    d = dict(d)\n"
-        "    d['migrated'] = True\n"
-        "    return d\n",
-        encoding="utf-8",
-    )
-    try:
-        from rsmm.sdk.migrations import migrate
-        out = migrate("item", {"x": 1}, from_v=1, to_v=2)
-        assert out == {"x": 1, "migrated": True}
-    finally:
-        # Cleanup so the synthetic migration doesn't leak into other runs.
-        f.unlink()
-
-
 def test_update_plan_skips_when_up_to_date(monkeypatch, tmp_path: Path):
     from rsmm.cli import update_cmd
     fake_index = {

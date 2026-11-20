@@ -227,7 +227,8 @@ mesh and maps (:mod:`rsmm.engine.prop_cook`). The donors supply *structure*
     entities placed ~470 times). ``[parts.<name>] collision = [...]`` gives a
     part its own boxes, in its own space.
 
-``[marker]`` (table, optional, ``replace_base`` only)
+``[marker]`` (table, optional; needs a host: the prop ``replaces`` names, or
+the def's own prop placed with ``places = [{ entity = "@prop" }]``)
     Put the POI on the minimap and the map screen.
 
     ``icon`` (str) is the mod's own art, a file in the POI folder. ``icon_high``
@@ -3167,9 +3168,9 @@ def _emit_prop_override(mod_id: str, defn: ContentDef, out_dir: Path,
     REQUESTED) paired with ``ResourceRef_Resolve`` (did it RESOLVE) showed a
     mod-introduced entity being requested AND resolved — three times, state=1 —
     alongside the mod's own tiledefs, level and geometry, with zero null
-    resolves. A level CAN reference an asset the mod introduced. This function
-    is kept because in-place override is still the only route PROVEN to render,
-    not because the additive one is impossible.
+    resolves. A level CAN reference an asset the mod introduced, and the
+    additive route has since rendered in game too (2026-09-17, ``KIND_CONFIDENCE``
+    "poi"). This function stays as the route that mints no new name.
 
     The original reasoning, kept for the record: a byte-for-byte copy of a
     shipped entity under a new name, registered in ``UsedRscList.ot`` and
@@ -3528,7 +3529,7 @@ def _assert_textures_belong_to(defn_id: str, ref: str, mats: list[str],
 
 
 def _emit_cloned_level(mod_id: str, defn: ContentDef, out_dir: Path,
-                       base: str, written: list[Path]) -> str:
+                       base: str, written: list[Path]) -> tuple[str, list[str], list[str]]:
     """Additive path with a mod-owned LEVEL but no mod-owned entity.
 
     This is the missing rung of the ladder. The two rungs either side of it are

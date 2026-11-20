@@ -3,7 +3,6 @@
 
 Reports:
   * SDK API version
-  * loaded plugins (entry-points)
   * health quarantine state
   * game-build pin status
   * per-mod config_schema validity
@@ -15,7 +14,6 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 from rsmm.cli.apply_mods import find_game_dir
 from rsmm.engine.paths import COOKING_SUBDIR, MODS_DIR
@@ -23,7 +21,6 @@ from rsmm.sdk.api import API_VERSION, registry
 from rsmm.sdk.config import ConfigError, ConfigSchema
 from rsmm.sdk.health import Health
 from rsmm.sdk.i18n import I18nBundle
-from rsmm.sdk.plugins import discover_plugins
 from rsmm.sdk.versioning import check_compat
 
 
@@ -40,14 +37,6 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     print(f"SDK API: {API_VERSION}")
-
-    api = SimpleNamespace(version=API_VERSION)
-    loaded, skipped = discover_plugins(api)
-    print(f"\nPlugins: {len(loaded)} loaded, {len(skipped)} skipped")
-    for p in loaded:
-        print(f"  + {p.name} ({p.target})")
-    for p in skipped:
-        print(f"  ! {p.name} ({p.target})  ERROR: {p.error}")
 
     game = args.game_dir or find_game_dir()
     if game:

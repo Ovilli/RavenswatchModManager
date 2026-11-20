@@ -116,7 +116,7 @@ by clicking, and most mods are a short text file called `manifest.toml`. Code
 | **Look and sound** | Textures, 3D models, audio |
 | **Balance** | Hero and enemy stats, talent values, magical object values |
 | **Text** | Any text in the game, including whole translations |
-| **New content** | New magical objects. Enemies, maps, shops and rewards work but are still experimental. |
+| **New content** | New magical objects, enemies, shops and rewards. Maps work but are still experimental. |
 | **Scripted gameplay** | Lua scripts that run inside the game |
 
 ### Do I need the app to make mods?

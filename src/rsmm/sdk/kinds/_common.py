@@ -6,24 +6,14 @@ focused on their own schema:
 * schema sentinels (``EMPTY_STRING_SENTINEL``, ``UNRESOLVED_NAME_HASH``)
   read by the ctors documented in ``https://docs.rsmm.me/reverse-engineering/mod-hooks/`` and the
   per-kind pages.
-* ``name_hash`` — FNV-1a-32 placeholder for ``oCResourcePath::hash``.
-  The game's exact constants live in ``oCResourcePath::Set``; until
-  the RE team confirms the algorithm, every kind uses FNV-1a so the
-  manifest hash is stable + non-sentinel. A single implementation
-  keeps the items / enemies / heroes builders from drifting.
 * ``validate_id`` / ``slug_id`` — ASCII identifier guards (the game's
   resource-path parser rejects anything outside ``[A-Za-z0-9_]``).
-* ``write_json`` — deterministic JSON writer (sorted keys, LF
-  newlines, UTF-8) so manifests are byte-identical on Windows and
-  Linux. This matters for repro builds and content-hash gates.
 """
 
 from __future__ import annotations
 
-import json
 import re
-from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 # --------------------------------------------------------------------------- #
 # Schema sentinels — referenced by every kind's ctor (see docs/_re).
@@ -34,13 +24,8 @@ from typing import Any, Final
 #: with the pooled string once the name resolves.
 EMPTY_STRING_SENTINEL: Final[int] = 0x140EB46D0
 
-#: ``oCResourcePath::hash`` sentinel that means "not yet resolved". Any
-#: real hash colliding with this value is perturbed by ``name_hash`` so
-#: the loader doesn't treat the slot as unresolved.
+#: ``oCResourcePath::hash`` sentinel that means "not yet resolved".
 UNRESOLVED_NAME_HASH: Final[int] = 0x80000000
-
-#: Default ``oCDtDefinition`` flags word (set by every kind ctor).
-DEFINITION_DEFAULT_FLAGS: Final[int] = 0x0101
 
 
 # --------------------------------------------------------------------------- #
@@ -82,53 +67,3 @@ def list_entry(field: str, entry, n: int, shape: str) -> tuple:
     if not isinstance(entry, (list, tuple)) or len(entry) < n:
         raise ContentError(f"{field} entry must be {shape} or a table, got {entry!r}")
     return tuple(entry[:n])
-
-
-# --------------------------------------------------------------------------- #
-# Hashing.
-# --------------------------------------------------------------------------- #
-
-_FNV1A_OFFSET_32: Final[int] = 0x811C9DC5
-_FNV1A_PRIME_32: Final[int] = 0x01000193
-
-
-def name_hash(name: str) -> int:
-    """32-bit FNV-1a, matching what every SDK kind writes into ``hash`` slots.
-
-    The game's exact algorithm hasn't been confirmed yet (it lives in
-    ``oCResourcePath::Set``); FNV-1a is a placeholder that keeps the
-    manifest deterministic across hosts. The apply layer replaces this
-    with the real value once the in-binary hash function is identified.
-
-    If FNV-1a happens to produce ``UNRESOLVED_NAME_HASH`` the result is
-    perturbed (``^1``) so the loader can't mistake a real hash for the
-    "not yet resolved" marker.
-    """
-    h = _FNV1A_OFFSET_32
-    for b in name.encode("utf-8"):
-        h ^= b
-        h = (h * _FNV1A_PRIME_32) & 0xFFFFFFFF
-    if h == UNRESOLVED_NAME_HASH:
-        h ^= 1
-    return h
-
-
-# --------------------------------------------------------------------------- #
-# Deterministic JSON writer.
-# --------------------------------------------------------------------------- #
-
-def write_json(path: Path, payload: Any) -> Path:
-    """Write ``payload`` to ``path`` as deterministic JSON.
-
-    * Sorted keys so the same input always produces the same bytes.
-    * LF newlines via ``write_bytes`` regardless of host OS line ending.
-    * UTF-8 with no BOM, matching every other text artifact in the project.
-    * Creates parent directories as needed.
-    * Trailing newline so POSIX tools (``diff``, ``cat``) behave.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    blob = json.dumps(
-        payload, indent=2, sort_keys=True, ensure_ascii=False,
-    ).encode("utf-8") + b"\n"
-    path.write_bytes(blob)
-    return path
