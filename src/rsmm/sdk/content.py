@@ -11,6 +11,7 @@ emit, so authors see exactly which class needs RE work next.
 
 from __future__ import annotations
 
+from contextlib import suppress
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from importlib import import_module
@@ -281,6 +282,11 @@ def written_this_run(path: Path) -> bool:
     return path.resolve() in run and path.is_file()
 
 
+def _files_under(root: Path) -> set[Path]:
+    """Every file under ``root`` (resolved); empty when it does not exist."""
+    return {p.resolve() for p in root.rglob("*") if p.is_file()} if root.is_dir() else set()
+
+
 @dataclass
 class ContentRegistry:
     """Mod-scoped registry. One per mod-build pass."""
@@ -338,14 +344,29 @@ class ContentRegistry:
         return ContentRef(kind=kind, id=id, mod_id=self.mod_id)
 
     def emit(self, out_dir: Path) -> list[Path]:
-        """Materialize every registered def into `out_dir`. Returns written paths."""
+        """Materialize every registered def into `out_dir`. Returns written paths.
+
+        All or nothing: when a def raises, every file this emit created is
+        deleted before the error propagates. Kinds write before they finish
+        validating, and the caller only learns what was written from the
+        return value, so a raise used to leave earlier defs' output (and the
+        failing def's partial writes) on disk, unlisted in the marker, where
+        apply planted it and the next emit read it back as base data.
+        """
+        before = _files_under(out_dir)
         written: list[Path] = []
         run: set[Path] = set()
         token = _EMITTED_THIS_RUN.set(run)
         try:
             for d in self.defs:
-                written.extend(self._emit_one(d, out_dir))
-                run.update(p.resolve() for p in written)
+                got = self._emit_one(d, out_dir)
+                written.extend(got)
+                run.update(p.resolve() for p in got)
+        except BaseException:           # Ctrl+C mid-emit orphans files too
+            for p in _files_under(out_dir) - before:
+                with suppress(OSError):
+                    p.unlink()
+            raise
         finally:
             _EMITTED_THIS_RUN.reset(token)
         return written

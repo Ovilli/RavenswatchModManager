@@ -484,6 +484,64 @@ def test_failed_emit_drops_the_previous_assets(tmp_path: Path, monkeypatch):
     )
 
 
+def test_failed_emit_removes_what_this_emit_wrote(tmp_path: Path, monkeypatch):
+    """Def 1 writes, def 2 writes then raises: both files go, hand-authored
+    files stay. Kinds write before they finish validating, and a raise used to
+    lose the record of what this emit wrote, so it stayed on disk unlisted and
+    apply planted it."""
+    import types
+
+    from rsmm.sdk import content as content_mod
+    from rsmm.sdk.content import ContentDef
+
+    out = tmp_path / "assets"
+    (out / "hand").mkdir(parents=True)
+    (out / "hand" / "keep.txt").write_text("mine")
+
+    def emit(mod_id, defn, out_dir):
+        dest = out_dir / "gen" / f"{defn.id}.bin"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"x")
+        if defn.id == "bad":
+            raise TypeError("float() argument must be a string or a real number")
+        return [dest]
+
+    monkeypatch.setattr(content_mod, "_load_kind", lambda kind: types.SimpleNamespace(emit=emit))
+    cr = ContentRegistry(mod_id="T")
+    cr.defs += [ContentDef("item", "good", {}), ContentDef("item", "bad", {})]
+    with pytest.raises(TypeError):
+        cr.emit(out)
+    assert sorted(p.relative_to(out).as_posix() for p in out.rglob("*") if p.is_file()) \
+        == ["hand/keep.txt"]
+
+
+def test_one_mods_bad_value_does_not_abort_apply(tmp_path: Path, monkeypatch):
+    """A TypeError from one mod's emit is that mod's failure; the next mod
+    still emits (the catch used to be OSError/ValueError only)."""
+    from rsmm.cli.apply_mods import Mod, emit_content_blocks
+
+    _unvalidated_bans(monkeypatch)
+    mods = []
+    for mid in ("A", "B"):
+        d = tmp_path / "mods" / mid
+        d.mkdir(parents=True)
+        (d / "manifest.toml").write_text(
+            f'[mod]\nid = "{mid}"\nname = "{mid}"\nversion = "1"\nenabled = true\n'
+            'sdk_version = ">=3.0,<4"\n\n' + _BAN_BLOCK, encoding="utf-8")
+        mods.append(Mod(d))
+
+    real = ContentRegistry.emit
+
+    def emit(self, out_dir):
+        if self.mod_id == "A":
+            raise TypeError("bad manifest value")
+        return real(self, out_dir)
+
+    monkeypatch.setattr(ContentRegistry, "emit", emit)
+    emit_content_blocks(mods)
+    assert (tmp_path / "mods" / "B" / "assets" / "_pending_bans" / "X.json").exists()
+
+
 def test_docs_gen_writes_per_module(tmp_path: Path):
     from rsmm.sdk.docs_gen import generate
     written = generate(tmp_path)

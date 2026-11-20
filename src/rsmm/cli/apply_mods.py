@@ -1153,6 +1153,10 @@ def emit_content_blocks(mods: list[Mod], game_dir: Path | None = None) -> int:
             except ContentError as e:
                 print(f"  [content] {m.id}: {e}", file=sys.stderr)
                 clean = False
+            except Exception as e:  # noqa: BLE001 - malformed value, see the emit catch below
+                print(f"  [content] {m.id}: {kind} {cid}: {type(e).__name__}: {e}",
+                      file=sys.stderr)
+                clean = False
         out_dir = m.assets_dir
         # Track what content-emit produced so a later emit (e.g. after the
         # author renames/removes a content def) can delete the files it wrote
@@ -1240,6 +1244,14 @@ def emit_content_blocks(mods: list[Mod], game_dir: Path | None = None) -> int:
             print(f"  [content] {m.id}: emit failed: {e} (RSMM CLI "
                   f"v{_req.running_cli_version()} - a field this CLI doesn't know "
                   "may need a newer RSMM)", file=sys.stderr)
+            _drop_emitted(m)
+        except Exception as e:  # noqa: BLE001 - one mod's bad data, see below
+            # A malformed manifest value surfaces as whatever the kind trips
+            # on first (TypeError from float(), KeyError, IndexError,
+            # struct.error, ...). It is one mod's bad data, not a reason to
+            # abort apply for every other mod.
+            print(f"  [content] {m.id}: emit failed: {type(e).__name__}: {e} "
+                  f"(RSMM CLI v{_req.running_cli_version()})", file=sys.stderr)
             _drop_emitted(m)
         finally:
             logging.getLogger("rsmm").removeHandler(cap)

@@ -40,7 +40,7 @@ from pathlib import Path
 
 from ...engine import corpus
 from ...engine import magic_item_cook as cook
-from ..content import ContentDef, ContentError, SchemaNotMined
+from ..content import ContentDef, ContentError, SchemaNotMined, written_this_run
 from . import _common as C
 
 _log = logging.getLogger(__name__)
@@ -420,8 +420,9 @@ def _bank_prior(out_dir: Path) -> dict[str, bytes]:
     it; rebuilding from vanilla dropped every earlier item's text."""
     bank = out_dir.joinpath(*cook.MAGIC_TEXT_BANK.split("/"))
     out = {".Lang" + f.name[len(bank.name) + len(".Lang"):]: f.read_bytes()
-           for f in bank.parent.glob(bank.name + ".Lang*")} if bank.parent.is_dir() else {}
-    if bank.is_file():
+           for f in bank.parent.glob(bank.name + ".Lang*")
+           if written_this_run(f)} if bank.parent.is_dir() else {}
+    if written_this_run(bank):
         out["__base__"] = bank.read_bytes()
     return out
 

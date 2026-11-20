@@ -38,7 +38,7 @@ from pathlib import Path
 from ...engine import corpus
 from ...engine import game_modifier_cook as GMC
 from ...engine import text_patches as TP
-from ..content import ContentDef, ContentError, SchemaNotMined
+from ..content import ContentDef, ContentError, SchemaNotMined, written_this_run
 from . import _common as C
 
 _log = logging.getLogger(__name__)
@@ -99,8 +99,9 @@ def _bank_prior(out_dir: Path) -> dict[str, bytes]:
     every block but the last (the bug items.py fixed the same way)."""
     bank = out_dir.joinpath(*_TEXT_BANK_DECODED.split("/"))
     out = {".Lang" + f.name[len(bank.name) + len(".Lang"):]: f.read_bytes()
-           for f in bank.parent.glob(bank.name + ".Lang*")} if bank.parent.is_dir() else {}
-    if bank.is_file():
+           for f in bank.parent.glob(bank.name + ".Lang*")
+           if written_this_run(f)} if bank.parent.is_dir() else {}
+    if written_this_run(bank):
         out["__base__"] = bank.read_bytes()
     return out
 

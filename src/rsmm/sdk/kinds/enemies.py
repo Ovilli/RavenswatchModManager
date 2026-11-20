@@ -51,7 +51,7 @@ from ...engine import cooked, corpus
 from ...engine import enemy_pools as EP
 from ...engine import rsc_cache as RC
 from ...engine.cooked_schemas import definitions as _defs
-from ..content import ContentDef, ContentError, SchemaNotMined
+from ..content import ContentDef, ContentError, SchemaNotMined, written_this_run
 from . import _common as C
 
 _log = logging.getLogger(__name__)
@@ -483,7 +483,7 @@ def _append_pool(biome: str, base: str, ref: str, out_dir: Path, defn_id: str) -
     from ...engine import level_placements as LP
     rel = EP.pool_cooked_rel(biome)
     dest = out_dir / Path(*rel.split("/"))
-    raw = dest.read_bytes() if dest.is_file() else EP.corpus_read(rel)
+    raw = dest.read_bytes() if written_this_run(dest) else EP.corpus_read(rel)
     if raw is None:
         raise SchemaNotMined(f"enemy {defn_id}: {rel} is missing, so {biome}'s pool "
                              f"cannot stream the clone's entity.")
