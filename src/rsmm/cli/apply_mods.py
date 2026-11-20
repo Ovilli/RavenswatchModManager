@@ -127,7 +127,12 @@ from rsmm.engine.versiondef import (
     collect_item_bans,
     sync_versiondef,
 )
-from rsmm.sdk.archive import DANGEROUS_EXTENSIONS, ArchiveError, windows_name
+from rsmm.sdk.archive import (
+    DANGEROUS_EXTENSIONS,
+    ROOT_OVERLAY_DIR,
+    ArchiveError,
+    windows_name,
+)
 from rsmm.sdk.transaction import ApplyTransaction
 
 
@@ -666,8 +671,9 @@ def resolve_special(decoded: str, dec2enc: dict[str, str], *,
     45 of a mod's caches as unmapped (46 of 63 doctor WARNs were this), while
     the files were in fact installed and hash-verified.
     """
-    if decoded.startswith("_root/"):
-        return ROOT_PREFIX + decoded[len("_root/"):].replace("/", "\\")
+    overlay = ROOT_OVERLAY_DIR + "/"
+    if decoded.startswith(overlay):
+        return ROOT_PREFIX + decoded[len(overlay):].replace("/", "\\")
     if decoded.endswith(rsc_cache.CACHE_SUFFIX):
         return synthesize_encoded(decoded, dec2enc, index=index)
     bank = resolve_audio_bank(decoded)

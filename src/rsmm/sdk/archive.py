@@ -79,7 +79,11 @@ DANGEROUS_EXTENSIONS = frozenset({
 #: only warned about it at apply time (``apply_mods.apply_one``), but a mod
 #: arriving over the network may not ship one at all, and ``_root/`` is exactly
 #: the path that would put it somewhere Windows will load from.
-ROOT_OVERLAY_PREFIX = "_root/"
+#: Apply reads overlays from ``<mod>/assets/_root/``: ``ROOT_OVERLAY_DIR`` is
+#: the prefix under ``assets/`` and ``ROOT_OVERLAY_PREFIX`` the same path from
+#: the mod dir, which is how archive members and ``rsmm pack`` see it.
+ROOT_OVERLAY_DIR = "_root"
+ROOT_OVERLAY_PREFIX = f"assets/{ROOT_OVERLAY_DIR}/"
 
 #: Ceilings. Generous enough that no honest mod hits them — the largest
 #: shipped mods are tens of MB of cooked assets — and tight enough that a
@@ -302,6 +306,9 @@ def _member_rel(info: zipfile.ZipInfo, strip_prefix: str, label: str) -> str | N
             raise ArchiveError(f"{label}: refusing path component Windows "
                                f"would rewrite (trailing dot/space or ':'): "
                                f"{info.filename!r}")
+        if part.split(".", 1)[0].rstrip(" ").lower() in _WIN_RESERVED:
+            raise ArchiveError(f"{label}: refusing reserved Windows device "
+                               f"name in archive: {info.filename!r}")
     return rel
 
 
