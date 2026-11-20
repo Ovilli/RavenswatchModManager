@@ -281,7 +281,7 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     except ValueError as e:
         raise ContentError(str(e)) from e
 
-    if _load_base_cooked(defn.id) is not None:
+    if EP.corpus.shipped_stem(EP.ENEMY_ASSET_SUBDIR, EP.GEN_SUFFIX, defn.id):
         raise ContentError(
             f"enemy {defn.id}: a shipped enemy is already called {defn.id!r}, and a "
             f"clone under that name would silently replace it. Pick another id "

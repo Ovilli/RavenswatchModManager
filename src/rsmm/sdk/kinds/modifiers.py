@@ -140,7 +140,7 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             f"be readable)."
         )
 
-    if corpus.exists(f"{_MODIFIER_DIR}/{defn.id}{GMC.GEN_SUFFIX}"):
+    if corpus.shipped_stem(_MODIFIER_DIR, GMC.GEN_SUFFIX, defn.id):
         raise ContentError(
             f"modifier {defn.id}: a shipped modifier is already called {defn.id!r}, and a "
             f"clone under that name would silently replace it. Pick another id.")

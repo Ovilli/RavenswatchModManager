@@ -383,12 +383,35 @@ class _Guard:
             shutil.rmtree(self.side, ignore_errors=True)
 
 
+def _tilegen_chapter(chapter) -> object:
+    """The decoded level a tilegen ``chapter`` resolves to, the way the
+    emitter resolves it (``DarkHills``, ``darkhills`` and the level's own name
+    are one file); the casefolded name when the chapter list is unavailable."""
+    if not isinstance(chapter, str):
+        return chapter
+    try:
+        from rsmm.engine import map_editor as ME
+        return ME.find_chapter(chapter).decoded.casefold()
+    except Exception:  # noqa: BLE001 - no corpus / unknown chapter: the emitter reports it
+        return chapter.strip().casefold()
+
+
 def _output_target(kind: str, fields: dict) -> tuple | None:
     """The retail file a def rewrites in place, for the kinds where that file
     is rebuilt from vanilla on every def (so two defs on it are last-wins), or
     None. A target clashes with another when either is a prefix of the other:
     a ``game_mode`` rewriting All_Chapters clashes with a ``map`` pointing one
-    of its chapters."""
+    of its chapters. Names compare case-insensitively (one file on Windows,
+    and the lookups behind them ignore case too)."""
+    t = _raw_output_target(kind, fields)
+    if t is None:
+        return None
+    if kind == "tilegen":
+        t = (t[0], _tilegen_chapter(t[1]))
+    return tuple(x.strip().casefold() if isinstance(x, str) else x for x in t)
+
+
+def _raw_output_target(kind: str, fields: dict) -> tuple | None:
     f = fields.get
     if kind == "shop":
         return ("shop",)

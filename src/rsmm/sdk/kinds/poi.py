@@ -1857,8 +1857,12 @@ def _pair_id(mod_id: str, tid: str) -> str:
     """The in-game pair name for teleporter ``id`` ``tid``: prefixed with the
     mod, since the engine pairs teleporters by name across the whole map and
     two mods both using ``id = "Cave"`` would answer each other's doors. Both
-    sides of a pair come from one mod, so they still match."""
-    return re.sub(r"[^A-Za-z0-9_]", "_", f"{mod_id}_{tid}")
+    sides of a pair come from one mod, so they still match. The readable part
+    folds `-` into `_` (`night-watch` and `night_watch` read the same), so a
+    digest of the exact (mod, id) pair keeps two such mods apart."""
+    import hashlib
+    tag = hashlib.sha256(f"{mod_id}\0{tid}".encode()).hexdigest()[:8]
+    return re.sub(r"[^A-Za-z0-9_]", "_", f"{mod_id}_{tid}") + f"_{tag}"
 
 
 def _emit_teleporter(mod_id: str, defn: ContentDef, out_dir: Path, tp: dict,

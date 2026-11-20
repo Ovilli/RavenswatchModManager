@@ -1156,8 +1156,13 @@ def test_transaction_ctrl_c_mid_commit_rolls_back(tmp_path: Path, monkeypatch):
 @pytest.mark.parametrize("first, second", [
     (("shop", {}), ("shop", {})),
     (("melody", {"base": "M1"}), ("melody", {"base": "M1"})),
-    (("tilegen", {"chapter": 1}), ("tilegen", {"chapter": 1})),
+    (("tilegen", {"chapter": "DarkHills"}), ("tilegen", {"chapter": "DarkHills"})),
+    # One chapter however it is spelled (#229 review): the emitter's lookup
+    # ignores case, and so does the filesystem on Windows.
+    (("tilegen", {"chapter": "DarkHills"}), ("tilegen", {"chapter": "darkhills"})),
+    (("melody", {"base": "M1"}), ("melody", {"base": "m1"})),
     (("scenery", {"chapter": "c", "level": "L"}), ("scenery", {"chapter": "c", "level": "L"})),
+    (("scenery", {"chapter": "c", "level": "L"}), ("scenery", {"chapter": "C", "level": "l"})),
     (("map", {"chapter": 2}), ("map", {"chapter": 2})),
     (("map", {"chapter": 2}), ("game_mode", {})),
 ])
