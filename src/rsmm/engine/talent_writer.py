@@ -133,13 +133,13 @@ class TalentWriter(P.PartWriter):
         return self._add(_VALUE, name, {"value": num, "flag": 0}, flags=0x101)
 
     def multiply(self, name: str, a: P.Link, a_key: int, b: P.Link, b_key: int, *,
-                 group: str) -> P.Link:
+                 group: str, a_num: P.Num | None = None) -> P.Link:
         """``a`` x ``b``, as a value operation."""
-        def operand(link: P.Link, key: int) -> bytes:
+        def operand(link: P.Link, key: int, base: P.Num | None = None) -> bytes:
             return struct.pack("<Ii", 0, -1) + P.num_bytes(
-                self._read(link, key, P.Num.f32(0)), self.ci)
+                self._read(link, key, base or P.Num.f32(0)), self.ci)
         node = self.obj("oCEntityCpntNodeSettings", struct.pack("<II", _MULTIPLY, 2)
-                        + operand(a, a_key) + operand(b, b_key))
+                        + operand(a, a_key, a_num) + operand(b, b_key))
         return self._add(_OPS, name, {"operations": node}, flags=0x101, group=group)
 
     def sum_op(self, name: str, base: float, terms: list[tuple[P.Link, int]] = (), *,

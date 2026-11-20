@@ -229,7 +229,11 @@ def scale_node(raw: bytes, *, node: str, factor: str, seed: str = "",
     try:
         if kind == "multiply":
             ef.append_operand(node, factor)
-            _activate_before(ef, node, [], first=activate)
+            if not _activate_before(ef, node, [], first=activate):
+                startup = TA._startup_state(ef)
+                if startup is not None:
+                    for name in (*activate, node):
+                        ef.add_ref(startup, "activates", name)
             _scale_hit_radii(ef, node, factor, seed)
             return ef.to_bytes()
         c = ef.component(node)
@@ -245,7 +249,17 @@ def scale_node(raw: bytes, *, node: str, factor: str, seed: str = "",
             scaled, TW.link_to(ef, base), ef.F32_ACCESSOR[c.cls],
             TW.link_to(ef, factor), ef.F32_ACCESSOR[f.cls], group=c.group)
         ef.source_value(node, 0, scaled)
-        _activate_before(ef, node, [base, scaled], first=activate)
+        if not _activate_before(ef, node, [base, scaled], first=activate):
+            # No state switches the node on: a modifier's own number, which only
+            # the modifier reads (the blood seed's fuse, 2026-11-17). Carmilla's
+            # value of that shape is the one its bomb state lists in
+            # ``while_active``; without an owner the engine never reads it and the
+            # picker keeps its inline number (the seed waited its 3 s fallback).
+            # Switch the chain on at start-up, as ``scale_hero_bleeds`` does.
+            startup = TA._startup_state(ef)
+            if startup is not None:
+                for name in (*activate, base, scaled, node):
+                    ef.add_ref(startup, "activates", name)
         _scale_hit_radii(ef, node, factor, seed)
         return ef.to_bytes()
     except (GE.EntityEditError, P.PartError) as e:

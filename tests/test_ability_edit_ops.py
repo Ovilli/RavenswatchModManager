@@ -73,3 +73,23 @@ def test_scale_with_level_reads_the_owners_level_damage():
     assert any(r.guid == scaled.guid for r in g[mod].refs)
     assert {r.path.rsplit("\\", 1)[-1] for r in scaled.refs} >= {
         "Owner Level Damage", f"{mod} Level Ratio"}
+
+
+@needs_corpus
+def test_retarget_updates_owned_fx_subobjects():
+    from rsmm.engine.entity_graph_edit import EntityFile
+    out = _apply([
+        {"clone": ["Fx Howl Hands Trails"], "from": "Heroes/Hero_Red/Hero_Red_FX",
+         "rename": {"Fx Howl Hands Trails": "Wolf Innate Claw Trails"}},
+        {"retarget": "Wolf Innate Claw Trails",
+         "node": "Character_Common/Character_Common|Character Mesh"},
+    ])
+    ef = EntityFile(out, "Hero_Red")
+    fx = ef.component("Wolf Innate Claw Trails")
+    picker_cls = [c.name for c in ef.cf.classes].index("oCEntityCpntPicker")
+    paths = [r.path for o in sorted(ef.subtree({fx.index - 1}))
+             for _, r in EG._pickers(bytes(ef.objects[o]), picker_cls) if r.path]
+    assert paths == [
+        "[3d graphic object] Character_Common\\Base\\Character Mesh",
+        "[3d graphic object] Character_Common\\Base\\Character Mesh",
+    ]

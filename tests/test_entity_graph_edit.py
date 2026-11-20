@@ -256,3 +256,27 @@ def test_raw_bytes_take_hex_of_their_exact_size():
         ef.set_value(c.name, f.name, "dead")
     with pytest.raises(EE.EntityEditError, match="not hex"):
         ef.set_value(c.name, f.name, "zz zz zz zz")
+
+
+@needs_red
+def test_prepend_selector_entry_branches_on_state():
+    import struct
+
+    ef = _red()
+    sel = "Wolf Basic Attack Clip Selector 2"
+    old_n = struct.unpack_from("<I", ef.component(sel).body, _field(ef, sel, "bytes_1").offset)[0]
+    ef.prepend_selector_entry(sel, "Wolf Basic Attack Clip 1", "Skill Basic Cleave")
+    back = _clean(ef)
+    body = back.component(sel).body
+    assert struct.unpack_from("<I", body, _field(back, sel, "bytes_1").offset)[0] == old_n + 1
+    assert "Wolf Basic Attack Clip 1" in _field(back, sel, "obj_2").text
+    assert "Skill Basic Cleave" in _field(back, sel, "obj_2").text
+
+
+def test_raw_spans_skips_node_operator_id():
+    import struct
+
+    # `0x17B29BE2` (_MUL) followed by `4` has unaligned `0x00000417` (1047) at +11.
+    payload = EE._B + struct.pack("<IIII", 5, 0x17B29BE2, 4, 0) + EE._E
+    spans = EE._raw_spans(payload, frozenset(), node_cls=5)
+    assert all(not (a <= 11 < b) for a, b in spans)

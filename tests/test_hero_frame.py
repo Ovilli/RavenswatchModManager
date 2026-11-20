@@ -550,6 +550,29 @@ def test_an_ability_plays_its_own_sound():
 
 @needs_corpus
 @needs_install
+def test_moving_or_loop_ability_sound_sets_event_flag():
+    """Sounds wired to ``state.activates`` (moving/loop) must carry EVENT_FLAG
+    so oCEntityCpntFModEvent self-deactivates and replays on every cast."""
+    from rsmm.engine import entity_graph as EG
+    from rsmm.engine import hero_ability as HA
+    from rsmm.engine.entity_graph_edit import EntityFile
+    for slot, extra in (("defense", {"moving": True}), ("ultimate2", {"loop": True})):
+        ef = _hero("Hero_T")
+        ab = HA.Ability.parse(slot, {
+            "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+            "duration": 0.9,
+            "sound": "DarkHills\\Jack\\Jack_NPC_Model.entity.ot | Beanstalk ShakeImpact FMod Event",
+            **extra,
+        })
+        HA.build(ef, HF.common(_read), ab, seed="t")
+        e2 = EntityFile(ef.to_bytes(), "Hero_T")
+        tag = slot.capitalize() if slot != "ultimate2" else "Ultimate2"
+        snd = e2.component(f"{tag} Ability Sound")
+        assert snd.flags & EG.EVENT_FLAG, f"{slot} sound missing EVENT_FLAG"
+
+
+@needs_corpus
+@needs_install
 def test_the_basic_attack_is_a_combo_of_the_heros_own():
     """``combo``: the basic attack as shipped heroes build it. A shipped hero
     lends only the layout (COMBO_DONOR); the combo answers the hero's own

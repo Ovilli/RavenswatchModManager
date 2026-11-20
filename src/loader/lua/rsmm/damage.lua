@@ -1060,11 +1060,17 @@ function F._dmg_row_for_entity(e)
     return row
 end
 
-function F._dmg_publish(row, amount, target, source, kind)
+function F._dmg_publish(row, amount, target, source, kind, extra)
     if #_dmg.subs == 0 then return end
     local hit = { label = row.label, slot = row.slot, is_local = row.is_local,
                   amount = amount, target = target, source = source,
                   kind = kind or "dealt" }
+    if extra then
+        hit.killed = extra.killed
+        hit.attack_type = extra.attack_type
+        hit.damage_kind = extra.damage_kind
+        hit.is_enemy = extra.is_enemy
+    end
     for _, cb in ipairs(_dmg.subs) do pcall(cb, hit) end
 end
 
@@ -1104,7 +1110,7 @@ function F._dmg_echo_of_local(amount, now)
     return false
 end
 
-function F._dmg_credit(row, amount, target, source, kind)
+function F._dmg_credit(row, amount, target, source, kind, extra)
     local now = F._dmg_now()
     row.dealt = row.dealt + amount
     row.hits  = row.hits + 1
@@ -1127,7 +1133,7 @@ function F._dmg_credit(row, amount, target, source, kind)
         r[#r + 1] = { t = now, a = amount }
         if #r > 32 then table.remove(r, 1) end
     end
-    F._dmg_publish(row, amount, target, source, "dealt")
+    F._dmg_publish(row, amount, target, source, "dealt", extra)
 end
 
 -- One resolved hit from the attack resolver. `attacker` may be nil (an enemy
@@ -1230,7 +1236,8 @@ function F._dmg_observe_stats(hero, target, pd)
         row.discarded_amount = (row.discarded_amount or 0) + amount
         return
     end
-    if F._dmg_killed(valobj) then row.kills = (row.kills or 0) + 1 end
+    local killed = F._dmg_killed(valobj)
+    if killed then row.kills = (row.kills or 0) + 1 end
     if I.read_u8(valobj + DMG.VALUE_CRIT_OFF) == 1 then row.crits = (row.crits or 0) + 1 end
     -- What did they hit? The probe reports the first few distinct victims so
     -- the classification can be confirmed from a log rather than trusted.
@@ -1259,13 +1266,21 @@ function F._dmg_observe_stats(hero, target, pd)
     -- Which ability landed it, for the per-ability breakdown. A source object
     -- that does not read back cleanly just means "other" — never a reason to
     -- drop the damage.
-    local kind = "other"
+    local kind, raw_type = "other", nil
     local src = I.read_u64(pd + DMG.PD_SOURCE_OFF)
     if _ptr_plausible(src) then
         local t = I.read_u16(src + DMG.SOURCE_TYPE_OFF)
-        if type(t) == "number" and DMG.TYPES[t] then kind = DMG.TYPES[t] end
+        if type(t) == "number" then
+            raw_type = t
+            if DMG.TYPES[t] then kind = DMG.TYPES[t] end
+        end
     end
-    F._dmg_credit(row, amount, target, "hero-stats", kind)
+    F._dmg_credit(row, amount, target, "hero-stats", kind, {
+        killed = killed,
+        attack_type = raw_type,
+        damage_kind = kind,
+        is_enemy = cls,
+    })
 end
 
 -- Source 1b: the engine's per-hero damage-RECEIVED bookkeeping.
