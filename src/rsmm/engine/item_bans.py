@@ -21,7 +21,14 @@ from typing import Any, Final
 
 __all__ = ["DEFAULT_MOD_ID", "read_bans", "write_bans", "manifest_path"]
 
-DEFAULT_MOD_ID: Final = "banned-items"
+#: The managed mod's id: reserved, so the store refuses to publish a mod under
+#: it (packages/schemas `RESERVED_MOD_SLUGS`) and an install can never land in
+#: the picker's folder. It used to be `banned-items`, an id the store also
+#: publishes, so installing that mod replaced the player's picker mod.
+DEFAULT_MOD_ID: Final = "rsmm-item-bans"
+#: The id the managed mod had before; :func:`_migrate` moves a picker-written
+#: one, and its "Sold out" placeholders keep their ids (items.placeholder_id).
+LEGACY_MOD_ID: Final = "banned-items"
 _BAN_BLOCK_ID: Final = "banned_items"
 _ID_RE: Final = re.compile(r"^[A-Za-z0-9_.-]+$")
 
@@ -65,7 +72,34 @@ def mod_dir(mod_id: str = DEFAULT_MOD_ID, mods_dir: Path | None = None) -> Path:
     if mods_dir is None:
         from rsmm.engine import paths
         mods_dir = paths.MODS_DIR
+    if mod_id == DEFAULT_MOD_ID:
+        _migrate(Path(mods_dir))
     return Path(mods_dir) / mod_id
+
+
+def _migrate(mods_dir: Path) -> None:
+    """Move a picker-written ``banned-items`` to the reserved id, once.
+
+    Only when the reserved folder does not exist yet and the old one is the
+    picker's own (written by :func:`write_bans`: author ``RSMM`` and the picker
+    schema). A mod someone made under that name is left alone.
+    """
+    new, old = mods_dir / DEFAULT_MOD_ID, mods_dir / LEGACY_MOD_ID
+    if new.exists() or not (old / "manifest.toml").is_file():
+        return
+    try:
+        doc = _load(old / "manifest.toml")
+    except ValueError:
+        return
+    if (doc.get("mod") or {}).get("author") != _DEFAULTS["author"] or not _has_picker_at(old):
+        return
+    try:
+        os.replace(old, new)
+    except OSError:
+        return
+    text = (new / "manifest.toml").read_text(encoding="utf-8")
+    (new / "manifest.toml").write_text(
+        text.replace(f'id = "{LEGACY_MOD_ID}"', f'id = "{DEFAULT_MOD_ID}"', 1), encoding="utf-8")
 
 
 def manifest_path(mod_id: str = DEFAULT_MOD_ID, mods_dir: Path | None = None) -> Path:
@@ -119,9 +153,12 @@ def read_bans(mod_id: str = DEFAULT_MOD_ID, mods_dir: Path | None = None) -> lis
 
 def has_picker(mod_id: str = DEFAULT_MOD_ID, mods_dir: Path | None = None) -> bool:
     """Does this mod declare the `multiselect` ban picker?"""
+    return _has_picker_at(mod_dir(mod_id, mods_dir))
+
+
+def _has_picker_at(d: Path) -> bool:
     from rsmm.sdk.config import ConfigError, ConfigStore
 
-    d = mod_dir(mod_id, mods_dir)
     if not (d / "config_schema.toml").is_file():
         return False
     try:

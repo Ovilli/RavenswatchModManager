@@ -420,7 +420,7 @@ default = []
 The CLI resolves `source` into options — `{id, label, group, icon,
 description}` — and sends them with the schema, so the panel renders labels,
 grouping, search and art in one round trip. Read the value back with the normal
-config API (`ConfigStore(mod_dir).get("banned")`); the `banned-items` mod's
+config API (`ConfigStore(mod_dir).get("banned")`); the `rsmm-item-bans` mod's
 `[[content]]` ban block takes its item list from exactly that.
 
 #### A saved config reaches the game on the next launch, never sooner
@@ -823,7 +823,8 @@ items = ["Avoid_Death_Once_Per_Chapter", "Armor_Per_Object"]
 ```
 
 Or skip the ids entirely and **pick the items from a list of the game's own
-icons**: the `banned-items` mod declares a `multiselect` config field (see
+icons**: the `rsmm-item-bans` mod (the item picker's own; the id is reserved,
+so the store never publishes a mod under it) declares a `multiselect` config field (see
 [Config with icons](#config-with-icons-multiselect)), so opening its config in
 the desktop app shows every item with its art, display name and effect text, and
 the ban list is whatever you ticked. `rsmm items catalog` is the same list in a
