@@ -1,4 +1,4 @@
-import { Download, Layers, TriangleAlert, Users } from 'lucide-react';
+import { Download, Layers, Star, TriangleAlert, Users } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { RegistryModCover } from './registry-mod-cover';
 
@@ -96,7 +96,11 @@ export function RegistryListingCard({
         <div className="mod-card-list-identity">
           <div className="mod-card-list-name">
             <Heading>{listing.name}</Heading>
-            {listing.featured ? <span aria-label={labels.featured ?? 'Featured'}>★</span> : null}
+            {listing.featured ? (
+              <span aria-label={labels.featured ?? 'Featured'}>
+                <Star size={14} aria-hidden />
+              </span>
+            ) : null}
             {listing.nsfw ? (
               <span className="mod-card-mature">{labels.nsfw ?? 'Mature'}</span>
             ) : null}
@@ -125,7 +129,12 @@ export function RegistryListingCard({
               <span className="mod-card-list-category">{listing.category}</span>
             ) : null}
             {hasRating && listing.rating != null ? (
-              <span className="mod-card-list-rating">★ {listing.rating.toFixed(1)}</span>
+              <span
+                className="mod-card-list-rating inline-flex items-center gap-1"
+                aria-label={labels.rating ?? `${listing.rating.toFixed(1)} out of 5 stars`}
+              >
+                <Star size={14} aria-hidden /> {listing.rating.toFixed(1)}
+              </span>
             ) : null}
             {listing.downloads != null ? (
               <span className="mod-card-list-downloads">
@@ -202,7 +211,11 @@ export function RegistryListingCard({
         )}
         {listing.featured || listing.nsfw || listing.role === 'coauthor' ? (
           <div className="mod-card-status">
-            {listing.featured ? <span>★ {labels.featured ?? 'Featured'}</span> : null}
+            {listing.featured ? (
+              <span className="inline-flex items-center gap-1">
+                <Star size={14} aria-hidden /> {labels.featured ?? 'Featured'}
+              </span>
+            ) : null}
             {listing.nsfw ? (
               <span className="mod-card-mature">{labels.nsfw ?? 'Mature'}</span>
             ) : null}
@@ -271,9 +284,7 @@ export function RegistryListingCard({
                   role="img"
                   aria-label={labels.rating ?? `${listing.rating.toFixed(1)} out of 5 stars`}
                 >
-                  <span className="mod-card-star" aria-hidden>
-                    ★
-                  </span>
+                  <Star className="mod-card-star" size={14} aria-hidden />
                   <strong>{listing.rating.toFixed(1)}</strong>
                   {listing.ratingCount ? ` (${listing.ratingCount.toLocaleString(locale)})` : ''}
                 </span>

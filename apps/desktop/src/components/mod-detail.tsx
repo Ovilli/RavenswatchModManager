@@ -191,7 +191,7 @@ export function ModDetail({ slug }: { slug: string }) {
     return (
       <div className="space-y-4">
         <Button type="button" size="sm" onClick={goBack}>
-          ← {t('back')}
+          <ArrowLeft className="h-4 w-4" aria-hidden /> {t('back')}
         </Button>
         {fetchFailed ? (
           <div className="ember-banner flex flex-col gap-2 px-4 py-3">

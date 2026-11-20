@@ -134,7 +134,7 @@ function BrowsePage() {
   }, [error]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-app">
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           {/* `aria-pressed`, like every other toggle group in the app: colour

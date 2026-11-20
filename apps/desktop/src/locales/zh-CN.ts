@@ -419,7 +419,7 @@ export const zhCN: Record<string, string> = {
   'Loader update': '加载器更新',
   'Loader v{n}': '加载器 v{n}',
   CLI: 'CLI',
-  '→ v{version} after restart': '→ 重启后 v{version}',
+  'v{version} after restart': '重启后 v{version}',
   'CLI v{version} downloaded — restart the app to use it.':
     'CLI v{version} 已下载 — 重启应用后生效。',
   'CLI v{n}': 'CLI v{n}',
@@ -600,7 +600,7 @@ export const zhCN: Record<string, string> = {
   Reset: '重置',
   'Reset filters': '重置筛选',
   'Reset to defaults': '恢复默认值',
-  'Resolve →': '去处理 →',
+  Resolve: '去处理',
   'Restart & update': '重启并更新',
   'Restart RSMM for this to take effect.': '重启 RSMM 后此项才会生效。',
   'Restart Ravenswatch': '重启 Ravenswatch',

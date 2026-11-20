@@ -107,7 +107,7 @@ function SettingsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-app">
       <SectionHeader
         title={t('Settings')}
         className="items-center"
@@ -141,7 +141,7 @@ function SettingsPage() {
         role="tabpanel"
         id={`settings-panel-${tab}`}
         aria-labelledby={`settings-tab-${tab}`}
-        className="space-y-6"
+        className="space-y-app"
       >
         {tab === 'general' ? (
           <>

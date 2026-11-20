@@ -106,7 +106,7 @@ export function ProfilePopover() {
     <>
       <Popover.Root open={open} onOpenChange={setOpen}>
         <h2 className="font-fraktur text-3xl leading-none text-parchment">
-          <Popover.Trigger className="flex min-h-11 max-w-full items-center gap-3 rounded text-left transition-colors duration-150 hover:text-gilt">
+          <Popover.Trigger className="flex min-h-[var(--icon-button-size)] max-w-full items-center gap-3 rounded text-left transition-colors duration-150 hover:text-gilt">
             <span className="min-w-0 truncate" title={active?.name}>
               {active?.name}
             </span>

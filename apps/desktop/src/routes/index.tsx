@@ -7,7 +7,7 @@ import {
 } from '@rsmm/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
-import { AlertTriangle, Rows3, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Rows3, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Button, CopyButton, EmptyState, Fleuron, InkSwitch, MonoTag } from '../components/chrome';
@@ -301,7 +301,7 @@ function LibraryPage() {
         <LibraryEmptyState
           title={
             <Link to="/browse" className="empty-grimoire-link">
-              {t('Browse mods')} <span aria-hidden="true">→</span>
+              {t('Browse mods')} <ArrowRight className="inline-block h-5 w-5" aria-hidden />
             </Link>
           }
         />
@@ -317,7 +317,7 @@ function LibraryPage() {
   if (profile.loadOrder.length === 0) {
     return (
       <div className="library-empty-page">
-        <div className="space-y-6">
+        <div className="space-y-app">
           <SetupBanner />
           <LibraryHeader />
         </div>
@@ -364,7 +364,7 @@ function LibraryPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-app">
       <SetupBanner />
       <SupportNudge />
       <UpdatesPanel />
@@ -466,7 +466,7 @@ function LibraryPage() {
         />
       ) : null}
 
-      <div className="min-w-0 space-y-6">
+      <div className="min-w-0 space-y-app">
         {localModsError ? (
           <div className="ember-banner flex items-center gap-3 px-4 py-3">
             <AlertTriangle className="h-4 w-4 text-crimson shrink-0" />
@@ -539,7 +539,10 @@ function LibraryPage() {
                 )}
               </span>
             </span>
-            <span className="font-mono text-ash">{t('Resolve →')}</span>
+            <span className="inline-flex items-center gap-1 font-mono text-ash">
+              {t('Resolve')}
+              <ArrowRight className="h-4 w-4" aria-hidden />
+            </span>
           </Link>
         ) : null}
 
@@ -746,7 +749,9 @@ function ListView({
                     title={mod.version !== mod.latestVersion ? mod.latestVersion : undefined}
                   >
                     {mod.version !== mod.latestVersion ? (
-                      <MonoTag tone="gilt">→ {mod.latestVersion}</MonoTag>
+                      <MonoTag tone="gilt">
+                        <ArrowRight className="h-3 w-3" aria-hidden /> {mod.latestVersion}
+                      </MonoTag>
                     ) : null}
                   </span>
                 </>

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { ArrowUpCircle, Loader2, RefreshCw } from 'lucide-react';
+import { ArrowRight, ArrowUpCircle, Loader2, RefreshCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api, describeApiError, logApiError } from '../lib/api';
 import { useT } from '../lib/i18n-react';
@@ -143,8 +143,9 @@ export function UpdatesPanel() {
                 >
                   {m.name}
                 </Link>
-                <p className="font-mono text-xs text-ash">
-                  v{m.version} → <span className="text-gilt">v{m.latestVersion}</span>
+                <p className="flex items-center gap-1 font-mono text-xs text-ash">
+                  v{m.version} <ArrowRight className="h-3 w-3" aria-hidden />{' '}
+                  <span className="text-gilt">v{m.latestVersion}</span>
                 </p>
               </div>
               <Button

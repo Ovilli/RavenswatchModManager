@@ -79,6 +79,10 @@
     --radius-sm: 6px; /* buttons, inputs, chips, icons */
     --radius-pill: 999px; /* pills, toggles, scrollbars */
 
+    /* Shared geometry for toolbar and collapsed-sidebar icon buttons. */
+    --icon-button-size: 40px;
+    --icon-button-radius: 8px;
+
     /* Typography tokens. Every font-family in this sheet resolves through
        these four vars, and every size is rem-relative to `--ui-scale`, so
        the Settings → Appearance controls can restyle the whole app by
@@ -276,29 +280,13 @@
 }
 
 @layer components {
-  /* Fleuron rule used between sections. */
+  /* Single-line rule used between sections. */
   .rule-fleuron {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    color: hsl(var(--char));
-    font-family: var(--font-body);
-  }
-  /* The ornament itself, when the component passes one. Sized down and held
-     back to `--char` so it separates sections without competing with the
-     fraktur headings on either side of it. */
-  .rule-fleuron > * {
-    font-size: 0.85em;
-    line-height: 1;
-    opacity: 0.9;
-  }
-  .rule-fleuron::before,
-  .rule-fleuron::after {
-    content: "";
-    flex: 1;
+    width: 100%;
+    height: 0;
+    flex-shrink: 0;
+    border: 0;
     border-top: 1px solid hsl(var(--border));
-    border-bottom: 1px solid hsl(var(--border));
-    height: 3px;
   }
 
   /* Parchment-rectangle placeholder for missing cover art.
@@ -857,7 +845,6 @@
   padding: 0.85rem;
 }
 :root[data-density="compact"] .rsmm-main {
-  padding-top: 0.85rem;
   padding-bottom: 0.85rem;
 }
 :root[data-density="compact"] body {

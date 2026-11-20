@@ -1,3 +1,4 @@
+import { Sparkles } from 'lucide-react';
 import { type CSSProperties, type ReactNode, useEffect, useId, useRef } from 'react';
 import hero1 from '../assets/library-heroes/hero-1.png';
 import hero2 from '../assets/library-heroes/hero-2.png';
@@ -134,10 +135,7 @@ export function LibraryEmptyState({
                       <img src={portrait.src} alt="" width={256} height={256} draggable={false} />
                     </div>
                     <div className="empty-grimoire-portrait-back">
-                      <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
-                        <path d="m20 5 4 11 11 4-11 4-4 11-4-11L5 20l11-4Z" />
-                        <circle cx="20" cy="20" r="15" />
-                      </svg>
+                      <Sparkles aria-hidden />
                     </div>
                   </div>
                 </div>

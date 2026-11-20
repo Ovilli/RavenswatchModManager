@@ -20,7 +20,8 @@ describe('shared listing rows', () => {
     expect(html).toContain('role="link"');
     expect(html).toContain('tabindex="0"');
     expect(html).toContain('1,200 dl');
-    expect(html).toContain('★ 4.5');
+    expect(html).toContain('aria-label="4.5 out of 5 stars"');
+    expect(html).toContain('lucide-star');
   });
 
   it('lets Library replace statistics while sharing identity, artwork and scope badges', () => {

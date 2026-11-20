@@ -10,7 +10,7 @@ export function InstalledState({ title }: { title?: string }) {
       title={title}
     >
       <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-white text-pitch">
-        <Check className="h-3 w-3" strokeWidth={3} aria-hidden="true" />
+        <Check className="h-3 w-3" aria-hidden="true" />
       </span>
       {t('Installed')}
     </span>

@@ -1,5 +1,5 @@
 import { ProgressBar } from '@rsmm/ui';
-import { AlertTriangle, Check, Download, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check, Download, RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import pkg from '../../package.json';
@@ -740,7 +740,12 @@ function VersionRow({
       <span className="font-serif-italic text-parchment shrink-0">{label}</span>
       <span className="flex-1 border-b border-dotted border-oxblood/40" aria-hidden />
       <span className="font-data text-sm text-gilt shrink-0">{value}</span>
-      {hint ? <span className="font-data text-xs text-ash shrink-0">{hint}</span> : null}
+      {hint ? (
+        <span className="inline-flex items-center gap-1 font-data text-xs text-ash shrink-0">
+          <ArrowRight className="h-3 w-3" aria-hidden />
+          {hint}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -979,7 +984,7 @@ export function UpdaterSettings() {
   const cliPending = cli?.staged ?? cliStaged;
   const loaderPending =
     loader?.status === 'update_available' && loader.remoteVersion != null
-      ? `→ v${loader.remoteVersion}`
+      ? `v${loader.remoteVersion}`
       : undefined;
 
   return (
@@ -990,7 +995,7 @@ export function UpdaterSettings() {
           value={`v${appVersion}`}
           hint={
             status.state === 'ready' || status.state === 'available'
-              ? `→ v${status.update?.version}`
+              ? `v${status.update?.version}`
               : undefined
           }
         />
@@ -1001,7 +1006,7 @@ export function UpdaterSettings() {
             value={describeCliSource(cli)}
             hint={
               cliPending != null
-                ? t('→ v{version} after restart', { version: cliPending })
+                ? t('v{version} after restart', { version: cliPending })
                 : undefined
             }
           />

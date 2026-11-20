@@ -107,7 +107,7 @@ export function SidebarTooltip({
       <span>
         {label}
         {shortcut ? (
-          <kbd className="rounded bg-parchment/10 px-1.5 py-0.5 font-data text-xs text-ash">
+          <kbd className="rounded bg-parchment/10 px-1.5 py-0.5 font-data text-base">
             {shortcut}
           </kbd>
         ) : null}
