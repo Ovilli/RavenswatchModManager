@@ -222,3 +222,31 @@ def test_animatic_clip_swaps_the_clip_path():
         _apply([{"animatic_clip": "Dash Ability Anim", "value": "x.png"}])
     with pytest.raises(AE.AbilityEditError, match="not an animatic"):
         _apply([{"animatic_clip": "Agressive Defense FMod Event Active", "value": clip}])
+
+
+# --- level scaling (#202, from #192) ---------------------------------------------
+
+
+@needs_corpus
+def test_level_linear_is_base_plus_per_level_times_the_xp_level():
+    mod = "Basic Wide Attacks AP Modifier"
+    out = _apply([{"level_linear": mod, "value": 2.5, "base": 10}])
+    g = {c.name: c for c in EG.parse(out, "Hero_Red").components}
+    assert any(r.guid == g[f"{mod} Level Linear"].guid for r in g[mod].refs)
+    mul = g[f"{mod} Level Mul"]
+    assert bytes.fromhex(AE.XP_LEVEL[0]) in {r.guid for r in mul.refs}
+    assert g[f"{mod} Per Level"].guid in {r.guid for r in mul.refs}
+    with pytest.raises(AE.AbilityEditError, match="per level"):
+        _apply([{"level_linear": mod}])
+
+
+@needs_corpus
+def test_the_shared_level_links_name_character_commons_values():
+    """A game patch that moves one fails here, not as a mod reading nothing."""
+    from rsmm.engine import corpus
+    rel = next(iter(corpus.rels("EntitySettings/",
+                                "/Character_Common.entity.ot.EntitySettingsResource.gen")))
+    g = {c.guid: c for c in EG.parse(corpus.read(rel)).components}
+    for guid, label in (AE.LEVEL_DAMAGE, AE.XP_LEVEL):
+        c = g[bytes.fromhex(guid)]
+        assert label == f"[Value] Character_Common\\{c.path}"

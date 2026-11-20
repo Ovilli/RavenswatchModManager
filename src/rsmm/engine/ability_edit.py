@@ -87,6 +87,10 @@ One step per table::
                                           the main entity), switched on at
                                           start-up with its other owner reads
 
+    level_linear = "Bite Damage"          a node's number becomes
+    value = 2.5                           ``base + value * hero level``
+    base = 10
+
     add_subobject = "Wolf Basic Attack Combo.bytes_4"   append a copy of entry
     donor_index = 1                       ``donor_index`` of that id list (a
     replace_ref = { "Step 2" = "Step 3" } combo's steps), its links to the
@@ -111,13 +115,14 @@ _OPS = ("clone", "set", "link", "add_link", "remove_link", "percent", "add_subob
         "replace_subobject", "switch_off", "override", "retarget", "retarget_targets", "event",
         "append_operand", "add_cinebloc", "animatic_speed", "animatic_clip", "sound_volume",
         "add_selector", "unlink_reads",
-        "swap_ref", "scale_by_talent", "talent_number", "owner_read", "scale_with_level")
+        "swap_ref", "scale_by_talent", "talent_number", "owner_read", "scale_with_level",
+        "level_linear")
 #: Every key a step may carry; anything else is a typo that would otherwise be
 #: ignored silently (a `rename` the old clone did not read left its copies
 #: under the default suffix, and the next step found nothing).
 _KEYS = {*_OPS, "value", "to", "entity", "as", "suffix", "from", "rename",
          "donor_index", "donor", "replace_ref", "node", "from_kind", "when", "talent",
-         "values", "tag", "flag", "factor"}
+         "values", "tag", "flag", "factor", "base"}
 
 
 class AbilityEditError(ValueError):
@@ -252,6 +257,12 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
                     raise AbilityEditError("scale_with_level needs value = <ratio>")
                 _scale_with_level(ef, str(step["scale_with_level"]), float(step["value"]),
                                   f"{seed}:{n}")
+            elif op == "level_linear":
+                if "value" not in step:
+                    raise AbilityEditError(
+                        "level_linear needs value = <per level> (and optional base = <offset>)")
+                _level_linear(ef, str(step["level_linear"]), float(step["value"]),
+                              float(step.get("base", 0.0)), f"{seed}:{n}")
             elif op == "retarget_targets":
                 part, _, fld = str(step[op]).rpartition(".")
                 if not part or not step.get("to"):
@@ -498,6 +509,20 @@ def _owner_read(ef: EntityFile, step: dict, seed: str, files: dict[str, bytes],
     ef.insert_ref(init, "activates", 0, name)
 
 
+#: Character_Common values the level steps read, kept together so a game patch
+#: that moves one is a one-line fix (tests/test_ability_edit_ops.py checks both
+#: against Character_Common). (GUID hex, link label.)
+LEVEL_DAMAGE = ("351a83c831da0b4ebd0716d89160d84d",
+                r"[Value] Character_Common\Base\Level Damage")
+XP_LEVEL = ("81e2538eaf800d4a894aa88ffec17b03",          # an int value
+            r"[Value] Character_Common\Base\Current XP Level")
+
+
+def _link(shared: tuple[str, str]):
+    from . import entity_parts as P
+    return P.Link(bytes.fromhex(shared[0]), shared[1])
+
+
 def _scale_with_level(ef: EntityFile, target: str, ratio: float, seed: str) -> None:
     """Make ``target``'s amount/value equal ``ratio * owner's Level Damage``."""
     from . import entity_parts as P
@@ -508,8 +533,7 @@ def _scale_with_level(ef: EntityFile, target: str, ratio: float, seed: str) -> N
     c = ef.component(target)
     slot = 1 if c.cls == "oCEntityCpntModifierSettings" else 0
     reader_name = "Owner Level Damage"
-    level_dmg = P.Link(bytes.fromhex("351a83c831da0b4ebd0716d89160d84d"),
-                       r"[Value] Character_Common\Base\Level Damage")
+    level_dmg = _link(LEVEL_DAMAGE)
     if not any(x.name == reader_name for x in ef.graph().components):
         TW.TalentWriter(ef, f"{seed}:level-dmg", "").reader(
             reader_name, r"Heroes\Hero_Common\Hero_Common.entity.ot",
@@ -529,6 +553,34 @@ def _scale_with_level(ef: EntityFile, target: str, ratio: float, seed: str) -> N
         startup = TA._startup_state(ef)
         if startup is not None:
             ef.add_ref(startup, "activates", scaled_name)
+
+
+def _level_linear(ef: EntityFile, target: str, per_level: float, base: float,
+                  seed: str) -> None:
+    """Make ``target``'s amount / value ``base + per_level * Current XP Level``
+    (the hero's level, read from Character_Common)."""
+    from . import entity_parts as P
+    from . import talent_add_stat as TA
+    from . import talent_range as TR
+    from . import talent_writer as TW
+
+    c = ef.component(target)
+    slot = 1 if c.cls == "oCEntityCpntModifierSettings" else 0
+    w = TW.TalentWriter(ef, f"{seed}:lvl-lin:{target}", c.group)
+    per = w.add(TW._VALUE, f"{target} Per Level",
+                {"value": P.Num.f32(per_level), "flag": 0}, flags=0x101)
+    mul_name, sum_name = f"{target} Level Mul", f"{target} Level Linear"
+    mul = w.multiply(mul_name, _link(XP_LEVEL), ef.INT_ACCESSOR["oCEntityCpntValueSettings"],
+                     per, TW.READ_VALUE, group=c.group, a_num=P.Num.int(0))
+    w.sum_op(sum_name, base,
+             terms=[(mul, ef.F32_ACCESSOR["oCEntityCpntValueOperationsSettings"])],
+             group=c.group)
+    ef.source_value(target, slot, sum_name)
+    if TR._activate_before(ef, target, [mul_name, sum_name]) == 0:
+        startup = TA._startup_state(ef)
+        if startup is not None:
+            ef.add_ref(startup, "activates", mul_name)
+            ef.add_ref(startup, "activates", sum_name)
 
 
 def _source(ef: EntityFile, step: dict, read) -> EntityFile:
