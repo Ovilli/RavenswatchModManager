@@ -149,6 +149,17 @@ def lint_one(entry: Path) -> tuple[int, int]:
                           "or locked; a mod may ask for: "
                           + ", ".join(sorted(SAFE_FLAG_NAMES)))
                     errs += 1
+    restore = m.get("restore_options")
+    if restore is not None:
+        from rsmm.engine.game_settings import OPTION_NAMES, unknown_options
+        if not isinstance(restore, list) or not all(isinstance(o, str) for o in restore):
+            print(f"  {_T_FAIL} {mod_s}: restore_options must be a list of option names")
+            errs += 1
+        else:
+            for o in unknown_options(restore):
+                print(f"  {_T_FAIL} {mod_s}: restore_options: {_ST.accent(repr(o))} is not a "
+                      "game option; one of: " + ", ".join(sorted(OPTION_NAMES)))
+                errs += 1
     warns += _lint_hero_capture(mod_s, entry, flags if isinstance(flags, list) else [])
     # The declared scope is the author's claim; what decides online matching is
     # the verdict DERIVED from the mod's contents (rsmm.engine.mod_scope). Say

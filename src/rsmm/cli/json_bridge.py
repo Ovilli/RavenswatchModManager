@@ -76,6 +76,7 @@ from rsmm.cli.apply_mods import (
     State,
     clear_runtime_mods,
     find_game_dir,
+    restore_mod_options,
     run_uninstall_hook,
     uninstall_hook_pending,
 )
@@ -429,6 +430,12 @@ def cmd_uninstall_mod(mod_id: str, hook: str | None = None) -> int:
             hook_status = "no-game-dir"
             hook_detail = ("Ravenswatch install not found, so this mod's "
                            "on_disable.py could not run before removal.")
+
+    # The options it declared in `restore_options`: RSMM's own cleanup, run
+    # only now the removal is going ahead (no hook, no consent needed).
+    if mod_path.is_dir() and (game_dir := find_game_dir()) is not None:
+        restore_mod_options(mod_path, mod_id, game_dir,
+                            State(game_dir / "DarkTalesResources" / "_Cooking"))
 
     try:
         if mod_path.is_dir():

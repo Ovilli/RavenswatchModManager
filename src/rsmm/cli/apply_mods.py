@@ -409,6 +409,12 @@ class Mod:
         if not isinstance(flags, list) or not all(isinstance(f, str) for f in flags):
             raise ValueError("mod.loader_flags must be a list of flag names")
         self.loader_flags: list[str] = list(flags)
+        # Game options this mod pins at runtime (R.options) that rsmm clears from
+        # GameSettings.ini when the mod is disabled or uninstalled.
+        restore = m.get("restore_options", []) or []
+        if not isinstance(restore, list) or not all(isinstance(o, str) for o in restore):
+            raise ValueError("mod.restore_options must be a list of option names")
+        self.restore_options: list[str] = list(restore)
         # `[requires]`: oldest CLI / loader this mod runs on (engine.mod_requires).
         self.requires: dict[str, int] = parse_requires(tbl.get("requires"))
         self.assets_dir = root / "assets"
@@ -1911,6 +1917,46 @@ def run_disable_hook(mod_root: Path,
     )
 
 
+def restore_mod_options(mod_root: Path, mod_id: str, game_dir: Path, state: State,
+                        dry_run: bool = False) -> int:
+    """Clear the game options ``[mod] restore_options`` names from
+    GameSettings.ini, for a mod that was applied as enabled (one that never ran
+    pinned nothing, and the line may be the player's own). Returns how many
+    lines went; RSMM's own code, so it needs no consent the way a hook does."""
+    from rsmm.engine import game_settings as GS
+    if mod_id not in set(state.enabled_mods):
+        return 0
+    try:
+        names = Mod(mod_root).restore_options
+    except (OSError, ValueError, tomllib.TOMLDecodeError):
+        return 0
+    if not names:
+        return 0
+    if dry_run:
+        print(f"  [dry] {mod_id}: would clear {', '.join(names)} from "
+              f"{GS.settings_ini(game_dir)}", file=sys.stderr)
+        return 0
+    n = GS.clear_options(game_dir, names)
+    if n:
+        # stderr: the desktop bridge calls this too, and its stdout is JSON.
+        print(f"  [restore] {mod_id}: cleared {', '.join(names)} from "
+              f"{GS.settings_ini(game_dir).name}", file=sys.stderr)
+    return n
+
+
+def restore_flipped_options(mods: list[Mod], state: State, game_dir: Path,
+                            dry_run: bool = False) -> list[str]:
+    """``restore_options`` for every mod that flipped enabled -> disabled since
+    the last apply, with or without an ``on_disable.py``. Returns their ids."""
+    was = set(state.enabled_mods)
+    done = []
+    for m in mods:
+        if m.id in was and not m.enabled and m.restore_options:
+            restore_mod_options(m.root, m.id, game_dir, state, dry_run)
+            done.append(m.id)
+    return done
+
+
 def uninstall_hook_pending(mod_root: Path, mod_id: str, state: State) -> bool:
     """Whether uninstalling `mod_id` would run its `on_disable.py`.
 
@@ -2665,6 +2711,7 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
         mods, state, game_dir, cooking, args.dry_run,
         assume_yes=getattr(args, "yes", False),
     )
+    restore_flipped_options(mods, state, game_dir, args.dry_run)
 
     additions, removals, registrations, synthesized = plan_apply(
         mods, dec2enc, cooking, game_dir, state, args.dry_run)
