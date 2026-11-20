@@ -188,7 +188,11 @@ def verify_file(path: Path, sig_b64: str, public_key_path: Path) -> bool:
         raise RepoError(f"unreadable public key {public_key_path}: {e}") from None
     if len(key_bytes) != 32:
         raise RepoError(f"public key {public_key_path} is not a raw 32-byte Ed25519 key")
-    message = sha256_file(path).encode("ascii")
+    return _verify_digest(key_bytes, sha256_file(path), sig_b64)
+
+
+def _verify_digest(key_bytes: bytes, digest_hex: str, sig_b64: str) -> bool:
+    message = digest_hex.encode("ascii")
     try:
         signature = base64.b64decode(sig_b64, validate=True)
     except (ValueError, TypeError):
@@ -225,3 +229,101 @@ def keygen() -> tuple[str, str]:
         encoding=ser.Encoding.Raw, format=ser.PublicFormat.Raw,
     )
     return base64.b64encode(priv_raw).decode("ascii"), base64.b64encode(pub_raw).decode("ascii")
+
+
+# ---------------------------------------------------------------------------
+# Install trust: signature + per-mod key pinning
+# ---------------------------------------------------------------------------
+
+PINS_NAME = "pins.json"
+
+
+def _pins(keys_dir: Path) -> dict[str, str]:
+    import json
+    try:
+        raw = json.loads((keys_dir / PINS_NAME).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as e:
+        # A pin file we cannot read must not quietly become "no pins": that is
+        # exactly the state in which a swapped key installs.
+        raise RepoError(f"unreadable key pins {keys_dir / PINS_NAME}: {e}") from None
+    return {str(k): str(v) for k, v in raw.items()} if isinstance(raw, dict) else {}
+
+
+def _pin(keys_dir: Path, mod_id: str, pubkey_id: str) -> None:
+    import json
+
+    from rsmm.engine.safeio import atomic_write_text
+    pins = _pins(keys_dir)
+    pins[mod_id] = pubkey_id
+    keys_dir.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(keys_dir / PINS_NAME, json.dumps(pins, indent=2, sort_keys=True) + "\n")
+
+
+@dataclass
+class Trust:
+    """Outcome of :func:`check_entry`. ``ok`` False = refuse. ``warn`` = install
+    only after the user confirms (unsigned, or a signer we hold no key for)."""
+    ok: bool
+    warn: bool
+    reason: str
+
+
+def check_entry(digest_hex: str, entry: RepoEntry, keys_dir: Path) -> Trust:
+    """Decide whether a downloaded archive (``digest_hex`` = its SHA-256) may
+    install, by the index entry's signature and the signer pinned for its mod.
+
+    Trust on first use: the first verified signature pins ``entry.pubkey_id``
+    to ``entry.id`` in ``<keys_dir>/pins.json``. After that a version signed by
+    another key, or not signed at all, is refused: any key in ``keys_dir`` used
+    to verify any mod, so whoever controlled the index could re-sign a mod with
+    a different trusted key, or drop the signature, and it installed.
+    """
+    from .archive import safe_dir_name  # archive imports this module
+
+    if digest_hex != entry.sha256:
+        return Trust(False, False, f"sha256 mismatch: expected {entry.sha256}, got {digest_hex}")
+    pinned = _pins(keys_dir).get(entry.id)
+    if not entry.sig or not entry.pubkey_id:
+        if pinned:
+            return Trust(False, False, f"unsigned, but {entry.id} is pinned to signer "
+                                       f"{pinned!r}; refusing (remove the pin in "
+                                       f"{keys_dir / PINS_NAME} to accept it)")
+        return Trust(True, True, "unsigned")
+    # The id comes from the index. `../…` or an absolute path would reach a
+    # .pub file anywhere, including one shipped inside an installed mod.
+    try:
+        safe_dir_name(entry.pubkey_id, what="signer id")
+    except ValueError as e:
+        return Trust(False, False, str(e))
+    if pinned and pinned != entry.pubkey_id:
+        return Trust(False, False, f"signed by {entry.pubkey_id!r}, but {entry.id} is pinned "
+                                   f"to {pinned!r}; refusing (remove the pin in "
+                                   f"{keys_dir / PINS_NAME} if the author changed keys)")
+    pub = keys_dir / f"{entry.pubkey_id}.pub"
+    if not pub.exists():
+        return Trust(True, True, f"unknown signer {entry.pubkey_id!r} (no key in {keys_dir})")
+    try:
+        key_bytes = base64.b64decode(pub.read_text(encoding="utf-8").strip(), validate=True)
+    except (OSError, ValueError) as e:
+        return Trust(False, False, f"unreadable public key {pub}: {e}")
+    # Can't verify is a refusal, not a pass.
+    if len(key_bytes) != 32 or not _verify_digest(key_bytes, digest_hex, entry.sig):
+        return Trust(False, False, f"signature INVALID ({entry.pubkey_id})")
+    if not pinned:
+        _pin(keys_dir, entry.id, entry.pubkey_id)
+        return Trust(True, False, f"signature ok ({entry.pubkey_id}, now pinned for {entry.id})")
+    return Trust(True, False, f"signature ok ({entry.pubkey_id})")
+
+
+def confirm_untrusted(what: str, yes: bool) -> bool:
+    """Ask before installing something unverified. ``--yes`` answers for the
+    user; with no terminal to ask and no ``--yes`` the answer is no."""
+    import sys
+    if yes:
+        return True
+    if not sys.stdin.isatty():
+        print(f"  {what}: not verified; pass --yes to install it anyway", file=sys.stderr)
+        return False
+    return input(f"  {what}: not verified. Install anyway? [y/N] ").strip().lower() == "y"

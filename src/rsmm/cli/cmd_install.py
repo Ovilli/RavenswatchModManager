@@ -12,7 +12,10 @@ The archive is the ``shutil.make_archive`` zip ``rsmm pack`` writes (a
 single top-level ``<id>/`` dir). It is downloaded, its SHA256 checked
 against the repo entry (unless ``--no-verify``), its Ed25519 signature
 verified when the entry carries one and the pubkey is in ``~/.rsmm/keys``,
-then extracted into ``mods/``. ``file://`` and bare local paths work, so
+then extracted into ``mods/``. The first verified signer of a mod is pinned
+(``~/.rsmm/keys/pins.json``) and later versions must carry it. Anything not
+verified (unsigned, unknown signer, a direct URL) asks first, and needs
+``--yes`` when there is no terminal to ask on. ``file://`` and bare local paths work, so
 this is fully testable offline.
 """
 
@@ -31,14 +34,14 @@ from pathlib import Path
 from rsmm.engine import net
 from rsmm.engine.paths import MODS_DIR
 from rsmm.sdk.archive import require_single_top_dir, safe_dir_name, safe_extract, scan_dangerous
-from rsmm.sdk.repo import RepoError, RepoIndex, verify_file
+from rsmm.sdk.repo import RepoError, RepoIndex, check_entry, confirm_untrusted
 
 # Reuse the same locations the `repo`/`sign` commands use.
 from .repo_cmd import KEYS_DIR, _load_repos
 
 _USAGE = (
     "usage: rsmm install <id|url.zip> [version-spec] [--from REPO] "
-    "[--no-verify] [--force]\n"
+    "[--no-verify] [--force] [--yes]\n"
     "\n"
     "Fetch + verify + unpack a packed mod into mods/.\n"
     "  <id>           resolve from configured repos (`rsmm repo add`)\n"
@@ -47,6 +50,7 @@ _USAGE = (
     "  --from REPO    repo.json url/path to resolve from (skips config)\n"
     "  --no-verify    skip the SHA256/signature check (not recommended)\n"
     "  --force        overwrite an already-installed mod\n"
+    "  --yes, -y      install an unsigned / unknown-signer mod without asking\n"
 )
 
 
@@ -149,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
 
     pos: list[str] = []
     repo_override: str | None = None
-    no_verify = force = False
+    no_verify = force = yes = False
     i = 0
     while i < len(argv):
         a = argv[i]
@@ -160,6 +164,8 @@ def main(argv: list[str] | None = None) -> int:
             no_verify = True
         elif a == "--force":
             force = True
+        elif a in ("--yes", "-y"):
+            yes = True
         else:
             pos.append(a)
         i += 1
@@ -179,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, RepoError) as e:
             print(f"download failed: {e}", file=sys.stderr)
             return 1
-        return _finish(data, None, no_verify, force)
+        return _finish(data, None, no_verify, force, yes)
 
     # --- resolve id from repos ----------------------------------------
     repos = [repo_override] if repo_override else _load_repos()
@@ -202,43 +208,29 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, RepoError) as e:
         print(f"download failed: {e}", file=sys.stderr)
         return 1
-    return _finish(data, entry, no_verify, force)
+    return _finish(data, entry, no_verify, force, yes)
 
 
-def _finish(data: bytes, entry, no_verify: bool, force: bool) -> int:
-    # SHA256 + optional signature.
-    if entry is not None and not no_verify:
-        got = hashlib.sha256(data).hexdigest()
-        if got != entry.sha256:
-            print(f"checksum mismatch: expected {entry.sha256}, got {got}",
-                  file=sys.stderr)
-            return 1
-        if entry.sig and entry.pubkey_id:
-            # Index-supplied: a path here would let any .pub on disk (one
-            # shipped inside an installed mod, say) stand in for a trusted key.
+def _finish(data: bytes, entry, no_verify: bool, force: bool, yes: bool = False) -> int:
+    # SHA256 + signature + the signer pinned for this mod. Verified from the
+    # digest in memory: no temp file to reopen (Windows refused the reopen of a
+    # NamedTemporaryFile, which failed every signed install there).
+    if not no_verify:
+        if entry is None:
+            if not confirm_untrusted("direct archive URL (no index entry, no checksum)", yes):
+                return 1
+        else:
             try:
-                safe_dir_name(entry.pubkey_id, what="signer id")
+                trust = check_entry(hashlib.sha256(data).hexdigest(), entry, KEYS_DIR)
             except RepoError as e:
-                print(f"refusing to verify: {e}", file=sys.stderr)
+                print(f"refusing {entry.id}: {e}", file=sys.stderr)
                 return 1
-            pub = KEYS_DIR / f"{entry.pubkey_id}.pub"
-            if not pub.exists():
-                print(f"signed mod but pubkey {entry.pubkey_id!r} not in "
-                      f"{KEYS_DIR}; install the key or use --no-verify",
-                      file=sys.stderr)
+            print(f"  verify: {trust.reason}")
+            if not trust.ok:
+                print(f"refusing {entry.id}", file=sys.stderr)
                 return 1
-            with tempfile.NamedTemporaryFile() as tf:
-                tf.write(data)
-                tf.flush()
-                try:
-                    verified = verify_file(Path(tf.name), entry.sig, pub)
-                except RepoError as e:
-                    print(f"signature could not be verified: {e}", file=sys.stderr)
-                    return 1
-                if not verified:
-                    print("signature verification FAILED", file=sys.stderr)
-                    return 1
-            print("  signature ok")
+            if trust.warn and not confirm_untrusted(f"{entry.id} ({trust.reason})", yes):
+                return 1
 
     # Peek the mod id without extracting, to honor --force / collisions.
     try:

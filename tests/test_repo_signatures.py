@@ -23,7 +23,6 @@ from pathlib import Path
 
 import pytest
 
-from rsmm.cli import update_cmd
 from rsmm.engine import minisign as ms
 from rsmm.sdk import repo
 
@@ -86,21 +85,24 @@ def test_verify_file_rejects_tampering_and_garbage(no_crypto, signed):
     assert repo.verify_file(blob, sig, pub) is False
 
 
+def _check(blob: Path, keys: Path, sig: str, pubkey_id: str, mod: str = "m"):
+    sha = hashlib.sha256(blob.read_bytes()).hexdigest()
+    entry = repo.RepoEntry(id=mod, version="1", url="", sha256=sha, sig=sig, pubkey_id=pubkey_id)
+    t = repo.check_entry(sha, entry, keys)
+    return t.ok and not t.warn, t.reason
+
+
 def test_update_refuses_a_forged_signature_from_a_known_signer(
         no_crypto, signed, monkeypatch):
     blob, keys, _sig = signed
-    monkeypatch.setattr(update_cmd, "KEYS_DIR", keys)
-    sha = hashlib.sha256(blob.read_bytes()).hexdigest()
     forged = base64.b64encode(b"\x01" * 64).decode()
-    ok, reason = update_cmd._verify_download(blob, sha, forged, "official")
+    ok, reason = _check(blob, keys, forged, "official")
     assert not ok, reason
 
 
 def test_update_accepts_a_genuine_signature(no_crypto, signed, monkeypatch):
     blob, keys, sig = signed
-    monkeypatch.setattr(update_cmd, "KEYS_DIR", keys)
-    sha = hashlib.sha256(blob.read_bytes()).hexdigest()
-    ok, reason = update_cmd._verify_download(blob, sha, sig, "official")
+    ok, reason = _check(blob, keys, sig, "official")
     assert ok and reason.startswith("signature ok"), reason
 
 
@@ -114,9 +116,7 @@ def test_update_refuses_a_signer_id_that_is_a_path(no_crypto, signed, monkeypatc
     (keys / "sub").mkdir()
     (keys / "sub" / "official.pub").write_text(
         (keys / "official.pub").read_text(encoding="utf-8"), encoding="utf-8")
-    monkeypatch.setattr(update_cmd, "KEYS_DIR", keys)
-    sha = hashlib.sha256(blob.read_bytes()).hexdigest()
-    ok, reason = update_cmd._verify_download(blob, sha, sig, pubkey_id)
+    ok, reason = _check(blob, keys, sig, pubkey_id)
     assert not ok, reason
 
 
@@ -126,7 +126,42 @@ def test_update_refuses_an_absolute_signer_id(no_crypto, signed, monkeypatch, tm
     planted.parent.mkdir()
     planted.with_suffix(".pub").write_text(
         (keys / "official.pub").read_text(encoding="utf-8"), encoding="utf-8")
-    monkeypatch.setattr(update_cmd, "KEYS_DIR", keys)
-    sha = hashlib.sha256(blob.read_bytes()).hexdigest()
-    ok, reason = update_cmd._verify_download(blob, sha, sig, str(planted))
+    ok, reason = _check(blob, keys, sig, str(planted))
     assert not ok, reason
+
+
+def test_first_verified_signer_is_pinned_and_a_swap_is_refused(no_crypto, signed):
+    """Any key in ~/.rsmm/keys used to verify any mod, so whoever controlled
+    the index could re-sign a mod with another trusted key, or strip the
+    signature, and it installed. The first verified signer is now pinned."""
+    blob, keys, sig = signed
+    assert _check(blob, keys, sig, "official")[0]
+    assert (keys / repo.PINS_NAME).is_file()
+    # Another key the user trusts, signing the same mod: refused.
+    (keys / "other.pub").write_text((keys / "official.pub").read_text(), encoding="utf-8")
+    ok, reason = _check(blob, keys, sig, "other")
+    assert not ok and "pinned" in reason
+    # The signature dropped: refused, not merely a warning.
+    sha = hashlib.sha256(blob.read_bytes()).hexdigest()
+    t = repo.check_entry(sha, repo.RepoEntry(id="m", version="2", url="", sha256=sha), keys)
+    assert not t.ok and "pinned" in t.reason
+    # A different mod is unaffected by m's pin.
+    assert _check(blob, keys, sig, "other", mod="n")[0]
+
+
+def test_unsigned_and_unknown_signer_warn(no_crypto, signed):
+    blob, keys, sig = signed
+    sha = hashlib.sha256(blob.read_bytes()).hexdigest()
+    t = repo.check_entry(sha, repo.RepoEntry(id="m", version="1", url="", sha256=sha), keys)
+    assert t.ok and t.warn
+    t = repo.check_entry(sha, repo.RepoEntry(id="m", version="1", url="", sha256=sha,
+                                             sig=sig, pubkey_id="stranger"), keys)
+    assert t.ok and t.warn
+    assert not (keys / repo.PINS_NAME).exists(), "an unverified signer must not be pinned"
+
+
+def test_unattended_install_of_unverified_needs_yes(monkeypatch):
+    import io
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))
+    assert repo.confirm_untrusted("m", yes=False) is False
+    assert repo.confirm_untrusted("m", yes=True) is True
