@@ -1729,7 +1729,9 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             "icon": ui_art(t.get("icon") or _DEFAULT_ICON, _DEFAULT_ICON, f"Skill_{word}",
                            f"frame.talents[{n}].icon")[1],
             # starting-pick cards (pool 0); the rest are dealt at level-up
-            "pool": HF.POOL_STARTER if t.get("starter") else HF.POOL_LEVEL_UP}))
+            "pool": HF.POOL_STARTER if t.get("starter") else HF.POOL_LEVEL_UP,
+            # the number badge quest / stack talents show on their card
+            "show_counter": bool(t.get("show_counter"))}))
         rows.append(HDF.Talent(f"Skill Controller {name}", g))
     hc = HF.common(read)
     for c in hc.graph().components:
@@ -2162,6 +2164,12 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # `abilities` take (clone, override, set, link, add_subobject ...), on its
     # main entity once it is built, checked as any edit. A string value or
     # target "own:<Id>" names one of its own entities.
+    # Every entity of its own takes its final identities BEFORE the edits run:
+    # an edit that links to another one's part (`owner_read` with `from`)
+    # records that part's GUID, and restamping afterwards, one file at a time,
+    # moved the owner's GUID and left the link on the old one.
+    own_projectiles = {ref: PC.restamp_entity_guids(blob, H.entity_rel(ref))
+                       for ref, blob in own_projectiles.items()}
     edits = frame.get("edits")
     if edits is not None:
         from ...engine import ability_edit as AE
@@ -2185,13 +2193,26 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             if ref == fx_ref:
                 return fx
             return own_projectiles.get(ref) or HK.reader(kit_copies)(ref)
+        copy_by_stem = {c.ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot"): c
+                        for c in kit_copies if not c.shipped and c.data is not None}
+        proj_by_stem = {r.rsplit("\\", 1)[-1].removesuffix(".entity.ot"): r
+                        for r in own_projectiles}
+        edit_files = {scope: main, **{s: c.data for s, c in copy_by_stem.items()},
+                      **{s: own_projectiles[r] for s, r in proj_by_stem.items()}}
+        edit_refs = {scope: main_ref, **{s: c.ref for s, c in copy_by_stem.items()},
+                     **proj_by_stem}
         try:
-            res = AE.apply({scope: main}, [own_values(dict(e)) for e in edits], main=scope,
+            res = AE.apply(edit_files, [own_values(dict(e)) for e in edits], main=scope,
                            seed=f"{mod_id}:{hid}:edits", read=edit_read,
-                           aliases={a.guid: a.stream for a in H.aliases(app)})
+                           aliases={a.guid: a.stream for a in H.aliases(app)},
+                           refs=edit_refs)
         except AE.AbilityEditError as e:
             raise ContentError(f"hero {hid}: edits: {e}") from e
         main = res.files[scope]
+        for s, c in copy_by_stem.items():
+            c.data = res.files[s]
+        for s, r in proj_by_stem.items():
+            own_projectiles[r] = res.files[s]
         kit_resources |= set(res.resources)
         for w in res.warnings:
             print(f"warning: hero {hid}: edits: {w}", file=sys.stderr)
@@ -2224,8 +2245,7 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     alias = H.alias_guid(mod_id, hid)
     entities = {main_ref: main, fx_ref: fx}
     for ref, blob in own_projectiles.items():
-        put(H.entity_rel(ref), _EA.group_class_runs(
-            PC.restamp_entity_guids(blob, H.entity_rel(ref))))
+        put(H.entity_rel(ref), _EA.group_class_runs(blob))
         art.append(f"EntitySettings|{ref}|oCEntitySettingsResource")
     # A summon's look of its own (`look` on a summon step), as the clone path
     # writes it: its maps into a copy of the enemy's material, its GLB cooked

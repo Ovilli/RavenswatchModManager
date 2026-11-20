@@ -318,9 +318,20 @@ Place next to `manifest.toml`. Fires from `./rsmm apply` when the mod flips `ena
 
 The hook runs as the player, outside the game, with no sandbox, so it never runs unasked: `rsmm apply` lists the pending hooks and waits for a yes (or `--yes`), and uninstalling from the desktop app asks whether to run it before removing the mod.
 
-Use for cleanup the loader DLL can't do at apply time — clearing settings keys, deleting profile caches, etc.
+Use for cleanup the loader DLL can't do at apply time — deleting profile caches, etc.
 
-See `examples/ExampleSeedPin/on_disable.py` for a canonical example.
+**Game options you pin need no hook.** The game saves what `R.options.set` wrote
+to `_Save/GameSettings.ini`, so a forced seed outlives the mod that set it. List
+those options in the manifest instead, and rsmm clears their lines itself when
+the mod is disabled or uninstalled (no Python, nothing to approve):
+
+```toml
+[mod]
+restore_options = ["Forced seed", "Dev"]
+```
+
+`rsmm lint` checks each name against the options `R.options` knows.
+`examples/ExampleSeedPin` does exactly this.
 
 ### ConsoleRuntime / dev_mode
 
@@ -420,7 +431,7 @@ default = []
 The CLI resolves `source` into options — `{id, label, group, icon,
 description}` — and sends them with the schema, so the panel renders labels,
 grouping, search and art in one round trip. Read the value back with the normal
-config API (`ConfigStore(mod_dir).get("banned")`); the `banned-items` mod's
+config API (`ConfigStore(mod_dir).get("banned")`); the `rsmm-item-bans` mod's
 `[[content]]` ban block takes its item list from exactly that.
 
 #### A saved config reaches the game on the next launch, never sooner
@@ -823,7 +834,8 @@ items = ["Avoid_Death_Once_Per_Chapter", "Armor_Per_Object"]
 ```
 
 Or skip the ids entirely and **pick the items from a list of the game's own
-icons**: the `banned-items` mod declares a `multiselect` config field (see
+icons**: the `rsmm-item-bans` mod (the item picker's own; the id is reserved,
+so the store never publishes a mod under it) declares a `multiselect` config field (see
 [Config with icons](#config-with-icons-multiselect)), so opening its config in
 the desktop app shows every item with its art, display name and effect text, and
 the ban list is whatever you ticked. `rsmm items catalog` is the same list in a
@@ -1404,8 +1416,12 @@ R.on("ready", function() R.log("game is up") end)
 `rsmm lint` fails a mod whose Lua reads `R` without that `local R = require "rsmm"`
 line, because the mod would die at load with `R` nil. It also fails raw game
 addresses and the low-level primitives (`_internal`, `peek`/`poke`, `read_*`/`write_*`,
-`module_base`, `scratch`, `call_raw`, `engine.resolve`); those stay inside the SDK,
-and a mod uses the high-level `R.*` calls built on them.
+`read_block`, `module_base`, `scratch`, `call_raw`, `engine.resolve`); those stay inside
+the SDK, and a mod uses the high-level `R.*` calls built on them. The same goes for
+`R.hook` / `R.unhook` and `R.ptr.*` (what the SDK itself is built on), for a
+`require "rsmm.<sub>"` of an SDK internal, and for writing into the SDK table
+(`R.x = ...`, `function R.x() end`): keep a table of your own instead. `R.debug.*`
+is a warning unless the mod's `tags` include `debug` or `test`.
 
 Under the SDK, the loader's native `rsmm` table carries the runtime calls:
 
@@ -1532,6 +1548,9 @@ R.damage.enable{ window = 10 }          -- opt-in: it installs engine hooks
 R.damage.on(function(hit)
     -- hit.label / hit.slot / hit.is_local / hit.amount / hit.source
     -- hit.kind == "dealt" (they hurt something) or "taken" (they got hurt)
+    -- dealt hits also carry hit.damage_kind ("attack", "ultimate", ... or
+    -- "other"), hit.killed (this hit killed the target) and hit.is_enemy
+    -- (true = enemy, false = scenery, nil = could not tell)
 end)
 
 for _, row in ipairs(R.damage.board()) do   -- already sorted, row.rank set

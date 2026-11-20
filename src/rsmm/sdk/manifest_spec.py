@@ -123,7 +123,8 @@ MOD_FIELDS: dict[str, str] = {
     "homepage_url": "Homepage URL.",
     "tags": "Store discovery tags (≤16, each ≤32 chars).",
     "game_build": "Game build this mod needs.",
-    "min_loader": "Oldest loader version this mod works with.",
+    "min_loader": "Oldest loader version this mod works with (e.g. 58 or \">=58\"); "
+                  "checked at apply like [requires] loader.",
     "load_order": "Lower loads first (default 100); later wins a conflict.",
     "priority": "Tie-breaker within one load_order.",
     "requires": "Mods that must be installed: [\"other-mod >=1.0\"].",
@@ -134,7 +135,15 @@ MOD_FIELDS: dict[str, str] = {
     "multiplayer_scope": "cosmetic | deterministic-shared | host-authoritative | local-only.",
     "loader_flags": "Loader features this mod needs switched on while it is enabled, "
                     "e.g. [\"RSMM_ENABLE_HERO_CAPTURE\"] for R.entity/R.stat/R.camera.",
+    "restore_options": "Game options this mod pins with R.options.set; rsmm clears them "
+                       "from GameSettings.ini when the mod is disabled or uninstalled, "
+                       "e.g. [\"Forced seed\", \"Dev\"].",
 }
+
+def _option_names() -> frozenset[str]:
+    from rsmm.engine.game_settings import OPTION_NAMES
+    return OPTION_NAMES
+
 
 #: Top-level tables a manifest may contain.
 TOP_LEVEL: frozenset[str] = frozenset({
@@ -221,6 +230,9 @@ def json_schema() -> dict:
                     "priority": {"type": "integer", "description": MOD_FIELDS["priority"]},
                     "loader_flags": {"type": "array", "items": {"type": "string"},
                                      "description": MOD_FIELDS["loader_flags"]},
+                    "restore_options": {"type": "array",
+                                        "items": {"enum": sorted(_option_names())},
+                                        "description": MOD_FIELDS["restore_options"]},
                     "multiplayer_scope": {
                         "enum": ["cosmetic", "deterministic-shared",
                                  "host-authoritative", "local-only"],

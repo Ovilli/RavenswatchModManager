@@ -386,7 +386,7 @@ def test_managed_mod_declares_a_valid_picker(tmp_path):
     from rsmm.engine import item_bans
     from rsmm.sdk.config import ConfigStore
     item_bans.write_bans(["Armor_Per_Object"], mods_dir=tmp_path)
-    store = ConfigStore(tmp_path / "banned-items")
+    store = ConfigStore(tmp_path / item_bans.DEFAULT_MOD_ID)
     field = store.schema.fields[item_bans.CONFIG_FIELD]
     assert field.type == "multiselect"
     assert field.source == "item-catalog"
@@ -405,7 +405,7 @@ def test_picker_selection_wins_over_a_stale_manifest_list(tmp_path):
     from rsmm.engine import item_bans
     from rsmm.sdk.config import ConfigStore
     item_bans.write_bans(["Armor_Per_Object"], mods_dir=tmp_path)
-    ConfigStore(tmp_path / "banned-items").set("banned", ["Something_Else"])
+    ConfigStore(tmp_path / item_bans.DEFAULT_MOD_ID).set("banned", ["Something_Else"])
     assert item_bans.read_bans(mods_dir=tmp_path) == ["Something_Else"]
 
 
@@ -414,11 +414,11 @@ def test_emit_uses_the_picker_selection(tmp_path, monkeypatch):
     from rsmm.sdk.config import ConfigStore
     from rsmm.sdk.kinds import items
     item_bans.write_bans(["Armor_Per_Object"], mods_dir=tmp_path)
-    root = tmp_path / "banned-items"
+    root = tmp_path / item_bans.DEFAULT_MOD_ID
     ConfigStore(root).set("banned", ["Picked_One"])
     monkeypatch.setattr(items, "_catalog_item_ids", lambda: None)
     monkeypatch.setattr(items, "_vanilla_item_ids", lambda: set())
-    written = items.emit("banned-items",
+    written = items.emit(item_bans.DEFAULT_MOD_ID,
                          _defn(id="b", mode="ban", items=["Stale_Manifest_One"]),
                          root / "assets")
     assert json.loads(written[0].read_text())["items"] == ["Picked_One"]
@@ -568,7 +568,7 @@ def test_clearing_the_picker_does_not_resurrect_the_manifest_list(tmp_path):
     from rsmm.engine import item_bans
     from rsmm.sdk.config import ConfigStore
     item_bans.write_bans(["Armor_Per_Object", "Balor"], mods_dir=tmp_path)
-    ConfigStore(tmp_path / "banned-items").set("banned", [])
+    ConfigStore(tmp_path / item_bans.DEFAULT_MOD_ID).set("banned", [])
     assert item_bans.read_bans(mods_dir=tmp_path) == []
 
 
@@ -581,3 +581,169 @@ def test_a_mod_without_a_picker_still_uses_its_manifest_list(tmp_path):
         'id = "b"\nitems = ["Armor_Per_Object"]\n')
     assert not item_bans.has_picker("handmade", tmp_path)
     assert item_bans.read_bans("handmade", tmp_path) == ["Armor_Per_Object"]
+
+
+# --- #202 B3: the picker's mod has a reserved id --------------------------------
+
+
+def test_a_picker_written_banned_items_moves_to_the_reserved_id(tmp_path):
+    from rsmm.engine import item_bans
+    item_bans.write_bans(["Armor_Per_Object"], item_bans.LEGACY_MOD_ID, mods_dir=tmp_path)
+    assert item_bans.read_bans(mods_dir=tmp_path) == ["Armor_Per_Object"]
+    assert not (tmp_path / item_bans.LEGACY_MOD_ID).exists()
+    new = tmp_path / item_bans.DEFAULT_MOD_ID
+    assert f'id = "{item_bans.DEFAULT_MOD_ID}"' in (new / "manifest.toml").read_text()
+
+
+def test_a_hand_made_banned_items_mod_is_left_alone(tmp_path):
+    from rsmm.engine import item_bans
+    mine = tmp_path / item_bans.LEGACY_MOD_ID
+    mine.mkdir()
+    (mine / "manifest.toml").write_text(
+        '[mod]\nid = "banned-items"\nauthor = "someone"\n\n[[content]]\nkind = "item"\n'
+        'mode = "ban"\nid = "b"\nitems = ["Balor"]\n')
+    assert item_bans.read_bans(mods_dir=tmp_path) == []
+    assert (mine / "manifest.toml").is_file()
+    assert not (tmp_path / item_bans.DEFAULT_MOD_ID).exists()
+
+
+def test_the_managed_mods_placeholders_keep_their_ids_across_the_rename():
+    """A saved run may hold a "Sold out" placeholder; new ids would unload it."""
+    from rsmm.engine import item_bans
+    from rsmm.sdk.kinds import items
+    assert items._placeholder_scope(item_bans.DEFAULT_MOD_ID) == item_bans.LEGACY_MOD_ID
+    assert items._placeholder_scope("other-mod") == "other-mod"
+
+
+def test_the_store_reserves_the_managed_mods_id():
+    import re
+    from pathlib import Path
+
+    from rsmm.engine import item_bans
+    ts = (Path(__file__).resolve().parents[1] / "packages/schemas/src/mod.ts").read_text()
+    reserved = re.search(r"RESERVED_MOD_SLUGS: readonly string\[\] = \[(.*?)\]", ts, re.S)
+    assert reserved and item_bans.DEFAULT_MOD_ID in re.findall(r"'([^']+)'", reserved.group(1))
+    assert re.fullmatch(r"[a-z0-9][a-z0-9-_]*", item_bans.DEFAULT_MOD_ID)   # a valid manifest id
+
+
+# --- PR #247 review: migration timing, id rewrite, placeholder scope ---------------
+
+
+def _legacy_picker(mods_dir, manifest_text=None):
+    from rsmm.engine import item_bans
+    item_bans.write_bans(["Armor_Per_Object"], item_bans.LEGACY_MOD_ID, mods_dir=mods_dir)
+    if manifest_text is not None:
+        (mods_dir / item_bans.LEGACY_MOD_ID / "manifest.toml").write_text(manifest_text)
+    return mods_dir / item_bans.LEGACY_MOD_ID
+
+
+def test_migration_is_public_and_needs_no_picker_call(tmp_path):
+    from rsmm.engine import item_bans
+    _legacy_picker(tmp_path)
+    assert item_bans.migrate_legacy(tmp_path) is True
+    assert not (tmp_path / item_bans.LEGACY_MOD_ID).exists()
+    assert (tmp_path / item_bans.DEFAULT_MOD_ID / "config.toml").is_file()
+
+
+def test_migration_reports_failure_and_keeps_the_legacy_folder(tmp_path, monkeypatch):
+    import os
+
+    from rsmm.engine import item_bans
+    old = _legacy_picker(tmp_path)
+
+    def boom(*a, **k):
+        raise OSError("locked")
+    monkeypatch.setattr(os, "replace", boom)
+    assert item_bans.migrate_legacy(tmp_path) is False
+    assert old.is_dir() and item_bans.is_legacy_picker(tmp_path)
+
+
+def test_migration_is_true_when_the_legacy_folder_is_someone_elses(tmp_path):
+    from rsmm.engine import item_bans
+    mine = tmp_path / item_bans.LEGACY_MOD_ID
+    mine.mkdir()
+    (mine / "manifest.toml").write_text('[mod]\nid = "banned-items"\nauthor = "someone"\n')
+    assert item_bans.migrate_legacy(tmp_path) is True
+    assert mine.is_dir()
+
+
+@pytest.mark.parametrize("line", [
+    "id='banned-items'", 'id   =   "banned-items"  # keep', '"id" = "banned-items"',
+    "id = 'banned-items'",
+])
+def test_migration_rewrites_the_declared_id_whatever_the_formatting(tmp_path, line):
+    import tomllib
+
+    from rsmm.engine import item_bans
+    text = ('[mod]\n' + line + '\nname = "Banned Items"\nauthor = "RSMM"\n\n'
+            '[[content]]\nkind = "item"\nmode = "ban"\nid = "banned_items"\nitems = []\n')
+    _legacy_picker(tmp_path, text)
+    item_bans.migrate_legacy(tmp_path)
+    doc = tomllib.loads((tmp_path / item_bans.DEFAULT_MOD_ID / "manifest.toml").read_text())
+    assert doc["mod"]["id"] == item_bans.DEFAULT_MOD_ID
+    assert doc["content"][0]["id"] == "banned_items"      # the block id is untouched
+
+
+def test_a_moved_picker_still_declaring_the_old_id_is_repaired(tmp_path):
+    import tomllib
+
+    from rsmm.engine import item_bans
+    _legacy_picker(tmp_path)
+    (tmp_path / item_bans.LEGACY_MOD_ID).rename(tmp_path / item_bans.DEFAULT_MOD_ID)
+    # The crash window: moved, manifest still says banned-items.
+    assert item_bans.migrate_legacy(tmp_path) is True
+    doc = tomllib.loads((tmp_path / item_bans.DEFAULT_MOD_ID / "manifest.toml").read_text())
+    assert doc["mod"]["id"] == item_bans.DEFAULT_MOD_ID
+
+
+def test_the_public_mods_placeholders_do_not_collide_with_the_pickers():
+    from rsmm.engine import item_bans
+    from rsmm.sdk.kinds import items
+    picker = items.placeholder_id(items._placeholder_scope(item_bans.DEFAULT_MOD_ID),
+                                  "banned_items", 1)
+    public = items.placeholder_id(items._placeholder_scope(item_bans.LEGACY_MOD_ID),
+                                  "banned_items", 1)
+    assert picker != public
+    assert picker == items.placeholder_id("banned-items", "banned_items", 1)
+
+
+def test_an_unreadable_legacy_manifest_with_picker_data_fails_the_migration(tmp_path):
+    """The store install deletes the legacy folder on success, so a picker whose
+    manifest cannot be read must report failure and keep the saved selection."""
+    from rsmm.engine import item_bans
+    old = _legacy_picker(tmp_path)
+    (old / "manifest.toml").write_text("[mod\nthis is not toml")
+    saved = (old / "config.toml").read_text()
+    assert item_bans.migrate_legacy(tmp_path) is False
+    assert (old / "config.toml").read_text() == saved
+    assert not (tmp_path / item_bans.DEFAULT_MOD_ID).exists()
+
+
+def test_a_failed_id_rewrite_fails_the_migration(tmp_path, monkeypatch):
+    from rsmm.engine import item_bans
+    _legacy_picker(tmp_path)
+    monkeypatch.setattr(item_bans, "_set_mod_id", lambda manifest, new_id: False)
+    assert item_bans.migrate_legacy(tmp_path) is False
+
+
+_EXTRA_TABLES = ('\n[requires]\nsdk = ">=3.0"\nother-mod = { version = "1.2", optional = true }\n\n'
+                 '[[content]]\nkind = "item"\nmode = "ban"\nid = "banned_items"\nitems = ["A"]\n')
+
+
+@pytest.mark.parametrize("head", [
+    '["mod"]\nid = "banned-items"\nname = "Banned Items"\nauthor = "RSMM"\n',
+    "['mod']\nid = 'banned-items'\nauthor = 'RSMM'\n",
+    # dotted keys: no [mod] header at all, so the manifest is regenerated
+    'mod.id = "banned-items"\nmod.name = "Banned Items"\nmod.author = "RSMM"\n',
+])
+def test_the_id_rewrite_keeps_every_other_field(tmp_path, head):
+    import tomllib
+
+    from rsmm.engine import item_bans
+    _legacy_picker(tmp_path, head + _EXTRA_TABLES)
+    before = tomllib.loads(head + _EXTRA_TABLES)
+    assert item_bans.migrate_legacy(tmp_path) is True
+    after = tomllib.loads((tmp_path / item_bans.DEFAULT_MOD_ID / "manifest.toml").read_text())
+    assert after["mod"].pop("id") == item_bans.DEFAULT_MOD_ID
+    before["mod"].pop("id")
+    assert after == before

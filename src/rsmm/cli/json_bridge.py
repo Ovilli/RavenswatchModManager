@@ -76,6 +76,7 @@ from rsmm.cli.apply_mods import (
     State,
     clear_runtime_mods,
     find_game_dir,
+    restore_mod_options,
     run_uninstall_hook,
     uninstall_hook_pending,
 )
@@ -429,6 +430,23 @@ def cmd_uninstall_mod(mod_id: str, hook: str | None = None) -> int:
             hook_status = "no-game-dir"
             hook_detail = ("Ravenswatch install not found, so this mod's "
                            "on_disable.py could not run before removal.")
+
+    # The options it declared in `restore_options`: RSMM's own cleanup, run
+    # only now the removal is going ahead (no hook, no consent needed).
+    if mod_path.is_dir() and (game_dir := find_game_dir()) is not None:
+        try:
+            restore_mod_options(mod_path, mod_id, game_dir,
+                                State(game_dir / "DarkTalesResources" / "_Cooking"))
+        except OSError as exc:
+            # Keep the mod folder: uninstalling again retries the cleanup.
+            from rsmm.engine.game_settings import settings_ini
+            return _emit({
+                "ok": False,
+                "modId": mod_id,
+                "error": (f"could not clear {mod_id}'s options from "
+                          f"{settings_ini(game_dir)}: {exc}. The mod was not removed; "
+                          "close anything using the file and uninstall again"),
+            })
 
     try:
         if mod_path.is_dir():
@@ -1155,6 +1173,7 @@ def _extract_downloaded_zip(tmp_path: Path, target: Path, slug: str) -> None | d
         # id the manifest claims are checked.
         import tomllib
 
+        from rsmm.engine import item_bans
         from rsmm.sdk import repo
 
         from .repo_cmd import KEYS_DIR
@@ -1171,6 +1190,14 @@ def _extract_downloaded_zip(tmp_path: Path, target: Path, slug: str) -> None | d
                     return {"ok": False, "error": str(exc)}
                 if not trust.ok:
                     return {"ok": False, "error": trust.reason}
+            # The picker's mod used to live at `banned-items`, the id the store
+            # publishes. Move it to its reserved folder before the replace below
+            # deletes it, and leave it be when that fails.
+            if target.name == item_bans.LEGACY_MOD_ID and not item_bans.migrate_legacy(
+                    target.parent):
+                return {"ok": False, "error": (
+                    f"{slug}: the item-ban picker's saved selection still lives in this "
+                    "folder and could not be moved aside; close the game and retry")}
             if target.is_dir():
                 shutil.rmtree(target)
             elif target.exists():

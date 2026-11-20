@@ -234,3 +234,42 @@ def test_emit_failure_names_the_cli_version(tmp_path, monkeypatch, versions, cap
     err = capsys.readouterr().err
     assert ("emit failed: hero X: frame is a table of abilities (RSMM CLI v30 - "
             "a field this CLI doesn't know may need a newer RSMM)") in err
+
+
+# --- [mod] min_loader is checked at apply (#202) --------------------------------
+
+
+@pytest.mark.parametrize("value, want", [(58, 58), ("58", 58), ("v58", 58), (">= 58", 58),
+                                         (None, None)])
+def test_min_loader_reads_as_a_loader_version(value, want):
+    assert R.parse_min_loader(value) == want
+
+
+@pytest.mark.parametrize("bad", ["0.1.11", "latest", 0, True, "<58"])
+def test_min_loader_that_is_not_a_version_is_refused(bad):
+    with pytest.raises(ValueError, match="min_loader"):
+        R.parse_min_loader(bad)
+
+
+def test_min_loader_too_new_skips_the_mod(tmp_path, versions, capsys):
+    m = A.Mod(_write(tmp_path, 'min_loader = "58"\n'))
+    assert m.requires == {"loader": 58}
+    A.apply_requires_gate([m], tmp_path)
+    assert m.enabled is False
+    assert "needs loader v58 or newer, the installed loader is v57" in capsys.readouterr().err
+
+
+def test_min_loader_and_requires_loader_take_the_stricter(tmp_path):
+    root = _write(tmp_path, 'min_loader = 50\n\n[requires]\nloader = 58\n')
+    assert A.Mod(root).requires == {"loader": 58}
+    root2 = _write(tmp_path, 'min_loader = 60\n\n[requires]\nloader = 58\ncli = 3\n', "m2")
+    assert A.Mod(root2).requires == {"loader": 60, "cli": 3}
+
+
+def test_an_unreadable_min_loader_warns_at_apply_and_errors_in_lint(tmp_path, capsys):
+    from rsmm.cli import lint
+    root = _write(tmp_path, 'name = "M"\nversion = "1.0.0"\nmin_loader = "0.1.11"\n')
+    assert A.Mod(root).requires == {}                      # the mod still applies
+    assert "min_loader" in capsys.readouterr().err
+    errs, _ = lint.lint_one(root)
+    assert errs >= 1 and "min_loader" in capsys.readouterr().out

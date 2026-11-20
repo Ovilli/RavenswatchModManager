@@ -359,6 +359,20 @@ PLACEHOLDER_NAME = "Sold Out"
 PLACEHOLDER_TEXT = "Nothing left to offer: every item here is banned."
 
 
+def _placeholder_scope(mod_id: str) -> str:
+    """The id a mod's placeholders are hashed under: its own, except the
+    picker's managed mod, which keeps its old id's so the "Sold out" items a
+    saved run may hold keep loading after the rename (#202 B3). The public mod
+    that now holds the old id gets a namespace of its own, or its first
+    placeholders would share ids and cooked paths with the picker's."""
+    from ...engine import item_bans
+    if mod_id == item_bans.DEFAULT_MOD_ID:
+        return item_bans.LEGACY_MOD_ID
+    if mod_id == item_bans.LEGACY_MOD_ID:
+        return f"store:{mod_id}"
+    return mod_id
+
+
 def placeholder_id(mod_id: str, block_id: str, n: int) -> str:
     """Same byte length as `PLACEHOLDER_BASE` (the proven rename path), unique
     per mod and block so two mods' placeholders never collide."""
@@ -385,7 +399,7 @@ def _emit_placeholders(mod_id: str, block_id: str, bans: set[str],
     written: list[Path] = []
     staged: list[dict] = []
     for n, (rarity, flags) in enumerate(plan_placeholders(pristine, bans), 1):
-        pid = placeholder_id(mod_id, block_id, n)
+        pid = placeholder_id(_placeholder_scope(mod_id), block_id, n)
         defn = ContentDef("item", pid, {
             "base": PLACEHOLDER_BASE, "rarity": rarity, "name": PLACEHOLDER_NAME,
             "description": PLACEHOLDER_TEXT, "value_patches": [list(_PLACEHOLDER_ZERO)]})

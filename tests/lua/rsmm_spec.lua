@@ -3528,8 +3528,14 @@ do
     -- total counts prop damage.
     check(Rs.damage.ignore_scenery() == false,
           "scenery filtering is opt-in — the default matches the game's total")
+    local seen = {}
+    Rs.damage.on(function(h) seen[#seen + 1] = h end)
     hit(GNOLL, 10.0); hit(FENCE, 90.0)
     check(Rs.damage.total() == 100.0, "with the filter off, prop damage counts")
+    check(seen[1] and seen[1].is_enemy == true and seen[2] and seen[2].is_enemy == false,
+          "a subscriber gets is_enemy on every dealt hit, with the filter off too")
+    check(seen[1].damage_kind == "attack", "and the ability that landed it, by name")
+    check(seen[1].attack_type == nil, "never the raw engine attack-type number")
 
     Rs.damage.reset()
     check(Rs.damage.ignore_scenery(true) == true, "the filter can be toggled at runtime")
@@ -9497,8 +9503,13 @@ do
     check(row.discarded == 1 and row.discarded_amount == 100.0,
           "and the dropped hit is REPORTED, not silently vanished")
 
+    local last
+    Rq.damage.on(function(h) last = h end)
     deal(7.0, true, true)
     check(Rq.damage.board()[1].kills == 1, "the kill flag is counted per row")
+    check(last and last.killed == true, "a subscriber sees the killing hit as killed")
+    deal(7.0, true, false)
+    check(last and last.killed == false, "and any other hit as not killed")
 
     Rq.damage.disable(); Rq.damage.reset()
     rsmm.log = saved_log

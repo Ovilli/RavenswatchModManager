@@ -273,7 +273,7 @@ def main(argv: list[str] | None = None) -> int:
     pb.add_argument("--add", help="comma-separated item ids to ban")
     pb.add_argument("--remove", help="comma-separated item ids to un-ban")
     pb.add_argument("--set", help="comma-separated ids to ban, replacing the list")
-    pb.add_argument("--mod", help="mod folder to edit (default: banned-items)")
+    pb.add_argument("--mod", help="mod folder to edit (default: rsmm-item-bans)")
     pb.add_argument("--json", action="store_true", help="machine-readable output")
 
     args = ap.parse_args(argv if argv is not None else sys.argv[1:])

@@ -89,7 +89,8 @@ def test_an_out_of_range_link_names_the_list(tmp_path):
 @pytest.mark.parametrize("fields,msg", [
     ({"steps": [{"remove_link": "A.b[0]"}]}, "needs 'entity'"),
     ({"entity": _ENTITY, "steps": "oops"}, "needs 'steps'"),
-    ({"entity": _ENTITY, "steps": [{"clone": "X", "as": "Y"}]}, "clone steps"),
+    ({"entity": _ENTITY, "steps": [{"clone": "X", "as": "Y", "from": "Juliet"}]},
+     "cross-file clone steps"),
     ({"entity": "Objects/Nope/Nothing_Here", "steps": [{"remove_link": "A.b[0]"}]},
      "no shipped entity"),
 ])
@@ -138,6 +139,25 @@ def test_when_gates_any_step_on_a_bool_field(tmp_path):
     assert entities._resolve_config(d, steps, root) == [{"remove_link": "C.l[0]"}]
     with pytest.raises(ContentError, match="on/off"):
         entities._resolve_config(d, [{"remove_link": "C.l[0]", "when": "health"}], root)
+
+
+@needs_corpus
+def test_an_add_selector_step_keeps_its_condition_beside_the_config_guard(tmp_path, monkeypatch):
+    """`when` is the config guard on every step; add_selector's in-game test is
+    `condition`, so one step can carry both."""
+    from rsmm.engine.entity_graph_edit import EntityFile
+    seen = []
+    monkeypatch.setattr(EntityFile, "prepend_selector_entry",
+                        lambda self, comp, target, condition:
+                        seen.append((comp, target, condition)))
+    out = _cfg_root(tmp_path) / "assets"
+    out.mkdir()
+    entities.emit("m", ContentDef(kind="entity", id="Tint", fields={
+        "entity": _ENTITY,
+        "steps": [{"add_selector": "Some Selector", "to": "Some Branch",
+                   "when": "on", "condition": "State Empowered"},
+                  {"remove_link": "State FX PreOvertime.while_active[1]"}]}), out)
+    assert seen == [("Some Selector", "Some Branch", "State Empowered")]
 
 
 @needs_corpus

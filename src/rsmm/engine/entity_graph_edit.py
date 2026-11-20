@@ -169,11 +169,12 @@ class EntityFile:
         owned, ambiguous = self._pointers
         return dict(owned), {k: list(v) for k, v in ambiguous.items()}
 
-    def _spans(self, o: int, special: set[int]) -> tuple[tuple[int, int], ...]:
+    def _spans(self, o: int, special: set[int],
+               node_cls: int | None = None) -> tuple[tuple[int, int], ...]:
         """``_raw_spans`` of object ``o`` (the trailer when ``o`` is past the
         objects)."""
         p = self.objects[o] if o < len(self.objects) else self.trailer
-        return _raw_spans(bytes(p), frozenset(special))
+        return _raw_spans(bytes(p), frozenset(special), node_cls)
 
     def _scan_pointers(self) -> tuple[dict[int, Pointer], dict[int, list[Pointer]]]:
         n = len(self.objects)
@@ -182,6 +183,8 @@ class EntityFile:
         names = [c.name for c in self.cf.classes]
         special = {names.index(x) for x in ("oCEntityCpntPicker", "oCEntityValueUnion")
                    if x in names}
+        node_cls = (names.index("oCEntityCpntNodeSettings")
+                    if "oCEntityCpntNodeSettings" in names else None)
         vec: dict[int, list[Pointer]] = defaultdict(list)
         single: dict[int, list[Pointer]] = defaultdict(list)
         for o in range(n + 1):
@@ -190,7 +193,7 @@ class EntityFile:
             if o == n:
                 voff, ids = component_vector(bytes(p))
                 start = voff + 4 + 4 * len(ids)
-            for a, b in self._spans(o, special):
+            for a, b in self._spans(o, special, node_cls):
                 i = max(a, start)
                 while i + 4 <= b:
                     c = struct.unpack_from("<I", p, i)[0]
@@ -431,6 +434,9 @@ class EntityFile:
         if f.kind in EF._PRIM:
             struct.pack_into({"bool": "<?", "u32": "<I", "f32": "<f"}[f.kind], p,
                              at + f.offset, _as(f.kind, value))
+            return
+        if f.kind == "str":
+            p[at + f.offset:at + f.offset + f.size] = _lstr(str(value))
             return
         if f.kind == "bytes":
             # Undecoded bytes: a hex string of exactly the field's size, or for
@@ -790,14 +796,20 @@ class EntityFile:
         "oCEntityCpntValueSelectorSettings": 0x0FD2C964,
         "oCEntityCpntValueOperationsSettings": 0x17AE7811,
         "oCEntityCpntGetValueSettings": 0x16ABF2EB,
+        "oCEntityCpntTimerSettings": 0x1683197E,  # TIMER_ELAPSED: ability/talent cooldown UI
     }
     #: A vec3 slot (union type 3) reading a get-value: Piper's rat reads its
     #: attack seed position this way (Hero_Piper_Rat_Pet, 2026-11-03).
-    VEC3_ACCESSOR = {"oCEntityCpntGetValueSettings": 0x16ABF2EE}
+    VEC3_ACCESSOR = {
+        "oCEntityCpntGetValueSettings": 0x16ABF2EE,
+        "oCDtEntityCpntHeroControllerSettings": 0x0FD283D3,
+    }
     #: The same reads of an int node (Free Reroll, charges, the counts).
     INT_ACCESSOR = {
         "oCEntityCpntValueSettings": 0x0FD2C965,
         "oCEntityCpntValueOperationsSettings": 0x17AE780B,
+        "oCEntityCpntCounterSettings": 0x1163B1E9,
+        "oCEntityCpntValueSelectorSettings": 0x0FD2C965,
     }
     #: A Timer has several number outputs, so reading one names WHICH (RE
     #: 2026-10-20, docs/_re/kinds/items.md): the binder asks the timer's vt[13]
@@ -828,16 +840,19 @@ class EntityFile:
         if u < 0:
             raise EntityEditError(f"{comp!r}: number slot {n} has no value")
         kind = struct.unpack_from("<I", p, u + 8)[0]
-        table = {0: self.F32_ACCESSOR, 3: self.VEC3_ACCESSOR}.get(kind)
+        table = {0: self.F32_ACCESSOR, 1: self.INT_ACCESSOR, 3: self.VEC3_ACCESSOR}.get(kind)
         if table is None:
-            raise EntityEditError(f"{comp!r}: number slot {n} is not a decimal or vec3")
+            raise EntityEditError(f"{comp!r}: number slot {n} is not a decimal, int, or vec3")
         acc = accessor if accessor is not None else table.get(t.cls)
         if acc is None:
-            raise EntityEditError(f"{target!r} is a {t.cls}; no known way to read it into "
-                                  f"{'a vec3' if kind == 3 else 'a number'}")
+            want = "a vec3" if kind == 3 else "an int" if kind == 1 else "a number"
+            raise EntityEditError(f"{target!r} is a {t.cls}; no known way to read it into {want}")
         p[at:u] = b"\x01\x00" + self._picker(target) + struct.pack("<I", acc)
         u = p.find(union, at)
-        struct.pack_into("<f", p, u + 16, 0.0)
+        if kind == 1:
+            struct.pack_into("<i", p, u + 16, 0)
+        else:
+            struct.pack_into("<f", p, u + 16, 0.0)
 
     def append_operand(self, comp: str, target: str) -> None:
         """Add ``target`` (an f32 node of this file) as one more operand of the
@@ -1015,52 +1030,106 @@ class EntityFile:
         return payload
 
     def retarget_external(self, comp: str, old: bytes, guid: bytes, label: str,
-                          *, cross_kind: bool = False) -> int:
+                          *, subobjects: bool = False, cross_kind: bool = False,
+                          accessor: int | None = None) -> int:
         """Point every reference in ``comp`` to GUID ``old`` at a node of ANOTHER
         entity (``guid``, ``label`` = ``[Kind] Scope\\Group\\Name``) of the same
-        kind, keeping the accessor after it: a get-value node reading its owner."""
+        kind, keeping the accessor after it: a get-value node reading its owner.
+        With ``subobjects=True``, scan owned sub-objects too."""
         c = self.component(comp)
         obj = c.index - 1
         head = _B + struct.pack("<I", [x.name for x in self.cf.classes].index("oCEntityCpntPicker"))
         new = head + guid + _lstr(label) + _E
+        objs = [obj, *sorted(self.subtree({obj}))] if subobjects else [obj]
         moved = 0
-        p = self.objects[obj]
-        i = p.find(head + old)
-        while i >= 0:
-            n = struct.unpack_from("<I", p, i + 24)[0]
-            end = i + 28 + n + 4
-            if not cross_kind and _label_kind(_picker_path(bytes(p[i:end]))) != _label_kind(label):
-                raise EntityEditError(f"{c.name!r}: {_picker_path(bytes(p[i:end]))!r} is not "
-                                      f"the same kind of node as {label!r}")
-            p[i:end] = new
-            moved += 1
-            i = p.find(head + old, i + len(new))
+        for o in objs:
+            p = self.objects[o]
+            i = p.find(head + old)
+            while i >= 0:
+                n = struct.unpack_from("<I", p, i + 24)[0]
+                end = i + 28 + n + 4
+                got = _picker_path(bytes(p[i:end]))
+                if not cross_kind and _label_kind(got) != _label_kind(label):
+                    raise EntityEditError(
+                        f"{c.name!r}: {got!r} is not the same kind of node as {label!r}")
+                p[i:end] = new
+                if accessor is not None and p[i + len(new) + 4 : i + len(new) + 8] == _B:
+                    struct.pack_into("<I", p, i + len(new), accessor)
+                moved += 1
+                i = p.find(head + old, i + len(new))
         return moved
 
-    def swap_refs(self, comp: str, old: bytes, target: str) -> int:
+    def swap_refs(self, comp: str, old: bytes, target: str,
+                  *, subobjects: bool = False, cross_kind: bool = False) -> int:
         """Point every reference in ``comp`` to GUID ``old`` at ``target``, a
-        component of the SAME kind, keeping what follows each reference (a
-        skill controller's per-rarity accessor). For a copy whose links still
-        name its donor's component: :meth:`set_ref` cannot judge an accessor
-        for a target outside this file. Returns how many it moved."""
+        component of the SAME kind (unless ``cross_kind``), keeping what follows
+        each reference. With ``subobjects=True``, scan owned sub-objects too.
+        Returns how many it moved."""
         c = self.component(comp)
         obj = c.index - 1
         head = _B + struct.pack("<I", [x.name for x in self.cf.classes].index(
             "oCEntityCpntPicker"))
         new = self._picker(target)
+        new_kind = _label_kind(_picker_path(new))
+        objs = [obj, *sorted(self.subtree({obj}))] if subobjects else [obj]
+        # The accessor after a value picker depends on the target's kind (see
+        # `_repoint`): learn them BEFORE any swap, or a swapped picker's stale
+        # accessor counts as the file's own evidence.
+        acc = None
         moved = 0
-        p = self.objects[obj]
-        i = p.find(head + old)
-        while i >= 0:
-            n = struct.unpack_from("<I", p, i + 24)[0]
-            end = i + 28 + n + 4
-            if _label_kind(_picker_path(bytes(p[i:end]))) != _label_kind(_picker_path(new)):
-                raise EntityEditError(f"{c.name!r}: {_picker_path(bytes(p[i:end]))!r} is not "
-                                      f"the same kind of node as {target!r}")
-            p[i:end] = new
-            moved += 1
-            i = p.find(head + old, i + len(new))
+        for o in objs:
+            p = self.objects[o]
+            i = p.find(head + old)
+            while i >= 0:
+                n = struct.unpack_from("<I", p, i + 24)[0]
+                end = i + 28 + n + 4
+                old_path = _picker_path(bytes(p[i:end]))
+                if not cross_kind and _label_kind(old_path) != new_kind:
+                    raise EntityEditError(f"{c.name!r}: {old_path!r} is not "
+                                          f"the same kind of node as {target!r}")
+                crossed = _label_kind(old_path) != new_kind
+                if crossed and acc is None:
+                    try:
+                        acc = _Accessors(cooked.parse(self._emit()))
+                    except (EntityAppendError, EntityEditError) as e:
+                        raise EntityEditError(
+                            f"cannot point {c.name!r} at {target!r}: {e}") from e
+                old_picker = bytes(p[i:end])
+                p[i:end] = new
+                if crossed:
+                    try:
+                        p[:] = fix_accessor(bytes(p), i + len(new) - 4, old, new[8:24], acc,
+                                            old_path, _picker_path(new))
+                    except (EntityAppendError, EntityEditError) as e:
+                        p[i:i + len(new)] = old_picker
+                        raise EntityEditError(
+                            f"cannot point {c.name!r} at {target!r}: {e}") from e
+                moved += 1
+                i = p.find(head + old, i + len(new))
         return moved
+
+    def prepend_selector_entry(self, comp: str, target: str, condition: str) -> None:
+        """Insert a conditional branch first on ``oCEntityCpntSelectorSettings``
+        ``comp``: pick ``target`` while ``condition`` is true."""
+        c, f, at = self._field(comp, "bytes_1")
+        if c.cls != "oCEntityCpntSelectorSettings" or f.size != 4:
+            raise EntityEditError(f"{comp!r} is a {c.cls}, not a component selector")
+        cond = self.component(condition)
+        acc = self.BOOL_ACCESSOR.get(cond.cls)
+        if acc is None:
+            raise EntityEditError(f"{condition!r} is a {cond.cls}; selector condition needs a "
+                                  "state, value, or get-value")
+        from .entity_parts import PartWriter
+        ci = PartWriter(self, "").ci
+        vp = (_B + struct.pack("<I", ci("oCEntityCpntValuePicker")) + b"\x01\x00"
+              + self._picker(condition) + struct.pack("<I", acc)
+              + _B + struct.pack("<III?", ci("oCEntityValueUnion"), 2, 0, False) + _E + _E)
+        entry = (_B + struct.pack("<I", ci("oCEntityCpntSelectorEntrySettings"))
+                 + self._picker(target) + vp + b"\x00" + _E)
+        p = self.objects[c.index - 1]
+        count = struct.unpack_from("<I", p, at + f.offset)[0]
+        p[at + f.offset + 4:at + f.offset + 4] = entry
+        struct.pack_into("<I", p, at + f.offset, count + 1)
 
     def add_ref(self, comp: str, field: str, target: str) -> None:
         c, f, at = self._field(comp, field)
@@ -1408,9 +1477,10 @@ def _as(kind: str, value):
 # ponytail: keyed on content, not object index: a hero build scans ~176k
 # objects of which ~21k (11 MB) are distinct, across clones and index shifts.
 @lru_cache(maxsize=1 << 15)
-def _raw_spans(p: bytes, special: frozenset[int]) -> tuple[tuple[int, int], ...]:
-    """Spans of ``p`` outside markers, lstrings, pickers and value unions —
-    where a poly-pointer id can sit."""
+def _raw_spans(p: bytes, special: frozenset[int],
+               node_cls: int | None = None) -> tuple[tuple[int, int], ...]:
+    """Spans of ``p`` outside markers, lstrings, pickers, value unions and
+    operator ids — where a poly-pointer id can sit."""
     spans: list[tuple[int, int]] = []
     i = start = 0
     n = len(p)
@@ -1422,6 +1492,9 @@ def _raw_spans(p: bytes, special: frozenset[int]) -> tuple[tuple[int, int], ...]
             if mark == _B and i + 8 <= n and struct.unpack_from("<I", p, i + 4)[0] in special:
                 j = p.find(_E, i + 8)
                 i = j + 4 if j >= 0 else n
+            elif mark == _B and node_cls is not None and i + 12 <= n \
+                    and struct.unpack_from("<I", p, i + 4)[0] == node_cls:
+                i += 12
             else:
                 i += 8 if mark == _B else 4
             start = i

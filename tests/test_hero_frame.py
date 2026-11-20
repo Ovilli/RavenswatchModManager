@@ -938,3 +938,44 @@ def test_a_custom_dash_replaces_the_shared_one():
     assert ctl["ref_2"].endswith("State Custom Dash Ability")
     assert "Dash Cooldown Default" in ctl["value_4"]
     assert ef.component("Dash Ability Anim").override is not None
+
+
+@needs_corpus
+@needs_install
+def test_show_counter_sets_the_flag_after_the_cards_icon():
+    """The byte after a skill controller's icon is its counter badge: set on
+    the 29 shipped quest / stack cards, 0 on the other 391 (#192)."""
+    icon = "Heroes\\Geppetto\\Skill Dash Deals Damage.png"
+    ef = _hero("Hero_T")
+    hc = HF.common(_read)
+    for name, on in (("Attack Plain", False), ("Attack Quest", True)):
+        HF.add_talent(ef, hc, name, bank="B", name_key="n", desc_key="d", icon=icon,
+                      seed="t", show_counter=on)
+        p = bytes(ef.objects[ef.component(f"Skill Controller {name}").index - 1])
+        assert p[p.find(icon.encode()) + len(icon)] == int(on)
+    with pytest.raises(HF.FrameError, match="counter"):
+        HF.add_talent(ef, hc, "Attack Blank", bank="B", name_key="n", desc_key="d",
+                      icon="", seed="t", show_counter=True)
+
+
+@needs_corpus
+@needs_install
+def test_moving_or_loop_ability_sound_sets_event_flag():
+    """A sound a state's ``activates`` switches on (moving / loop) must be a
+    one-frame event, or it stays on after the first cast and never replays
+    (#192)."""
+    from rsmm.engine import entity_graph as EG
+    from rsmm.engine import hero_ability as HA
+    from rsmm.engine.entity_graph_edit import EntityFile
+    for slot, extra in (("defense", {"moving": True}), ("ultimate2", {"loop": True})):
+        ef = _hero("Hero_T")
+        ab = HA.Ability.parse(slot, {
+            "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+            "duration": 0.9,
+            "sound": "DarkHills\\Jack\\Jack_NPC_Model.entity.ot | Beanstalk ShakeImpact FMod Event",
+            **extra,
+        })
+        HA.build(ef, HF.common(_read), ab, seed="t")
+        e2 = EntityFile(ef.to_bytes(), "Hero_T")
+        tag = slot.capitalize() if slot != "ultimate2" else "Ultimate2"
+        assert e2.component(f"{tag} Ability Sound").flags & EG.EVENT_FLAG, slot

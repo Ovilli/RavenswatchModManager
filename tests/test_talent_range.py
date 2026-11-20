@@ -363,3 +363,15 @@ def test_snow_queen_special_cone_range_scaling(tmp_path):
     raw = paths["Hero_Snow_Queen"]
     assert comp(raw, "Ability Secondary Attack Length Scaled") is not None
     assert comp(raw, "Ability Secondary Attack Extra Length Scaled") is not None
+
+
+def test_a_number_no_state_switches_on_is_switched_on_at_start_up():
+    """A number only its reader reads (no state activates it) kept its inline
+    value after scaling: the new chain was never switched on (#192, a seed's
+    fuse). It is added to the start-up state now."""
+    wisp = entity("Melusine", "Hero_Melusine_Wisp")
+    node = "Skill Detonation Radius"
+    out = TR.scale_node(wisp, node=node, factor="Damage Multiplier Ratio Value")
+    on = [r.path.rsplit("\\", 1)[-1] for r in comp(out, "Event Initialize").refs]
+    assert {node, f"{node} Base", f"{node} Scaled"} <= set(on)
+    assert EC.check(out, wisp, name="Hero_Melusine_Wisp") == []

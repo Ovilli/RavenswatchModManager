@@ -43,7 +43,58 @@ One step per table::
     retarget = "My Spawner Value"         point the part's link into ANOTHER
     node = "Heroes\\Hero_Kintaro\\Hero_Kintaro_Special_Delayed_AOE.entity.ot|Radius"
                                           entity at that node (a spawner value's
-                                          target: the spawned entity's number)
+                                          target: the spawned entity's number);
+                                          links held in the part's own
+                                          sub-objects (an FX emitter) move too
+
+    animatic_clip = "Dash Ability Anim"   play another clip in an animatic,
+    value = "Characters\\Heroes\\X\\Animations\\X_Dash.fbx"
+                                          its length taken from the clip
+
+    sound_volume = "Dash FMod Event"      a sound's volume (1 = as shipped)
+    value = 0.5
+
+    swap_ref = "Wolf FX Spawner"          re-point every link in the part (and
+    node = "Old Hit FX"                   its sub-objects) from ``node`` to
+    to = "New Hit FX"                     ``to``, any kind; ``from`` reads
+                                          ``node`` from another entity
+
+    append_operand = "Damage Multiply"    one more operand of a value operation
+    to = "Bonus Damage Value"             (an f32 node of this entity)
+
+    add_selector = "Attack Selector"      a first branch on a component
+    to = "Empowered Attack"               selector: pick ``to`` while ``condition``
+    condition = "State Empowered"         (a state, value or get-value) holds
+
+    unlink_reads = "Attack Cooldown"      every number slot of the part (and
+                                          its sub-objects) that reads another
+                                          part keeps its own number instead
+
+    scale_by_talent = ["Bite Damage"]     value / multiply nodes scaled by a
+    talent = "Attack Feral Bite"          talent's per-rarity factor (``tag``
+    values = [10, 20, 30, 40]             "Attack" by default; ``percent``
+                                          true: the values are percents);
+                                          ``factor = <part>`` reuses one
+
+    talent_number = "Bleed Stacks"        a per-rarity value node of the
+    talent = "Attack Feral Bite"          talent, also shown on its card as
+    values = [1, 2, 3, 4]                 the next ``{N}``; ``flag = true``
+                                          adds the talent's owned flag
+
+    owner_read = "Owner Bite Damage"      in a spawned entity (``entity``), a
+    entity = "Wisp"                       value read from its owner's part
+    node = "Bite Damage"                  ``node`` (``from``: the owner, default
+                                          the main entity), switched on at
+                                          start-up with its other owner reads
+
+    level_linear = "Bite Damage"          a node's number becomes
+    value = 2.5                           ``base + value * hero level``
+    base = 10
+
+    add_status = ["Bite Hit Damage"]      damage records also apply ``status``
+    status = "Bleed"                      while ``switch`` (a state or flag of
+    switch = "Skill Attack Bite Owned"    this entity) is on; Marked needs
+    talent = "Attack Feral Bite"          ``duration`` (seconds, or a value part)
 
     add_subobject = "Wolf Basic Attack Combo.bytes_4"   append a copy of entry
     donor_index = 1                       ``donor_index`` of that id list (a
@@ -67,12 +118,16 @@ from .entity_graph_edit import EntityEditError, EntityFile, id_list_pad
 
 _OPS = ("clone", "set", "link", "add_link", "remove_link", "percent", "add_subobject",
         "replace_subobject", "switch_off", "override", "retarget", "retarget_targets", "event",
-        "add_cinebloc", "animatic_speed", "scale_with_level")
+        "append_operand", "add_cinebloc", "animatic_speed", "animatic_clip", "sound_volume",
+        "add_selector", "unlink_reads",
+        "swap_ref", "scale_by_talent", "talent_number", "owner_read", "scale_with_level",
+        "level_linear", "add_status")
 #: Every key a step may carry; anything else is a typo that would otherwise be
 #: ignored silently (a `rename` the old clone did not read left its copies
 #: under the default suffix, and the next step found nothing).
 _KEYS = {*_OPS, "value", "to", "entity", "as", "suffix", "from", "rename",
-         "donor_index", "donor", "replace_ref", "node", "from_kind"}
+         "donor_index", "donor", "replace_ref", "node", "from_kind", "condition", "talent",
+         "values", "tag", "flag", "factor", "base", "status", "switch", "duration"}
 
 
 class AbilityEditError(ValueError):
@@ -102,11 +157,14 @@ def hero_entity_ref(name: str) -> str:
 
 
 def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
-          read=None, aliases: dict[bytes, str] | None = None) -> Result:
+          read=None, aliases: dict[bytes, str] | None = None,
+          refs: dict[str, str] | None = None) -> Result:
     """Apply ``steps`` to ``files`` (entity stem -> bytes, the base family).
     ``aliases`` (alias GUID -> entity ref) lets an override reach an ancestor
     the entity inherits by alias (a hero written from scratch reaches
-    Hero_Common and Character_Common only that way)."""
+    Hero_Common and Character_Common only that way). ``refs`` (stem -> entity
+    ref) names the files edited together, so the check reads each one's
+    EDITED bytes when another of them links to it."""
     read = read or CK._corpus_reader
     edits: dict[str, EntityFile] = {}
 
@@ -122,7 +180,10 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
     for n, step in enumerate(steps, 1):
         if not isinstance(step, dict):
             raise AbilityEditError(f"ability step {n} is not a table")
-        ops = [op for op in _OPS if op in step]
+        # `percent` is also scale_by_talent's / talent_number's bool option;
+        # only a slot name (a string) makes it the percent step.
+        ops = [op for op in _OPS
+               if op in step and not (op == "percent" and isinstance(step[op], bool))]
         if len(ops) != 1:
             raise AbilityEditError(f"ability step {n} needs exactly one of {', '.join(_OPS)}")
         unknown = set(step) - _KEYS
@@ -161,11 +222,55 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
                 if "value" not in step:
                     raise AbilityEditError("animatic_speed needs value = <rate>")
                 ef.set_animatic_speed(str(step["animatic_speed"]), float(step["value"]))
+            elif op == "animatic_clip":
+                if not step.get("value"):
+                    raise AbilityEditError("animatic_clip needs value = <.fbx clip path>")
+                _animatic_clip(ef, str(step["animatic_clip"]), str(step["value"]))
+            elif op == "sound_volume":
+                if "value" not in step:
+                    raise AbilityEditError("sound_volume needs value = <volume>")
+                c = ef.component(str(step["sound_volume"]))
+                if c.cls != "oCEntityCpntFModEventSettings":
+                    raise AbilityEditError(f"{c.name!r} is a {c.cls}, not a sound (FMod event)")
+                ef.set_value(c.name, "volume", float(step["value"]))
+            elif op == "add_selector":
+                if not step.get("to") or not step.get("condition"):
+                    raise AbilityEditError(
+                        "add_selector needs to = <part> and condition = <state or value>")
+                ef.prepend_selector_entry(
+                    str(step["add_selector"]), str(step["to"]), str(step["condition"]))
+            elif op == "unlink_reads":
+                from . import hero_ability as HA
+                HA._unlink_value_reads(ef, str(step["unlink_reads"]))
+            elif op == "swap_ref":
+                if not step.get("node") or not step.get("to"):
+                    raise AbilityEditError("swap_ref needs node = <old part> and to = <new part>")
+                old = _source(ef, step, read).component(str(step["node"])).guid
+                ef.swap_refs(str(step["swap_ref"]), old, str(step["to"]),
+                             subobjects=True, cross_kind=True)
+            elif op == "append_operand":
+                if not step.get("to"):
+                    raise AbilityEditError("append_operand needs to = <part>")
+                ef.append_operand(str(step[op]), str(step["to"]))
+            elif op == "scale_by_talent":
+                edits[ef.name] = _scale_by_talent(ef, step, f"{seed}:{n}")
+            elif op == "talent_number":
+                edits[ef.name] = _talent_number(ef, step, f"{seed}:{n}")
+            elif op == "owner_read":
+                _owner_read(ef, step, f"{seed}:{n}", files, edits, main, refs)
             elif op == "scale_with_level":
                 if "value" not in step:
                     raise AbilityEditError("scale_with_level needs value = <ratio>")
                 _scale_with_level(ef, str(step["scale_with_level"]), float(step["value"]),
                                   f"{seed}:{n}")
+            elif op == "level_linear":
+                if "value" not in step:
+                    raise AbilityEditError(
+                        "level_linear needs value = <per level> (and optional base = <offset>)")
+                _level_linear(ef, str(step["level_linear"]), float(step["value"]),
+                              float(step.get("base", 0.0)), f"{seed}:{n}")
+            elif op == "add_status":
+                _add_status(ef, step, f"{seed}:{n}")
             elif op == "retarget_targets":
                 part, _, fld = str(step[op]).rpartition(".")
                 if not part or not step.get("to"):
@@ -223,12 +328,20 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
             raise AbilityEditError(f"ability step {n} ({op}): {e}") from e
 
     out = Result(dict(files))
+    edited_map: dict[str, bytes] = {}
     for stem, ef in edits.items():
         try:
-            edited = ef.to_bytes()
+            edited_map[stem] = ef.to_bytes()
         except EntityEditError as e:
             raise AbilityEditError(f"the ability edits to {stem} do not hold together: {e}") from e
-        issues = CK.check(edited, files[stem], name=stem, read=read)
+    by_ref = {refs[s]: b for s, b in edited_map.items() if refs and s in refs}
+
+    def check_read(ref: str):
+        stem = ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
+        return by_ref.get(ref) or edited_map.get(stem) or read(ref)
+
+    for stem, edited in edited_map.items():
+        issues = CK.check(edited, files[stem], name=stem, read=check_read)
         errs = list(CK.errors(issues))
         if errs:
             raise AbilityEditError(
@@ -300,6 +413,124 @@ def _clone(ef: EntityFile, step: dict, seed: str, read) -> None:
              source=None if src is ef else src)
 
 
+def _animatic_clip(ef: EntityFile, part: str, clip: str) -> None:
+    """Swap an animatic's ``.fbx`` clip and match its duration to the clip."""
+    import re
+
+    from . import hero_frame as HF
+    c = ef.component(part)
+    if c.cls != "oCEntityCpntAnimaticSettings":
+        raise AbilityEditError(f"{part!r} is a {c.cls}, not an animatic")
+    if not clip.lower().endswith(".fbx"):
+        raise AbilityEditError(f"animatic_clip: {clip!r} is not an .fbx clip path")
+    old = re.search(rb"Characters\\[ -~]*?\.fbx", c.body)
+    if old is None:
+        raise AbilityEditError(f"{part!r} holds no animation clip path")
+    HF.replace_in_slot(ef, part, old.group(0).decode(), clip)
+    length = HF.clip_length(clip)
+    if length:
+        HF._set_duration(ef, part, length)
+
+
+def _scale_by_talent(ef: EntityFile, step: dict, seed: str) -> EntityFile:
+    """Scale one or more value / multiply nodes by a talent's per-rarity factor:
+    a new factor (``talent`` + ``values``), or an existing one (``factor``)."""
+    from . import talent_range as TR
+    targets = step["scale_by_talent"]
+    nodes = [targets] if isinstance(targets, str) else [str(x) for x in targets]
+    if not nodes:
+        raise AbilityEditError("scale_by_talent needs at least one node to scale")
+    if step.get("factor"):
+        raw, factor_name = ef.to_bytes(), str(step["factor"])
+    else:
+        if not step.get("talent") or "values" not in step:
+            raise AbilityEditError(
+                "scale_by_talent needs talent = <name> and values = [...] (or factor = <part>)")
+        raw, factor = TR.add_factor(ef.to_bytes(), talent=str(step["talent"]),
+                                    values=step["values"], tag=str(step.get("tag") or "Attack"),
+                                    percent=bool(step.get("percent", True)), seed=seed)
+        factor_name = factor.name
+    for node in nodes:
+        raw = TR.scale_node(raw, node=node, factor=factor_name,
+                            seed=f"{seed}:{node}", scope=ef.name)
+    return EntityFile(raw, ef.name)
+
+
+def _talent_number(ef: EntityFile, step: dict, seed: str) -> EntityFile:
+    """A per-rarity number of ``talent`` (``values``, one per rarity) as the
+    value node ``talent_number``, shown on the card as the next ``{N}`` of its
+    description; ``flag = true`` also gives the talent its owned flag."""
+    from . import entity_graph as EG
+    from . import talent_add_stat as TA
+    from . import talent_status as TS
+    from . import talent_writer as TW
+
+    if not step.get("talent") or "values" not in step:
+        raise AbilityEditError("talent_number needs talent = <name> and values = [...]")
+    talent, name = str(step["talent"]), str(step["talent_number"])
+    raw = ef.to_bytes()
+    if step.get("flag"):
+        raw, _ = TS.add_flag(raw, talent=talent, seed=seed)
+    ctl, _state, fmt = TA.card_parts(EG.parse(raw), talent)
+    out = EntityFile(raw, ef.name)
+    w = TW.TalentWriter(out, f"{seed}:num:{name}", f"Skill {talent}")
+    sel = f"{name} Selector"
+    w.value_of(name, w.rarity(sel, TW.link_to(out, ctl.name), TA.normalise_values(step["values"])))
+    if fmt:
+        out.add_format_slot(fmt.name, sel, percent=bool(step.get("percent", False)))
+    return out
+
+
+def _owner_read(ef: EntityFile, step: dict, seed: str, files: dict[str, bytes],
+                edits: dict[str, EntityFile], main: str, refs: dict[str, str] | None) -> None:
+    """A get-value node ``owner_read`` in a spawned entity (the step's
+    ``entity``) reading part ``node`` of its owner (``from``, default the main
+    entity), walking the owner chain so a summon's child still finds the hero.
+    It is switched on with the entity's other readers of that owner."""
+    from . import entity_parts as P
+    from . import talent_status as TS
+    from . import talent_writer as TW
+    from .entity_graph_edit import kind_label
+
+    if not step.get("node"):
+        raise AbilityEditError("owner_read needs node = <owner part>")
+    want = str(step.get("from") or main)
+    owner_stem = want if want in files else f"{main}_{want}"
+    if owner_stem not in files:
+        raise AbilityEditError(f"owner_read: no family entity {want!r}")
+    if owner_stem == ef.name:
+        raise AbilityEditError("owner_read: the entity cannot read itself as its owner")
+    owner = edits.get(owner_stem) or EntityFile(files[owner_stem], owner_stem)
+    t = owner.component(str(step["node"]))
+    label = f"[{kind_label(t.cls)}] {owner_stem}\\" + (f"{t.group}\\" if t.group else "") + t.name
+    owner_ref = (refs or {}).get(owner_stem) or hero_entity_ref(owner_stem)
+    name = str(step["owner_read"])
+    TW.TalentWriter(ef, seed, "").reader(name, owner_ref, P.Link(t.guid, label),
+                                         owners=(0,), walk_owners=True)
+    have = {c.name for c in ef.graph().components}
+    init = (TS.startup_state(ef.graph(), owner_ref, but=name)
+            or next((n for n in ("Child Event Initialize", "Event Initialize") if n in have),
+                    None))
+    if init is None:
+        raise AbilityEditError(f"owner_read: {ef.name} has no start-up state to switch "
+                               f"{name!r} on")
+    ef.insert_ref(init, "activates", 0, name)
+
+
+#: Character_Common values the level steps read, kept together so a game patch
+#: that moves one is a one-line fix (tests/test_ability_edit_ops.py checks both
+#: against Character_Common). (GUID hex, link label.)
+LEVEL_DAMAGE = ("351a83c831da0b4ebd0716d89160d84d",
+                r"[Value] Character_Common\Base\Level Damage")
+XP_LEVEL = ("81e2538eaf800d4a894aa88ffec17b03",          # an int value
+            r"[Value] Character_Common\Base\Current XP Level")
+
+
+def _link(shared: tuple[str, str]):
+    from . import entity_parts as P
+    return P.Link(bytes.fromhex(shared[0]), shared[1])
+
+
 def _scale_with_level(ef: EntityFile, target: str, ratio: float, seed: str) -> None:
     """Make ``target``'s amount/value equal ``ratio * owner's Level Damage``."""
     from . import entity_parts as P
@@ -310,8 +541,7 @@ def _scale_with_level(ef: EntityFile, target: str, ratio: float, seed: str) -> N
     c = ef.component(target)
     slot = 1 if c.cls == "oCEntityCpntModifierSettings" else 0
     reader_name = "Owner Level Damage"
-    level_dmg = P.Link(bytes.fromhex("351a83c831da0b4ebd0716d89160d84d"),
-                       r"[Value] Character_Common\Base\Level Damage")
+    level_dmg = _link(LEVEL_DAMAGE)
     if not any(x.name == reader_name for x in ef.graph().components):
         TW.TalentWriter(ef, f"{seed}:level-dmg", "").reader(
             reader_name, r"Heroes\Hero_Common\Hero_Common.entity.ot",
@@ -331,6 +561,51 @@ def _scale_with_level(ef: EntityFile, target: str, ratio: float, seed: str) -> N
         startup = TA._startup_state(ef)
         if startup is not None:
             ef.add_ref(startup, "activates", scaled_name)
+
+
+def _level_linear(ef: EntityFile, target: str, per_level: float, base: float,
+                  seed: str) -> None:
+    """Make ``target``'s amount / value ``base + per_level * Current XP Level``
+    (the hero's level, read from Character_Common)."""
+    from . import entity_parts as P
+    from . import talent_add_stat as TA
+    from . import talent_range as TR
+    from . import talent_writer as TW
+
+    c = ef.component(target)
+    slot = 1 if c.cls == "oCEntityCpntModifierSettings" else 0
+    w = TW.TalentWriter(ef, f"{seed}:lvl-lin:{target}", c.group)
+    per = w.add(TW._VALUE, f"{target} Per Level",
+                {"value": P.Num.f32(per_level), "flag": 0}, flags=0x101)
+    mul_name, sum_name = f"{target} Level Mul", f"{target} Level Linear"
+    mul = w.multiply(mul_name, _link(XP_LEVEL), ef.INT_ACCESSOR["oCEntityCpntValueSettings"],
+                     per, TW.READ_VALUE, group=c.group, a_num=P.Num.int(0))
+    w.sum_op(sum_name, base,
+             terms=[(mul, ef.F32_ACCESSOR["oCEntityCpntValueOperationsSettings"])],
+             group=c.group)
+    ef.source_value(target, slot, sum_name)
+    if TR._activate_before(ef, target, [mul_name, sum_name]) == 0:
+        startup = TA._startup_state(ef)
+        if startup is not None:
+            ef.add_ref(startup, "activates", mul_name)
+            ef.add_ref(startup, "activates", sum_name)
+
+
+def _add_status(ef: EntityFile, step: dict, seed: str) -> None:
+    """Damage records (``add_status``, one or a list) also put ``status`` on
+    whoever they hit while ``switch`` is on, for ``talent``: every status
+    through ``talent_status.DONORS`` (Marked with its own ``duration``)."""
+    from . import talent_status as TS
+    if not step.get("status") or not step.get("switch") or not step.get("talent"):
+        raise AbilityEditError("add_status needs status, switch and talent")
+    raw_targets = step["add_status"]
+    targets = [raw_targets] if isinstance(raw_targets, str) else [str(x) for x in raw_targets]
+    status = str(step["status"])
+    donor, donor_raw = TS.donor_of(status)
+    for dmg in targets:
+        TS.add_status(ef, donor, donor_raw, damage=dmg, status=status,
+                      switch=str(step["switch"]), talent=str(step["talent"]), seed=seed,
+                      duration=step.get("duration"))
 
 
 def _source(ef: EntityFile, step: dict, read) -> EntityFile:
@@ -474,8 +749,25 @@ def _retarget(ef: EntityFile, step: dict, read) -> None:
         return
     src_kind = str(step.get("from_kind") or kind)
     mine = {c.guid for c in ef.graph().components}
-    old = [r.guid for r in part.refs if r.guid not in mine and r.path.startswith(f"[{src_kind}] ")]
+    prefix = f"[{src_kind}] "
+    old = [r.guid for r in part.refs if r.guid not in mine and r.path.startswith(prefix)]
+    # The link can also sit in a sub-object the part owns (an FX's emitter):
+    # gather from both places, since a direct match must not hide the emitter's.
+    from . import entity_graph as EG
+    classes = [c.name for c in ef.cf.classes]
+    subobjects = False
+    if "oCEntityCpntPicker" in classes:
+        picker_cls = classes.index("oCEntityCpntPicker")
+        for o in sorted(ef.subtree({part.index - 1})):
+            found = [r.guid for _, r in EG._pickers(bytes(ef.objects[o]), picker_cls)
+                     if r.guid not in mine and r.path.startswith(prefix)]
+            old.extend(found)
+            subobjects = subobjects or bool(found)
+    old = list(dict.fromkeys(old))
     if not old:
         raise AbilityEditError(f"retarget: {part.name!r} has no outside {src_kind} link to move")
+    acc = ef.VEC3_ACCESSOR.get(node.cls) if src_kind != kind else None
     for g in dict.fromkeys(old):
-        ef.retarget_external(part.name, g, node.guid, label, cross_kind=src_kind != kind)
+        ef.retarget_external(part.name, g, node.guid, label,
+                             subobjects=subobjects, cross_kind=src_kind != kind,
+                             accessor=acc)

@@ -356,6 +356,12 @@ class State:
     def enabled_mods(self) -> list[str]:
         return self.data.setdefault("enabled_mods", [])
 
+    @property
+    def pending_option_restores(self) -> dict:
+        """``{mod id: [option names]}`` whose GameSettings.ini cleanup failed
+        and is retried by the next apply. Absent in older state files."""
+        return self.data.setdefault("pending_option_restores", {})
+
     def set_enabled_mods(self, ids: list[str]) -> None:
         self.data["enabled_mods"] = sorted(set(ids))
 
@@ -409,8 +415,22 @@ class Mod:
         if not isinstance(flags, list) or not all(isinstance(f, str) for f in flags):
             raise ValueError("mod.loader_flags must be a list of flag names")
         self.loader_flags: list[str] = list(flags)
+        # Game options this mod pins at runtime (R.options) that rsmm clears from
+        # GameSettings.ini when the mod is disabled or uninstalled.
+        restore = m.get("restore_options", []) or []
+        if not isinstance(restore, list) or not all(isinstance(o, str) for o in restore):
+            raise ValueError("mod.restore_options must be a list of option names")
+        self.restore_options: list[str] = list(restore)
         # `[requires]`: oldest CLI / loader this mod runs on (engine.mod_requires).
+        # `[mod] min_loader` is the older spelling of `[requires] loader`; it was
+        # declared and emitted but never checked (#202), so it joins the gate.
+        # An unreadable one is lint's error; here it only warns, so a hint field
+        # never drops a mod that applied before it was checked.
         self.requires: dict[str, int] = parse_requires(tbl.get("requires"))
+        try:
+            self.requires = _req.with_min_loader(self.requires, m.get("min_loader"))
+        except ValueError as e:
+            print(f"  [warn] {self.id}: {e}; ignored", file=sys.stderr)
         self.assets_dir = root / "assets"
         blocks = tbl.get("content", []) or []
         if not isinstance(blocks, list) or not all(isinstance(b, dict) for b in blocks):
@@ -1911,6 +1931,76 @@ def run_disable_hook(mod_root: Path,
     )
 
 
+def restore_mod_options(mod_root: Path, mod_id: str, game_dir: Path, state: State,
+                        dry_run: bool = False) -> int:
+    """Clear the game options ``[mod] restore_options`` names from
+    GameSettings.ini, for a mod that was applied as enabled (one that never ran
+    pinned nothing, and the line may be the player's own). Returns how many
+    lines went; RSMM's own code, so it needs no consent the way a hook does."""
+    from rsmm.engine import game_settings as GS
+    if mod_id not in set(state.enabled_mods):
+        return 0
+    try:
+        names = Mod(mod_root).restore_options
+    except (OSError, ValueError, tomllib.TOMLDecodeError):
+        return 0
+    if not names:
+        return 0
+    if dry_run:
+        print(f"  [dry] {mod_id}: would clear {', '.join(names)} from "
+              f"{GS.settings_ini(game_dir)}", file=sys.stderr)
+        return 0
+    n = GS.clear_options(game_dir, names)
+    if n:
+        # stderr: the desktop bridge calls this too, and its stdout is JSON.
+        print(f"  [restore] {mod_id}: cleared {', '.join(names)} from "
+              f"{GS.settings_ini(game_dir).name}", file=sys.stderr)
+    return n
+
+
+def _restore_or_defer(mod_id: str, names: list[str], game_dir: Path, state: State) -> bool:
+    """Clear `names` from GameSettings.ini; on an OSError warn and record them
+    in the state so the next apply retries. True when the cleanup went through."""
+    from rsmm.engine import game_settings as GS
+    try:
+        GS.clear_options(game_dir, names)
+    except OSError as e:
+        print(f"  [warn] {mod_id}: could not clear {', '.join(names)} from "
+              f"{GS.settings_ini(game_dir)}: {e}; will retry on the next apply",
+              file=sys.stderr)
+        pending = state.pending_option_restores
+        pending[mod_id] = sorted(set(pending.get(mod_id, [])) | set(names))
+        return False
+    state.pending_option_restores.pop(mod_id, None)
+    return True
+
+
+def restore_flipped_options(mods: list[Mod], state: State, game_dir: Path,
+                            dry_run: bool = False) -> list[str]:
+    """``restore_options`` for every mod that flipped enabled -> disabled since
+    the last apply, with or without an ``on_disable.py``. Returns their ids.
+    Cleanups an earlier apply could not finish are retried first; a failure
+    here warns and the batch goes on."""
+    if not dry_run:
+        enabled_now = {m.id for m in mods if m.enabled}
+        for mod_id, names in list(state.pending_option_restores.items()):
+            if mod_id in enabled_now:
+                # Re-enabled since: its options are live again, not leftovers.
+                state.pending_option_restores.pop(mod_id, None)
+                continue
+            _restore_or_defer(mod_id, list(names), game_dir, state)
+    was = set(state.enabled_mods)
+    done = []
+    for m in mods:
+        if m.id in was and not m.enabled and m.restore_options:
+            if dry_run:
+                restore_mod_options(m.root, m.id, game_dir, state, dry_run)
+            elif not _restore_or_defer(m.id, list(m.restore_options), game_dir, state):
+                continue
+            done.append(m.id)
+    return done
+
+
 def uninstall_hook_pending(mod_root: Path, mod_id: str, state: State) -> bool:
     """Whether uninstalling `mod_id` would run its `on_disable.py`.
 
@@ -2665,6 +2755,7 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
         mods, state, game_dir, cooking, args.dry_run,
         assume_yes=getattr(args, "yes", False),
     )
+    restore_flipped_options(mods, state, game_dir, args.dry_run)
 
     additions, removals, registrations, synthesized = plan_apply(
         mods, dec2enc, cooking, game_dir, state, args.dry_run)

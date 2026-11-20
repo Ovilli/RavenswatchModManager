@@ -80,6 +80,13 @@ SCHEMAS: dict[str, list[tuple[str, ...]]] = {
         ("ref_1c0", "ref"), ("ref_200", "ref"), ("ref_180", "ref"), ("flag_f8", "bool"),
         ("value_100", "value"), ("attacks", "ids")],
     "oCEntityCpntValueSettings": [("value", "value"), ("flag", "bool")],
+    # A sound event. Only its volume is named (a decimal value: 1 on 1687 of
+    # 1693 shipped events, 0.8 / 0.9 / 5 on a few, one read from a get-value);
+    # the rest keep their mechanical names, as `bytes` spans up to the next
+    # object, so this tiles every shipped event whatever the unnamed bytes are.
+    "oCEntityCpntFModEventSettings": [
+        ("obj_2", "obj"), ("bytes_3", "bytes"), ("obj_4", "obj"), ("volume", "value"),
+        ("bytes_6", "bytes")],
     # The listener a magical object reacts to a game event with: its settings
     # object (event id, include/exclude flag lists, five bytes) and three
     # reference slots; whichever slot is set is what the event switches on

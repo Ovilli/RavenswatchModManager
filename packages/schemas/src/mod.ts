@@ -13,6 +13,17 @@ export const modSlugSchema = z
   .max(64)
   .regex(/^[a-z0-9][a-z0-9-_]*$/, 'lowercase alphanumeric with -_');
 
+/** Mod ids RSMM owns on the player's machine (the item-ban picker's mod:
+ *  `item_bans.DEFAULT_MOD_ID`). The store refuses them as a slug or a manifest
+ *  id, so no install can land in, or replace, one of these folders. */
+export const RESERVED_MOD_SLUGS: readonly string[] = ['rsmm-item-bans'];
+
+export function isReservedModSlug(slug: string): boolean {
+  return RESERVED_MOD_SLUGS.includes(slug.toLowerCase());
+}
+
+const RESERVED_MOD_ID_MESSAGE = 'this mod id is reserved for RSMM itself; pick another';
+
 export const semverSchema = z.string().regex(/^\d+\.\d+\.\d+(?:[-+][\w.]+)?$/, 'semver x.y.z');
 
 export const overlayColumnTypeSchema = z.enum(['text', 'number', 'percent', 'bar']);
@@ -191,6 +202,10 @@ export const modUploadRequestSchema = z
     sha256: z.string().regex(/^[a-f0-9]{64}$/),
     sizeBytes: z.number().int().positive(),
   })
+  .refine((v) => !isReservedModSlug(v.slug) && !isReservedModSlug(v.manifest.id), {
+    message: RESERVED_MOD_ID_MESSAGE,
+    path: ['slug'],
+  })
   // Same rule as modVersionCreateSchema below — see the note there.
   .refine((v) => v.manifest.version === v.version, {
     message:
@@ -233,6 +248,12 @@ export const modVersionCreateSchema = z
     sizeBytes: z.number().int().positive(),
     manifest: modManifestSchema,
     changelog: z.string().max(16_000).optional(),
+  })
+  // Same publishing check as modUploadRequestSchema: a later release of an
+  // existing listing may not carry a reserved manifest id either.
+  .refine((v) => !isReservedModSlug(v.manifest.id), {
+    message: RESERVED_MOD_ID_MESSAGE,
+    path: ['manifest', 'id'],
   })
   // The row's version and the SHIPPED manifest's version must agree. They are
   // separate fields, and nothing used to check them against each other, so a

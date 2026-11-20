@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   modListItemSchema,
   modManifestSchema,
+  modUploadRequestSchema,
   modVersionCreateSchema,
   modVersionSchema,
 } from '../mod';
@@ -51,14 +52,16 @@ describe('modListItemSchema', () => {
   });
 
   it('rejects invalid uuid', () => {
-    expect(() => modListItemSchema.parse({
-      id: 'not-a-uuid',
-      slug: 'test',
-      name: 'Test',
-      downloads: 0,
-      updatedAt: new Date().toISOString(),
-      tags: [],
-    })).toThrow();
+    expect(() =>
+      modListItemSchema.parse({
+        id: 'not-a-uuid',
+        slug: 'test',
+        name: 'Test',
+        downloads: 0,
+        updatedAt: new Date().toISOString(),
+        tags: [],
+      }),
+    ).toThrow();
   });
 });
 
@@ -133,28 +136,32 @@ describe('modVersionSchema', () => {
   });
 
   it('rejects invalid semver', () => {
-    expect(() => modVersionSchema.parse({
-      id: '550e8400-e29b-41d4-a716-446655440000',
-      modId: '550e8400-e29b-41d4-a716-446655440001',
-      version: 'not-valid',
-      sizeBytes: 1024,
-      manifestJson: { id: 'test-mod', name: 'Test', version: '1.0.0' },
-      assetUrl: 'https://example.com/mod.zip',
-      createdAt: new Date().toISOString(),
-    })).toThrow();
+    expect(() =>
+      modVersionSchema.parse({
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        modId: '550e8400-e29b-41d4-a716-446655440001',
+        version: 'not-valid',
+        sizeBytes: 1024,
+        manifestJson: { id: 'test-mod', name: 'Test', version: '1.0.0' },
+        assetUrl: 'https://example.com/mod.zip',
+        createdAt: new Date().toISOString(),
+      }),
+    ).toThrow();
   });
 
   it('rejects invalid sha256 length', () => {
-    expect(() => modVersionSchema.parse({
-      id: '550e8400-e29b-41d4-a716-446655440000',
-      modId: '550e8400-e29b-41d4-a716-446655440001',
-      version: '1.0.0',
-      sha256: 'too-short',
-      sizeBytes: 1024,
-      manifestJson: { id: 'test-mod', name: 'Test', version: '1.0.0' },
-      assetUrl: 'https://example.com/mod.zip',
-      createdAt: new Date().toISOString(),
-    })).toThrow();
+    expect(() =>
+      modVersionSchema.parse({
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        modId: '550e8400-e29b-41d4-a716-446655440001',
+        version: '1.0.0',
+        sha256: 'too-short',
+        sizeBytes: 1024,
+        manifestJson: { id: 'test-mod', name: 'Test', version: '1.0.0' },
+        assetUrl: 'https://example.com/mod.zip',
+        createdAt: new Date().toISOString(),
+      }),
+    ).toThrow();
   });
 });
 
@@ -184,5 +191,46 @@ describe('modVersionCreateSchema', () => {
       expect(res.error.issues[0]?.message).toMatch(/match the version inside the packed manifest/);
       expect(res.error.issues[0]?.path).toEqual(['version']);
     }
+  });
+});
+
+describe('reserved mod ids', () => {
+  const manifest = { id: 'my-mod', name: 'Mine', version: '1.0.0' };
+  const base = {
+    slug: 'my-mod',
+    version: '1.0.0',
+    sha256: 'a'.repeat(64),
+    sizeBytes: 10,
+    manifest,
+  };
+
+  it('accepts an ordinary upload', () => {
+    expect(modUploadRequestSchema.safeParse(base).success).toBe(true);
+  });
+
+  it("refuses RSMM's own mod id as the slug or as the packed manifest's id", () => {
+    expect(modUploadRequestSchema.safeParse({ ...base, slug: 'rsmm-item-bans' }).success).toBe(
+      false,
+    );
+    expect(
+      modUploadRequestSchema.safeParse({ ...base, manifest: { ...manifest, id: 'rsmm-item-bans' } })
+        .success,
+    ).toBe(false);
+  });
+
+  it("refuses RSMM's own mod id in the packed manifest of a new version", () => {
+    const version = {
+      version: '1.0.0',
+      sha256: 'a'.repeat(64),
+      sizeBytes: 10,
+      manifest,
+    };
+    expect(modVersionCreateSchema.safeParse(version).success).toBe(true);
+    const res = modVersionCreateSchema.safeParse({
+      ...version,
+      manifest: { ...manifest, id: 'rsmm-item-bans' },
+    });
+    expect(res.success).toBe(false);
+    if (!res.success) expect(res.error.issues[0]?.message).toMatch(/reserved/);
   });
 });

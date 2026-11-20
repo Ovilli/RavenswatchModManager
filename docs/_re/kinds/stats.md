@@ -355,3 +355,31 @@ Read/write primitives: `EntityValueOverride_Alloc`, `EntityValueEntry_Ctor`,
 Durable-modifier path (2026-07-14): `EntityValueStore_Recompute`,
 `EntityValueStore_ApplyModifierEvent`, `EntityValueStore_InitBaseValues`,
 `ModifierEvent_Ctor`, `oCGameEventNetworkModifier_vftable`.
+
+## Marked as a status donor (2026-11-20, #202 A2)
+
+Why `talent_status.DONORS["Marked"]` copies Juliet's `Skill Ultimate 2 Marked
+Modifier`, and why it is the one `own_duration` donor.
+
+* **It is the engine's Marked status, not a Juliet mechanic.** The modifier's
+  `modifier_id` is `440415869` = `0x1a40367d`, Marked in the status family above
+  (`FUN_1401d9070`). Carmilla's `Skill Special Marked Modifier` and Red's `Skill
+  Defensive Mark Modifier` carry the same id.
+* **What Marked does lives in shared entities.** `Character_Common` holds `State
+  Marked`, `Child State Marked` and the `Marked Modifier Listener` that switch it
+  on; `Enemy_Model` and `NPC_Common` spread it on death (`Event Spread Marked`,
+  `Marked Spread Modifier`); `Life_Bar_NPC_Common` shows it (`Marked Listener`).
+  None of that reads Juliet, so a copy under another hero's name is picked up the
+  same way.
+* **Its only outside read is its duration.** Juliet's modifier: `duration` <-
+  `Skill Ultimate 2 Marked Time Selector` (her ultimate's rarity selector),
+  `amount` a literal 0, `value_4` 1, no targets or sources. Carmilla's and Red's
+  read a rarity selector for the duration too, plus a value for the amount. That
+  read is why no ordinary donor exists (the copy would link into Juliet's
+  talent), and why the copy is safe once `add_status` replaces it with the mod's
+  own duration (seconds, or a value part). Juliet's is chosen over Carmilla's: it
+  has no amount read, and it has a damage debuff to copy (`debuff_of` finds one;
+  Red's modifier has none).
+
+Static evidence only: a Marked copy applied by another hero is **not yet
+confirmed in game** (that it shows, spreads and expires on the given duration).

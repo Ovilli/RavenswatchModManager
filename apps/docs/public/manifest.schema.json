@@ -60,7 +60,7 @@
           "description": "Game build this mod needs."
         },
         "min_loader": {
-          "description": "Oldest loader version this mod works with."
+          "description": "Oldest loader version this mod works with (e.g. 58 or \">=58\"); checked at apply like [requires] loader."
         },
         "load_order": {
           "type": "integer",
@@ -100,6 +100,29 @@
             "type": "string"
           },
           "description": "Loader features this mod needs switched on while it is enabled, e.g. [\"RSMM_ENABLE_HERO_CAPTURE\"] for R.entity/R.stat/R.camera."
+        },
+        "restore_options": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "Dash at cursor",
+              "Dev",
+              "Display fake unlock in recap",
+              "Force end credits",
+              "Force epilogue",
+              "Forced seed",
+              "Pause during choices",
+              "Screen shake",
+              "Sectorize enemy camps",
+              "Select random skin when using random heroes",
+              "Show damage and healing numbers",
+              "Show enemy debug info",
+              "Show hourglass debug info",
+              "Show social options debug",
+              "Test"
+            ]
+          },
+          "description": "Game options this mod pins with R.options.set; rsmm clears them from GameSettings.ini when the mod is disabled or uninstalled, e.g. [\"Forced seed\", \"Dev\"]."
         }
       },
       "additionalProperties": false
