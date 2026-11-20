@@ -165,7 +165,7 @@ def _vanilla_offenders(mod_dir: Path) -> list[tuple[str, str]]:
             if mirror.exists() and mirror.is_file() and sha256(mirror) == mod_hash:
                 offenders.append((f"assets/{rel}", "matches data/uncooked/ mirror"))
 
-    root = mod_dir / "_root"
+    root = mod_dir / archive.ROOT_OVERLAY_PREFIX
     if root.is_dir():
         game_root = DEFAULT_GAME_DIR
         for f in root.rglob("*"):
@@ -174,7 +174,8 @@ def _vanilla_offenders(mod_dir: Path) -> list[tuple[str, str]]:
             rel = f.relative_to(root).as_posix()
             orig = game_root / rel
             if orig.exists() and orig.is_file() and sha256(orig) == sha256(f):
-                offenders.append((f"_root/{rel}", "matches game install file"))
+                offenders.append((f"{archive.ROOT_OVERLAY_PREFIX}{rel}",
+                                  "matches game install file"))
 
     return offenders
 

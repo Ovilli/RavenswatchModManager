@@ -455,7 +455,7 @@ def _preload_borrowed(defn, p: corpus.CorpusFile, before: bytes, after: bytes,
     written = []
     for cache in caches:
         dest = out_dir / Path(*cache.split("/"))
-        cur = dest.read_bytes() if dest.is_file() else corpus.read(cache)
+        cur = dest.read_bytes() if written_this_run(dest) else corpus.read(cache)
         have = set(RC.parse(cur or b""))
         if have >= set(lines):
             continue                    # it already preloads all of it
@@ -779,7 +779,7 @@ def _emit_ban(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
 
     def read(rel: str) -> bytes | None:
         earlier = out_dir / Path(*rel.split("/"))
-        return earlier.read_bytes() if earlier.is_file() else corpus.read(rel)
+        return earlier.read_bytes() if written_this_run(earlier) else corpus.read(rel)
     try:
         files = TB.ban(list(raw), read=read)
     except TB.TalentBanError as e:

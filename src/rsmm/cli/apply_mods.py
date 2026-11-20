@@ -127,7 +127,12 @@ from rsmm.engine.versiondef import (
     collect_item_bans,
     sync_versiondef,
 )
-from rsmm.sdk.archive import DANGEROUS_EXTENSIONS
+from rsmm.sdk.archive import (
+    DANGEROUS_EXTENSIONS,
+    ROOT_OVERLAY_DIR,
+    ArchiveError,
+    windows_name,
+)
 from rsmm.sdk.transaction import ApplyTransaction
 
 
@@ -666,8 +671,9 @@ def resolve_special(decoded: str, dec2enc: dict[str, str], *,
     45 of a mod's caches as unmapped (46 of 63 doctor WARNs were this), while
     the files were in fact installed and hash-verified.
     """
-    if decoded.startswith("_root/"):
-        return ROOT_PREFIX + decoded[len("_root/"):].replace("/", "\\")
+    overlay = ROOT_OVERLAY_DIR + "/"
+    if decoded.startswith(overlay):
+        return ROOT_PREFIX + decoded[len(overlay):].replace("/", "\\")
     if decoded.endswith(rsc_cache.CACHE_SUFFIX):
         return synthesize_encoded(decoded, dec2enc, index=index)
     bank = resolve_audio_bank(decoded)
@@ -1137,7 +1143,12 @@ def emit_content_blocks(mods: list[Mod], game_dir: Path | None = None) -> int:
             continue
         # Honor the manifest's `experimental = true` so non-confirmed content
         # kinds the author opted into actually emit (lint already respects it).
-        cr = ContentRegistry(mod_id=m.id, experimental=m.experimental)
+        try:
+            cr = ContentRegistry(mod_id=m.id, experimental=m.experimental)
+        except ContentError as e:
+            print(f"  [content] {m.id!r}: {e}; its content is skipped", file=sys.stderr)
+            _drop_emitted(m)
+            continue
         clean = True            # only a fully clean emit is worth caching
         for block in m.content_blocks:
             kind = block.get("kind")
@@ -1152,6 +1163,10 @@ def emit_content_blocks(mods: list[Mod], game_dir: Path | None = None) -> int:
                                if k not in ("kind", "id")})
             except ContentError as e:
                 print(f"  [content] {m.id}: {e}", file=sys.stderr)
+                clean = False
+            except Exception as e:  # noqa: BLE001 - malformed value, see the emit catch below
+                print(f"  [content] {m.id}: {kind} {cid}: {type(e).__name__}: {e}",
+                      file=sys.stderr)
                 clean = False
         out_dir = m.assets_dir
         # Track what content-emit produced so a later emit (e.g. after the
@@ -1240,6 +1255,14 @@ def emit_content_blocks(mods: list[Mod], game_dir: Path | None = None) -> int:
             print(f"  [content] {m.id}: emit failed: {e} (RSMM CLI "
                   f"v{_req.running_cli_version()} - a field this CLI doesn't know "
                   "may need a newer RSMM)", file=sys.stderr)
+            _drop_emitted(m)
+        except Exception as e:  # noqa: BLE001 - one mod's bad data, see below
+            # A malformed manifest value surfaces as whatever the kind trips
+            # on first (TypeError from float(), KeyError, IndexError,
+            # struct.error, ...). It is one mod's bad data, not a reason to
+            # abort apply for every other mod.
+            print(f"  [content] {m.id}: emit failed: {type(e).__name__}: {e} "
+                  f"(RSMM CLI v{_req.running_cli_version()})", file=sys.stderr)
             _drop_emitted(m)
         finally:
             logging.getLogger("rsmm").removeHandler(cap)
@@ -1488,8 +1511,15 @@ def plan_apply(mods: list[Mod],
     additions: list[tuple[str, Path, Path, str]] = []
     removals: list[str] = []
 
+    refused: list[str] = []
     for enc, (src, mod_id) in wanted.items():
         dest = encoded_to_dest(enc, cooking, game_dir)
+        reason = _root_refusal(enc)
+        if reason:
+            print(f"  [error] {mod_id}: refusing to write {dest.name!r} into the "
+                  f"game root ({reason})", file=sys.stderr)
+            refused.append(enc)
+            continue
         cur = active.get(enc)
         # Auto-cook source-format inputs (.gltf/.dds/etc) into cached cooked
         # files. Pre-cooked inputs are returned unchanged. NotReversedError
@@ -1532,6 +1562,11 @@ def plan_apply(mods: list[Mod],
             continue
         additions.append((enc, src, dest, mod_id))
 
+    # A refused key an older release already applied goes through the normal
+    # restore, so the file it planted comes back out.
+    for enc in refused:
+        del wanted[enc]
+
     for enc in list(active.keys()):
         if enc not in wanted:
             removals.append(enc)
@@ -1542,6 +1577,27 @@ def plan_apply(mods: list[Mod],
 # The extractor's list: a local mod is warned about exactly what a downloaded
 # one is refused for, rather than a shorter copy that had drifted from it.
 _DANGEROUS_ROOT_EXTS = DANGEROUS_EXTENSIONS
+
+# Files the manager and loader own in the game root. A `_root` overlay that
+# lands on one would replace the Lua SDK, the loader or the manager's own state.
+_MANAGER_ROOT_FILES = frozenset({
+    "winhttp.dll", "winhttp_real.dll", "asset_map.json",
+    STATE_FILE_NAME, JOURNAL_FILE_NAME,
+})
+
+
+def _root_refusal(enc: str) -> str | None:
+    """Why a `_root` overlay may not write `enc`, or None when it may."""
+    if not enc.startswith(ROOT_PREFIX):
+        return None
+    parts = [windows_name(p).lower() for p in enc[len(ROOT_PREFIX):].split("\\")]
+    name = parts[-1]
+    if Path(name).suffix in _DANGEROUS_ROOT_EXTS:
+        return "blocked file type"
+    if (parts[0] == "rsmm" or name in _MANAGER_ROOT_FILES
+            or name.endswith(BACKUP_SUFFIX)):
+        return "file owned by the mod manager"
+    return None
 
 
 class VanillaMissing(RuntimeError):
@@ -1578,9 +1634,10 @@ def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
     the install half-modded. Called without `stage` (tests, single-file
     paths) it writes directly, as before.
     """
-    if enc.startswith(ROOT_PREFIX) and dest.suffix.lower() in _DANGEROUS_ROOT_EXTS:
-        print(f"  [WARN] {mod_id} overwrites {dest.name} in game root "
-              f"(potentially dangerous)", file=sys.stderr)
+    reason = _root_refusal(enc)
+    if reason:
+        raise ArchiveError(f"{mod_id}: refusing to write {dest.name!r} into the "
+                           f"game root ({reason})")
     cur = state.active.get(enc)
     # NB: `dest.parent / (dest.name + SUFFIX)`, never `with_suffix` — the
     # cooked names carry dots, so `with_suffix` would eat the last segment and
@@ -2582,7 +2639,11 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     # diffing against a clean install tree.
     try:
         tx_recover = ApplyTransaction(cooking).recover()
-        if tx_recover != "clean":
+        if tx_recover == "interrupted":
+            print("  [apply] the previous apply was interrupted while writing game "
+                  "files; this apply rewrites them (run `rsmm doctor` afterwards "
+                  "if anything looks wrong)", file=sys.stderr)
+        elif tx_recover != "clean":
             print(f"  [apply] recovered previous staging state: {tx_recover}")
     except (OSError, ImportError) as e:
         print(f"  [apply] recover skipped: {e}", file=sys.stderr)

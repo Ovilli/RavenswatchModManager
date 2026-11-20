@@ -4,13 +4,18 @@ A mod registers content via `ContentRegistry.register("item", id=..., ...)`
 which delegates to the `kinds/<kind>.py` implementation. Each kind owns
 its own template + field-patcher + emit step.
 
-Kinds that aren't fully schema-mined yet (bosses, maps, heroes at v3.0)
-register their builder but fail with a clear `SchemaNotMined` error on
-emit, so authors see exactly which class needs RE work next.
+A kind raises `SchemaNotMined` on emit when the game data it needs is not
+readable (no install or mirror) or a class it touches is not decoded yet, so
+authors see what is missing instead of a mod that emits nothing. How far each
+kind is trusted in game is `KIND_CONFIDENCE` below.
 """
 
 from __future__ import annotations
 
+import os
+import sys
+import threading
+from contextlib import suppress
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from importlib import import_module
@@ -148,6 +153,12 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # constraints (a story tile like Wood_House forces 3 Treant camps).
                               # The earlier "count is ignored" reading was the fill pass.
     "shop": "confirmed",      # Sandman shop prices + offer generators, overridden in place.
+                              # Field meaning is read off the live exe's generator (0x1402d9280),
+                              # quality roll and price function (0x1402d4200), and every edit
+                              # round-trips byte-for-byte. PROVEN IN GAME 2026-09-13
+                              # (sandman-shop-test): edited prices of 1 were what the shop
+                              # charged. Minor must roll >= 2 items or opening the shop
+                              # divides by zero (enforced by shops._check_rollable).
     "skin": "confirmed",      # NEW skins appended to a shipped hero's skin list. PROVEN IN GAME
                               # 2026-11-06: scarlet-crimson's tinted "Crimson" skin listed after
                               # Scarlet's shipped ones and spawned in a run. The herodef edit is
@@ -158,12 +169,6 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # entity the chapter already places). Every shipped level
                               # rewrites byte-identically and the emit is anchored, but no
                               # moved, sunk or added object has been seen in game yet.
-                              # Field meaning is read off the live exe's generator (0x1402d9280),
-                              # quality roll and price function (0x1402d4200), and every edit
-                              # round-trips byte-for-byte. PROVEN IN GAME 2026-09-13
-                              # (sandman-shop-test): edited prices of 1 were what the shop
-                              # charged. Minor must roll >= 2 items or opening the shop
-                              # divides by zero (enforced by shops._check_rollable).
     "melody": "guess",        # all 12 retail melodydefs round-trip byte-for-byte and every
                               # mined exclusion string is an exact GameModifier stem, but
                               # neither lever (effect repoint, exclusion list) has been
@@ -281,6 +286,148 @@ def written_this_run(path: Path) -> bool:
     return path.resolve() in run and path.is_file()
 
 
+def _files_under(root: Path) -> set[Path]:
+    """Every file under ``root`` (resolved); empty when it does not exist."""
+    return {p.resolve() for p in root.rglob("*") if p.is_file()} if root.is_dir() else set()
+
+
+class _Guard:
+    """Copy-on-write for the files already under an emit's ``out_dir``.
+
+    Kinds may legitimately rewrite one (a packed mod ships last build's
+    output without its marker, and apply rebuilds it in place), so nothing is
+    refused. But a failed emit must leave them as they were. Copying every
+    file up front costs a mod's whole texture set per emit, and a hard link
+    does not survive an in-place write, so a process audit hook copies a file
+    aside just before the first write, replace or unlink that reaches it, and
+    :meth:`restore` puts the copies back.
+    """
+
+    _active: _Guard | None = None
+    _hooked = False
+    _lock = threading.Lock()
+    _WRITE_FLAGS = (os.O_WRONLY | os.O_RDWR | os.O_APPEND | os.O_TRUNC
+                    | getattr(os, "O_CREAT", 0))
+
+    def __init__(self, out_dir: Path, files: set[Path]) -> None:
+        self.out_dir = out_dir
+        self.files = {os.path.normcase(str(f)): f for f in files}
+        self.saved: dict[Path, Path] = {}
+        self.side: Path | None = None
+        self.busy = False
+        if files:
+            cls = type(self)
+            with cls._lock:
+                if not cls._hooked:
+                    sys.addaudithook(cls._audit)
+                    cls._hooked = True
+                cls._active = self
+
+    @classmethod
+    def _audit(cls, event: str, args: tuple) -> None:
+        g = cls._active
+        if g is None or g.busy:
+            return
+        if event == "open":
+            path, mode, flags = args
+            if isinstance(mode, str):
+                if not any(c in mode for c in "wax+"):
+                    return
+            elif not (flags or 0) & cls._WRITE_FLAGS:
+                return
+            g._before_change(path)
+        elif event == "os.rename":
+            g._before_change(args[0])
+            g._before_change(args[1])
+        elif event in ("os.remove", "os.truncate"):
+            g._before_change(args[0])
+
+    def _before_change(self, path) -> None:
+        if isinstance(path, int) or path is None:
+            return
+        try:
+            key = os.path.normcase(os.path.realpath(os.fsdecode(path)))
+        except (TypeError, ValueError, OSError):
+            return
+        f = self.files.get(key)
+        if f is None or f in self.saved or not f.is_file():
+            return
+        import shutil
+        import tempfile
+        self.busy = True
+        try:
+            if self.side is None:
+                self.side = Path(tempfile.mkdtemp(prefix=".rsmm_emit_guard_",
+                                                  dir=self.out_dir.parent))
+            keep = self.side / str(len(self.saved))
+            shutil.copy2(f, keep)
+            self.saved[f] = keep
+        finally:
+            self.busy = False
+
+    def restore(self) -> None:
+        """Put every file changed since the emit began back to its bytes."""
+        self.busy = True
+        for f, keep in self.saved.items():
+            with suppress(OSError):
+                f.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(keep, f)
+
+    def release(self) -> None:
+        import shutil
+        cls = type(self)
+        with cls._lock:
+            if cls._active is self:
+                cls._active = None
+        if self.side is not None:
+            shutil.rmtree(self.side, ignore_errors=True)
+
+
+def _tilegen_chapter(chapter) -> object:
+    """The decoded level a tilegen ``chapter`` resolves to, the way the
+    emitter resolves it (``DarkHills``, ``darkhills`` and the level's own name
+    are one file); the casefolded name when the chapter list is unavailable."""
+    if not isinstance(chapter, str):
+        return chapter
+    try:
+        from rsmm.engine import map_editor as ME
+        return ME.find_chapter(chapter).decoded.casefold()
+    except Exception:  # noqa: BLE001 - no corpus / unknown chapter: the emitter reports it
+        return chapter.strip().casefold()
+
+
+def _output_target(kind: str, fields: dict) -> tuple | None:
+    """The retail file a def rewrites in place, for the kinds where that file
+    is rebuilt from vanilla on every def (so two defs on it are last-wins), or
+    None. A target clashes with another when either is a prefix of the other:
+    a ``game_mode`` rewriting All_Chapters clashes with a ``map`` pointing one
+    of its chapters. Names compare case-insensitively (one file on Windows,
+    and the lookups behind them ignore case too)."""
+    t = _raw_output_target(kind, fields)
+    if t is None:
+        return None
+    if kind == "tilegen":
+        t = (t[0], _tilegen_chapter(t[1]))
+    return tuple(x.strip().casefold() if isinstance(x, str) else x for x in t)
+
+
+def _raw_output_target(kind: str, fields: dict) -> tuple | None:
+    f = fields.get
+    if kind == "shop":
+        return ("shop",)
+    if kind == "melody" and f("base"):
+        return ("melody", f("base"))
+    if kind == "tilegen" and f("chapter") is not None:
+        return ("tilegen", f("chapter"))
+    if kind == "scenery" and f("chapter") and f("level"):
+        return ("scenery", f("chapter"), f("level"))
+    if kind == "map" and f("chapter") is not None:
+        return ("game_mode", "All_Chapters", f("chapter"))
+    if kind == "game_mode":
+        return ("game_mode", f("base") or "All_Chapters")
+    return None
+
+
 @dataclass
 class ContentRegistry:
     """Mod-scoped registry. One per mod-build pass."""
@@ -289,6 +436,17 @@ class ContentRegistry:
     defs: list[ContentDef] = field(default_factory=list)
     #: Author opted into unverified kinds via ``sdk.Mod(experimental=True)``.
     experimental: bool = False
+
+    def __post_init__(self) -> None:
+        # Kinds build output paths from the mod id (POI tiles, hero files) and
+        # write before anything sees the result, so an id carrying a path
+        # component would write outside the mod's assets. Checked once here,
+        # at the one door every emit goes through.
+        from .archive import ArchiveError, safe_dir_name
+        try:
+            safe_dir_name(self.mod_id)
+        except ArchiveError as e:
+            raise ContentError(str(e)) from None
 
     @sdk_export("ContentRegistry.register")
     def register(self, kind: str, *, id: str, schema_version: int = 1,
@@ -321,6 +479,14 @@ class ContentRegistry:
             raise ContentError(f"{kind}: id must be a non-empty string")
         if any(d.kind == kind and d.id == id for d in self.defs):
             raise ContentError(f"{kind}: duplicate id {id!r}")
+        target = _output_target(kind, fields)
+        for d in self.defs if target else ():
+            other = _output_target(d.kind, d.fields)
+            if other and (target[:len(other)] == other or other[:len(target)] == target):
+                raise ContentError(
+                    f"{kind} {id}: {d.kind} {d.id} already rewrites the same retail "
+                    f"file ({' '.join(map(str, other))}), and the second def would "
+                    f"silently replace the first. Merge them into one def.")
         # A field the kind does not read is a typo, and a typo here used to be
         # a mod that installs and silently does nothing.
         from .manifest_spec import content_fields, describe_unknown, unknown_keys
@@ -338,15 +504,38 @@ class ContentRegistry:
         return ContentRef(kind=kind, id=id, mod_id=self.mod_id)
 
     def emit(self, out_dir: Path) -> list[Path]:
-        """Materialize every registered def into `out_dir`. Returns written paths."""
+        """Materialize every registered def into `out_dir`. Returns written paths.
+
+        All or nothing: when a def raises, every file this emit created is
+        deleted before the error propagates. Kinds write before they finish
+        validating, and the caller only learns what was written from the
+        return value, so a raise used to leave earlier defs' output (and the
+        failing def's partial writes) on disk, unlisted in the marker, where
+        apply planted it and the next emit read it back as base data.
+
+        Files already under ``out_dir`` (hand-authored assets, or a packed
+        mod's shipped output) get their bytes back too: a def may rewrite
+        one, and a later def's failure must not leave that rewrite behind
+        (:class:`_Guard`).
+        """
+        before = _files_under(out_dir)
         written: list[Path] = []
         run: set[Path] = set()
         token = _EMITTED_THIS_RUN.set(run)
+        guard = _Guard(out_dir, before)
         try:
             for d in self.defs:
-                written.extend(self._emit_one(d, out_dir))
-                run.update(p.resolve() for p in written)
+                got = self._emit_one(d, out_dir)
+                written.extend(got)
+                run.update(p.resolve() for p in got)
+        except BaseException:           # Ctrl+C mid-emit orphans files too
+            guard.restore()
+            for p in _files_under(out_dir) - before:
+                with suppress(OSError):
+                    p.unlink()
+            raise
         finally:
+            guard.release()
             _EMITTED_THIS_RUN.reset(token)
         return written
 
@@ -387,7 +576,7 @@ _KIND_MODULES = {
 }
 
 def _load_kind(kind: str):
-    """Lazy-import to keep startup cheap and let plugins override kinds."""
+    """Lazy-import to keep startup cheap."""
     mod_name = _KIND_MODULES.get(kind, f"{kind}s")
     target = f"rsmm.sdk.kinds.{mod_name}"
     try:

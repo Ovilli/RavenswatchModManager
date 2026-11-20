@@ -101,7 +101,9 @@ inline int lua_pcall_traced(lua_State* L, int nargs, int nresults) {
 // Load and run a file with the same traceback handler. Replaces luaL_dofile,
 // which pcalls with msgh = 0.
 inline int lua_dofile_traced(lua_State* L, const char* path) {
-    const int rc = luaL_loadfile(L, path);
+    // Text only: Lua 5.4 does not verify bytecode, so a precompiled chunk can
+    // corrupt the VM. Mode "t" makes the loader refuse it.
+    const int rc = luaL_loadfilex(L, path, "t");
     if (rc != LUA_OK) return rc;                    // syntax error: no stack yet
     return lua_pcall_traced(L, 0, LUA_MULTRET);
 }

@@ -34,6 +34,7 @@ from rsmm.cli._lua_scope import LuaSyntaxError, late_locals, missing_sdk_binding
 from rsmm.cli.apply_mods import resolve_special
 from rsmm.cli.merge import _toml_load
 from rsmm.engine.asset_map import decoded_to_encoded
+from rsmm.engine.mod_scope import LOWLEVEL_PRIMITIVE_RE
 from rsmm.engine.paths import MODS_DIR
 from rsmm.sdk import manifest_spec as MS
 
@@ -942,13 +943,7 @@ _RE_ENGINE = re.compile(r"""R\.engine\.(?:call|resolve)\(\s*['"]([^'"]+)['"]""")
 # primitives, so a new capability is forced through the SDK rather than baked
 # into a mod where it silently rots across game updates.
 _RE_RAW_VA = re.compile(r"\b0x14[0-9a-fA-F]{7}\b")
-_RE_LOWLEVEL = re.compile(
-    r"""(?:\b_internal\b"""
-    r"""|\.peek\(|\.poke\("""
-    r"""|\.module_base\(|\.scratch\("""
-    r"""|\.read_(?:u\d+|f\d+|cstr|f32|f64)\(|\.write_(?:u\d+|f\d+|f32|f64)\("""
-    r"""|\.call_raw\(|\.engine\.resolve\()"""
-)
+_RE_LOWLEVEL = LOWLEVEL_PRIMITIVE_RE
 
 
 def _engine_vocab() -> tuple[set[str], set[str]]:

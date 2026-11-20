@@ -26,6 +26,9 @@ What every extraction through here is guaranteed:
   size, but the meter is what bounds the total across members.
 * **No executable payloads.** Mods ship data, not binaries;
   :data:`DANGEROUS_EXTENSIONS` is refused outright.
+* **No engine escape hatches in mod Lua.** A ``.lua`` member that uses
+  ``_internal``, raw memory reads or writes, or the other primitives only the
+  SDK may use is refused (:func:`scan_lua_primitives`).
 
 Stdlib only: the CLI ships frozen with no runtime dependencies.
 """
@@ -79,7 +82,11 @@ DANGEROUS_EXTENSIONS = frozenset({
 #: only warned about it at apply time (``apply_mods.apply_one``), but a mod
 #: arriving over the network may not ship one at all, and ``_root/`` is exactly
 #: the path that would put it somewhere Windows will load from.
-ROOT_OVERLAY_PREFIX = "_root/"
+#: Apply reads overlays from ``<mod>/assets/_root/``: ``ROOT_OVERLAY_DIR`` is
+#: the prefix under ``assets/`` and ``ROOT_OVERLAY_PREFIX`` the same path from
+#: the mod dir, which is how archive members and ``rsmm pack`` see it.
+ROOT_OVERLAY_DIR = "_root"
+ROOT_OVERLAY_PREFIX = f"assets/{ROOT_OVERLAY_DIR}/"
 
 #: Ceilings. Generous enough that no honest mod hits them — the largest
 #: shipped mods are tens of MB of cooked assets — and tight enough that a
@@ -90,12 +97,17 @@ MAX_COMPRESSION_RATIO = 200                    # 42.zip is ~10^9:1
 
 _CHUNK = 1 << 16  # 64 KiB — keeps memory flat on large assets.
 
+#: Largest ``.lua`` member read for the primitive scan. Mod Lua runs to tens of
+#: KB; a bigger one is refused rather than read into memory.
+MAX_LUA_BYTES = 8 * 1024 * 1024
+LUA_BYTECODE_SIGNATURE = b"\x1bLua"
+
 # Windows refuses these as filenames regardless of extension; rejecting them
 # up front turns a confusing mid-extract OSError into a clear diagnostic.
 _WIN_RESERVED = frozenset(
-    {"con", "prn", "aux", "nul"}
-    | {f"com{i}" for i in range(1, 10)}
-    | {f"lpt{i}" for i in range(1, 10)}
+    {"con", "prn", "aux", "nul", "conin$", "conout$"}
+    | {f"{dev}{n}" for dev in ("com", "lpt")
+       for n in (*"0123456789", "¹", "²", "³")}
 )
 
 _BAD_NAME_CHARS = frozenset('/\\:*?"<>|\0')
@@ -121,11 +133,23 @@ def safe_dir_name(name: str, *, what: str = "mod id") -> str:
         raise ArchiveError(f"unsafe {what}: {name!r}")
     if set(name) & _BAD_NAME_CHARS:
         raise ArchiveError(f"unsafe {what} (path separator or reserved char): {name!r}")
+    if name[-1] in ". ":
+        raise ArchiveError(f"unsafe {what} (trailing dot or space): {name!r}")
     if os.path.isabs(name) or os.path.normpath(name) != name:
         raise ArchiveError(f"unsafe {what} (not a plain directory name): {name!r}")
     if name.split(".", 1)[0].lower() in _WIN_RESERVED:
         raise ArchiveError(f"unsafe {what} (reserved device name on Windows): {name!r}")
     return name
+
+
+def windows_name(component: str) -> str:
+    """The name Windows creates for one path component.
+
+    ``name:stream`` is an alternate data stream of ``name``, and trailing dots
+    and spaces are stripped, so ``version.dll.``, ``version.dll `` and
+    ``version.dll::$DATA`` all land as ``version.dll``.
+    """
+    return component.split(":", 1)[0].rstrip(". ")
 
 
 def contained_path(root: Path, rel: str) -> Path:
@@ -181,6 +205,40 @@ def require_single_top_dir(zf: zipfile.ZipFile, *, what: str = "mod id") -> str:
     return safe_dir_name(top, what=what)
 
 
+def archive_mod_id(zf: zipfile.ZipFile) -> tuple[str | None, str | None]:
+    """``(top dir, manifest [mod].id)`` of an archive, each None when absent.
+
+    Install, update and the desktop app replace a folder under ``mods/`` and
+    pin a signer to a mod id; both have to be the SAME mod, so callers check
+    these against each other with :func:`require_same_mod`.
+    """
+    import tomllib
+    top = single_top_dir(zf)
+    name = f"{top}/manifest.toml" if top else "manifest.toml"
+    try:
+        raw = zf.read(name)
+    except KeyError:
+        return top, None
+    try:
+        mid = tomllib.loads(raw.decode("utf-8")).get("mod", {}).get("id")
+    except (UnicodeDecodeError, ValueError, AttributeError):
+        # Names no mod, so it cannot name a different one; apply refuses to
+        # load it anyway.
+        return top, None
+    return top, (mid if isinstance(mid, str) and mid else None)
+
+
+def require_same_mod(dest: str, **ids: str | None) -> None:
+    """Raise unless every given id names ``dest`` (case-insensitively: one
+    folder on Windows). The index entry, the archive folder and the manifest
+    id used to be trusted separately, so a mislabelled entry could check one
+    mod's signer pin and replace another."""
+    for what, mid in ids.items():
+        if mid is not None and mid.casefold() != dest.casefold():
+            raise ArchiveError(f"{what.replace('_', ' ')} is {mid!r} but the install "
+                               f"replaces {dest!r}; refusing")
+
+
 def classify_members(names: Iterable[str]) -> tuple[list[str], list[str]]:
     """Split archive member names into ``(blocked, root_overlays)``.
 
@@ -200,7 +258,7 @@ def classify_members(names: Iterable[str]) -> tuple[list[str], list[str]]:
             continue
         parts = name.split("/", 1)
         inner = parts[1] if len(parts) > 1 else parts[0]
-        if Path(inner).suffix.lower() in DANGEROUS_EXTENSIONS:
+        if Path(windows_name(inner.rsplit("/", 1)[-1])).suffix.lower() in DANGEROUS_EXTENSIONS:
             blocked.append(raw)
         if inner.startswith(ROOT_OVERLAY_PREFIX):
             overlays.append(inner[len(ROOT_OVERLAY_PREFIX):])
@@ -231,6 +289,46 @@ def scan_dangerous(zf: zipfile.ZipFile, label: str) -> list[str]:
     if blocked:
         raise ArchiveError(blocked_message(label, blocked))
     return overlays
+
+
+def scan_lua_primitives(zf: zipfile.ZipFile, label: str) -> None:
+    """Refuse an archive whose Lua uses a low-level primitive.
+
+    Raises :class:`ArchiveError` naming each ``.lua`` member and what it uses.
+    The rule is lint's (:data:`rsmm.engine.mod_scope.LOWLEVEL_PRIMITIVE_RE`):
+    a mod reaches the engine only through ``R.*``.
+    """
+    from rsmm.engine.mod_scope import lowlevel_primitives
+
+    hits = []
+    bytecode = []
+    for info in zf.infolist():
+        if info.is_dir() or not info.filename.lower().endswith(".lua"):
+            continue
+        if info.file_size > MAX_LUA_BYTES:
+            raise ArchiveError(
+                f"{label}: {info.filename!r} is over the {MAX_LUA_BYTES}-byte "
+                "limit for mod Lua")
+        with zf.open(info) as src:
+            raw = src.read(MAX_LUA_BYTES + 1)
+        # Lua 5.4 does not verify bytecode; the loader loads text only.
+        if raw.startswith(LUA_BYTECODE_SIGNATURE):
+            bytecode.append(_norm(info.filename))
+            continue
+        text = raw.decode("utf-8", errors="replace")
+        found = lowlevel_primitives(text)
+        if found:
+            hits.append(f"{_norm(info.filename)}: {', '.join(found)}")
+    if bytecode or hits:
+        lines = [f"{n}: precompiled Lua bytecode (only Lua source is accepted)"
+                 for n in bytecode]
+        lines += hits
+        head = (f"{label} contains precompiled Lua bytecode"
+                if bytecode and not hits else
+                f"{label} uses low-level primitives only the SDK may use "
+                "(_internal, raw memory, raw calls)"
+                + (" and contains precompiled Lua bytecode" if bytecode else ""))
+        raise ArchiveError(head + ":\n  " + "\n  ".join(lines[:20]))
 
 
 def check_limits(zf: zipfile.ZipFile, label: str, *,
@@ -285,6 +383,14 @@ def _member_rel(info: zipfile.ZipInfo, strip_prefix: str, label: str) -> str | N
     if rel.startswith(os.pardir + os.sep) or rel == os.pardir:
         raise ArchiveError(f"{label}: refusing traversal path in archive: "
                            f"{info.filename!r}")
+    for part in rel.split(os.sep):
+        if part.endswith((".", " ")) or ":" in part:
+            raise ArchiveError(f"{label}: refusing path component Windows "
+                               f"would rewrite (trailing dot/space or ':'): "
+                               f"{info.filename!r}")
+        if part.split(".", 1)[0].rstrip(" ").lower() in _WIN_RESERVED:
+            raise ArchiveError(f"{label}: refusing reserved Windows device "
+                               f"name in archive: {info.filename!r}")
     return rel
 
 
@@ -323,6 +429,7 @@ def safe_extract(zf: zipfile.ZipFile, dest_root: Path, *,
     """
     check_limits(zf, label, max_entries=max_entries,
                  max_total_bytes=max_total_bytes, max_ratio=max_ratio)
+    scan_lua_primitives(zf, label)
     dest_root = Path(dest_root)
     dest_root.mkdir(parents=True, exist_ok=True)
     written = 0

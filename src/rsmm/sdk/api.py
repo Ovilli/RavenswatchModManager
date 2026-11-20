@@ -67,12 +67,3 @@ def satisfies(have_version: str, spec: str) -> bool:
         if not _version_ok(have, op, _parse_version(m.group(2))):
             return False
     return True
-
-
-def require_api(spec: str) -> None:
-    """Raise if the current SDK API doesn't satisfy `spec`. Called by plugins."""
-    if not satisfies(API_VERSION, spec):
-        raise RuntimeError(
-            f"SDK API {API_VERSION} does not satisfy {spec!r}; "
-            f"upgrade RSMM or relax the plugin's constraint."
-        )
