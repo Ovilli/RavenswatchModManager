@@ -1982,7 +1982,12 @@ def restore_flipped_options(mods: list[Mod], state: State, game_dir: Path,
     Cleanups an earlier apply could not finish are retried first; a failure
     here warns and the batch goes on."""
     if not dry_run:
+        enabled_now = {m.id for m in mods if m.enabled}
         for mod_id, names in list(state.pending_option_restores.items()):
+            if mod_id in enabled_now:
+                # Re-enabled since: its options are live again, not leftovers.
+                state.pending_option_restores.pop(mod_id, None)
+                continue
             _restore_or_defer(mod_id, list(names), game_dir, state)
     was = set(state.enabled_mods)
     done = []

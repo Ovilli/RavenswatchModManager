@@ -93,6 +93,18 @@ def _is_picker_mod(d: Path) -> bool:
     return (doc.get("mod") or {}).get("author") == _DEFAULTS["author"] and _has_picker_at(d)
 
 
+def _unreadable_picker(d: Path) -> bool:
+    """Picker data in ``d`` under a manifest that cannot be read: whose it is
+    is unknown, so a caller that would delete the folder must stop."""
+    if not (d / "manifest.toml").is_file() or not _has_picker_at(d):
+        return False
+    try:
+        _load(d / "manifest.toml")
+    except ValueError:
+        return True
+    return False
+
+
 def is_legacy_picker(mods_dir: Path | None = None) -> bool:
     """Is the picker's mod still sitting at the legacy ``banned-items`` path?"""
     if mods_dir is None:
@@ -104,6 +116,7 @@ def is_legacy_picker(mods_dir: Path | None = None) -> bool:
 _ID_LINE_RE: Final = re.compile(
     r"""^(\s*(?:id|"id"|'id')\s*=\s*)(?:"(?:[^"\\]|\\.)*"|'[^']*')(\s*(?:#.*)?)$""")
 _TABLE_RE: Final = re.compile(r"^\s*\[")
+_MOD_HEADER_RE: Final = re.compile(r"""^\s*\[\s*(?:mod|"mod"|'mod')\s*\]\s*(#.*)?$""")
 
 
 def _set_mod_id(manifest: Path, new_id: str) -> bool:
@@ -121,7 +134,7 @@ def _set_mod_id(manifest: Path, new_id: str) -> bool:
     for line in text.splitlines(keepends=True):
         body = line.rstrip("\r\n")
         if _TABLE_RE.match(body):
-            in_mod = re.match(r"^\s*\[\s*mod\s*\]\s*(#.*)?$", body) is not None
+            in_mod = _MOD_HEADER_RE.match(body) is not None
         elif in_mod and not done:
             m = _ID_LINE_RE.match(body)
             if m:
@@ -131,11 +144,11 @@ def _set_mod_id(manifest: Path, new_id: str) -> bool:
     new_text = "".join(out)
     try:
         if not done or (tomllib.loads(new_text).get("mod") or {}).get("id") != new_id:
-            # An unusual layout (dotted keys, inline table): regenerate instead.
-            mod = dict(doc.get("mod") or {})
-            mod["id"] = new_id
-            blocks = [c for c in (doc.get("content") or []) if isinstance(c, dict)]
-            new_text = _render(mod, blocks)
+            # An unusual layout (dotted keys, inline table): regenerate the
+            # whole document so every other table survives.
+            new_doc = dict(doc)
+            new_doc["mod"] = {**(doc.get("mod") or {}), "id": new_id}
+            new_text = _render_doc(new_doc)
         tmp = manifest.with_name(f"{manifest.name}.rsmm-new.{os.getpid()}")
         tmp.write_text(new_text, encoding="utf-8")
         tmp.replace(manifest)
@@ -161,14 +174,14 @@ def migrate_legacy(mods_dir: Path | None = None) -> bool:
     new, old = mods_dir / DEFAULT_MOD_ID, mods_dir / LEGACY_MOD_ID
     if not new.exists():
         if not _is_picker_mod(old):
-            return True
+            return not _unreadable_picker(old)
         try:
             os.replace(old, new)
         except OSError:
             return False
-    if _is_picker_mod(new):
-        _set_mod_id(new / "manifest.toml", DEFAULT_MOD_ID)
-    return not _is_picker_mod(old)
+    if _is_picker_mod(new) and not _set_mod_id(new / "manifest.toml", DEFAULT_MOD_ID):
+        return False
+    return not (_is_picker_mod(old) or _unreadable_picker(old))
 
 
 def manifest_path(mod_id: str = DEFAULT_MOD_ID, mods_dir: Path | None = None) -> Path:
@@ -252,13 +265,23 @@ def read_config_selection(mod_id: str = DEFAULT_MOD_ID,
     return sorted({str(x) for x in value}) if isinstance(value, list) else []
 
 
+_BARE_KEY_RE: Final = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _toml_key(k: str) -> str:
+    return k if _BARE_KEY_RE.match(k) else _toml_value(k)
+
+
 def _toml_value(v: Any, indent: str = "") -> str:
+    import datetime
     if isinstance(v, bool):
         return "true" if v else "false"
+    if isinstance(v, (datetime.date, datetime.time)):
+        return v.isoformat()
     if isinstance(v, (int, float)):
         return repr(v)
     if isinstance(v, dict):
-        inner = ", ".join(f"{k} = {_toml_value(x)}" for k, x in v.items())
+        inner = ", ".join(f"{_toml_key(k)} = {_toml_value(x)}" for k, x in v.items())
         return "{ " + inner + " }"
     if isinstance(v, (list, tuple)):
         if not v:
@@ -276,7 +299,7 @@ def _table(header: str, body: dict[str, Any], skip: tuple[str, ...] = ()) -> lis
     for k, v in body.items():
         if k in skip:
             continue
-        out.append(f"{k} = {_toml_value(v)}")
+        out.append(f"{_toml_key(k)} = {_toml_value(v)}")
     return out
 
 
@@ -286,6 +309,25 @@ def _render(mod: dict[str, Any], blocks: list[dict[str, Any]]) -> str:
         lines.append("")
         lines += _table("[[content]]", block)
     return "\n".join(lines) + "\n"
+
+
+def _is_table_array(v: Any) -> bool:
+    return isinstance(v, list) and bool(v) and all(isinstance(x, dict) for x in v)
+
+
+def _render_doc(doc: dict[str, Any]) -> str:
+    """Every key of a parsed manifest: top-level scalars, then ``[mod]``, then
+    each other table and array of tables."""
+    lines = [f"{_toml_key(k)} = {_toml_value(v)}" for k, v in doc.items()
+             if not isinstance(v, dict) and not _is_table_array(v)]
+    for k in sorted(doc, key=lambda k: k != "mod"):
+        v = doc[k]
+        if isinstance(v, dict):
+            lines += ["", *_table(f"[{_toml_key(k)}]", v)]
+        elif _is_table_array(v):
+            for block in v:
+                lines += ["", *_table(f"[[{_toml_key(k)}]]", block)]
+    return "\n".join(lines).lstrip("\n") + "\n"
 
 
 def _write_config(mod_id: str, items: list[str], mods_dir: Path | None) -> None:

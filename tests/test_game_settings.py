@@ -158,3 +158,21 @@ def test_uninstall_reports_a_failed_cleanup_and_keeps_the_mod(tmp_path, monkeypa
     assert out["ok"] is False and out["modId"] == "seedy"
     assert "seedy" in out["error"] and "GameSettings.ini" in out["error"]
     assert mod.exists()
+
+
+def test_a_queued_restore_is_dropped_once_its_mod_is_enabled_again(tmp_path, monkeypatch):
+    game, cooking, mod = _install(tmp_path, enabled="false")
+    state = apply_mods.State(cooking)
+    state.set_enabled_mods(["seedy"])
+    with monkeypatch.context() as mp:
+        mp.setattr(GS, "clear_options", _boom)
+        apply_mods.restore_flipped_options([apply_mods.Mod(mod)], state, game)
+    assert state.pending_option_restores
+    state.save()
+    # the player turns the mod back on before the next apply
+    text = (mod / "manifest.toml").read_text()
+    (mod / "manifest.toml").write_text(text.replace("enabled = false", "enabled = true"))
+    state2 = apply_mods.State(cooking)
+    assert apply_mods.restore_flipped_options([apply_mods.Mod(mod)], state2, game) == []
+    assert "Forced seed=12345" in _ini(game)
+    assert not state2.pending_option_restores

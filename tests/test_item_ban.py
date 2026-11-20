@@ -705,3 +705,45 @@ def test_the_public_mods_placeholders_do_not_collide_with_the_pickers():
                                   "banned_items", 1)
     assert picker != public
     assert picker == items.placeholder_id("banned-items", "banned_items", 1)
+
+
+def test_an_unreadable_legacy_manifest_with_picker_data_fails_the_migration(tmp_path):
+    """The store install deletes the legacy folder on success, so a picker whose
+    manifest cannot be read must report failure and keep the saved selection."""
+    from rsmm.engine import item_bans
+    old = _legacy_picker(tmp_path)
+    (old / "manifest.toml").write_text("[mod\nthis is not toml")
+    saved = (old / "config.toml").read_text()
+    assert item_bans.migrate_legacy(tmp_path) is False
+    assert (old / "config.toml").read_text() == saved
+    assert not (tmp_path / item_bans.DEFAULT_MOD_ID).exists()
+
+
+def test_a_failed_id_rewrite_fails_the_migration(tmp_path, monkeypatch):
+    from rsmm.engine import item_bans
+    _legacy_picker(tmp_path)
+    monkeypatch.setattr(item_bans, "_set_mod_id", lambda manifest, new_id: False)
+    assert item_bans.migrate_legacy(tmp_path) is False
+
+
+_EXTRA_TABLES = ('\n[requires]\nsdk = ">=3.0"\nother-mod = { version = "1.2", optional = true }\n\n'
+                 '[[content]]\nkind = "item"\nmode = "ban"\nid = "banned_items"\nitems = ["A"]\n')
+
+
+@pytest.mark.parametrize("head", [
+    '["mod"]\nid = "banned-items"\nname = "Banned Items"\nauthor = "RSMM"\n',
+    "['mod']\nid = 'banned-items'\nauthor = 'RSMM'\n",
+    # dotted keys: no [mod] header at all, so the manifest is regenerated
+    'mod.id = "banned-items"\nmod.name = "Banned Items"\nmod.author = "RSMM"\n',
+])
+def test_the_id_rewrite_keeps_every_other_field(tmp_path, head):
+    import tomllib
+
+    from rsmm.engine import item_bans
+    _legacy_picker(tmp_path, head + _EXTRA_TABLES)
+    before = tomllib.loads(head + _EXTRA_TABLES)
+    assert item_bans.migrate_legacy(tmp_path) is True
+    after = tomllib.loads((tmp_path / item_bans.DEFAULT_MOD_ID / "manifest.toml").read_text())
+    assert after["mod"].pop("id") == item_bans.DEFAULT_MOD_ID
+    before["mod"].pop("id")
+    assert after == before

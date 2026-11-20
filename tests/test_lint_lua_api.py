@@ -252,3 +252,8 @@ def test_r_debug_warns_unless_the_mod_is_tagged_debug_or_test(tmp_path):
     for tag in ("debug", "Test"):
         (d / "manifest.toml").write_text(f'[mod]\nid = "LuaMod"\ntags = ["{tag}"]\n')
         assert lint._lint_lua_api("LuaMod", d) == (0, 0)
+
+
+def test_sdk_assigned_to_an_earlier_local_is_still_the_sdk():
+    found = lint.sdk_surface_findings('local R\nR = require "rsmm"\nR.x = 1\n')
+    assert len(found) == 1 and "monkey-patching" in found[0][2]

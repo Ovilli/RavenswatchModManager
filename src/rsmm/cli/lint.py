@@ -1073,16 +1073,20 @@ def sdk_surface_findings(text: str) -> list[tuple[str, int, str]]:
     names = _sdk_aliases(toks)
     # A name is the SDK only where Lua binds it to `X = require "rsmm"` (or to
     # the global): a parameter, inner `local` or loop variable shadows it.
-    sdk_decls = {i - 2 for i, t in enumerate(toks)
-                 if t.kind == "name" and t.text == "require" and i >= 2
-                 and toks[i - 1].text == "=" and toks[i - 2].kind == "name"
-                 and (a := _require_arg(toks, i)) is not None and a.text == "rsmm"}
     walker = _BindWalk(toks)
     try:
         walker.run()
         bound = walker.bound
     except LuaSyntaxError:
         bound = {}                                      # unwalkable: no shadowing
+    # `local R` then `R = require "rsmm"`: reads of R bind to the `local R`
+    # line, so the declaration the assigned name refers to counts too.
+    sdk_decls: set[int] = set()
+    for i, t in enumerate(toks):
+        if (t.kind == "name" and t.text == "require" and i >= 2
+                and toks[i - 1].text == "=" and toks[i - 2].kind == "name"
+                and (a := _require_arg(toks, i)) is not None and a.text == "rsmm"):
+            sdk_decls |= {i - 2, bound.get(i - 2, i - 2)}
     out: list[tuple[str, int, str]] = []
     n = len(toks)
     for i, t in enumerate(toks):
