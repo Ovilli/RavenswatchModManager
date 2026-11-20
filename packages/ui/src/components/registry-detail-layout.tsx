@@ -3,6 +3,7 @@ import { RegistryModDetailHeader } from './registry-mod-detail-header';
 
 /** Shared public listing detail frame. Apps provide route links, media and actions. */
 export function RegistryDetailLayout({
+  as: Root = 'main',
   className = '',
   name,
   summary,
@@ -13,8 +14,11 @@ export function RegistryDetailLayout({
   navigation,
   sidebar,
   sidebarLabel,
+  breadcrumbLabel = 'Breadcrumb',
+  navigationLabel = 'On this page',
   children,
 }: {
+  as?: 'main' | 'div';
   className?: string;
   name: string;
   summary?: string | null;
@@ -25,18 +29,20 @@ export function RegistryDetailLayout({
   navigation?: ReactNode;
   sidebar: ReactNode;
   sidebarLabel: string;
+  breadcrumbLabel?: string;
+  navigationLabel?: string;
   children: ReactNode;
 }) {
   return (
-    <main className={`mod-detail container ${className}`}>
-      <nav aria-label="Breadcrumb" className="mod-breadcrumb">
+    <Root className={`mod-detail container ${className}`}>
+      <nav aria-label={breadcrumbLabel} className="mod-breadcrumb">
         {breadcrumb}
       </nav>
       <RegistryModDetailHeader name={name} summary={summary} labels={labels} stats={stats} />
       {media}
       <div className="mod-body">
         {navigation ? (
-          <nav className="mod-section-nav" aria-label="On this page">
+          <nav className="mod-section-nav" aria-label={navigationLabel}>
             {navigation}
           </nav>
         ) : null}
@@ -44,7 +50,7 @@ export function RegistryDetailLayout({
           {children}
         </RegistryDetailContentLayout>
       </div>
-    </main>
+    </Root>
   );
 }
 
