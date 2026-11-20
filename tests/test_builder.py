@@ -189,3 +189,27 @@ def test_builder_output_parses(tmp_path, monkeypatch):
     (dst / "init.lua").write_text("print('mine')\n", encoding="utf-8")
     b.commit()
     assert (dst / "init.lua").read_text(encoding="utf-8") == "print('mine')\n"
+
+
+def test_item_init_compiles_with_hundreds_of_items(tmp_path, monkeypatch):
+    """#229 review: every item declared its own `local ok`, and Lua allows
+    200 locals per function, so a 200-item mod's init.lua did not compile."""
+    import shutil
+    import subprocess
+    import types
+
+    import pytest
+
+    from rsmm.sdk import content as content_mod
+    from rsmm.sdk.builder import ModBuilder
+
+    luac = shutil.which("luac5.4") or shutil.which("luac")
+    if luac is None:
+        pytest.skip("no luac to syntax-check init.lua")
+    monkeypatch.setattr(content_mod, "_load_kind",
+                        lambda kind: types.SimpleNamespace(emit=lambda *a: []))
+    monkeypatch.setattr("rsmm.sdk.builder.MODS_DIR", tmp_path)
+    b = ModBuilder("Many", version="1.0.0", author="a", name="Many")
+    for i in range(250):
+        b.item(f"Ring{i}", base="Armor_Per_Object")
+    subprocess.run([luac, "-p", str(b.commit() / "init.lua")], check=True)

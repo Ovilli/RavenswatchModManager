@@ -663,6 +663,9 @@ class ModBuilder:
             _INIT_HEADER,
             '-- Replace this file with your own init.lua to customize; a build keeps it.',
             'local R = require "rsmm"',
+            # One local for every registration: a `local ok` per item hit
+            # Lua's 200-locals-per-function limit at ~200 items (#229 review).
+            'local ok',
             '',
         ]
         for item in items:
@@ -672,7 +675,7 @@ class ModBuilder:
                 if v is not None:
                     reg[k] = v
             body = "".join(f"  {k} = {_lua_repr(v)},\n" for k, v in sorted(reg.items()))
-            lines.append("local ok = R.item.register({\n" + body + "})")
+            lines.append("ok = R.item.register({\n" + body + "})")
             lines.append("if ok then")
             lines.append(f"  R.log({_lua_repr(f'{self.id}: registered item {item.id}')})")
             lines.append("else")
