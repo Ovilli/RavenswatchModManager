@@ -410,7 +410,15 @@ class Mod:
             raise ValueError("mod.loader_flags must be a list of flag names")
         self.loader_flags: list[str] = list(flags)
         # `[requires]`: oldest CLI / loader this mod runs on (engine.mod_requires).
+        # `[mod] min_loader` is the older spelling of `[requires] loader`; it was
+        # declared and emitted but never checked (#202), so it joins the gate.
+        # An unreadable one is lint's error; here it only warns, so a hint field
+        # never drops a mod that applied before it was checked.
         self.requires: dict[str, int] = parse_requires(tbl.get("requires"))
+        try:
+            self.requires = _req.with_min_loader(self.requires, m.get("min_loader"))
+        except ValueError as e:
+            print(f"  [warn] {self.id}: {e}; ignored", file=sys.stderr)
         self.assets_dir = root / "assets"
         blocks = tbl.get("content", []) or []
         if not isinstance(blocks, list) or not all(isinstance(b, dict) for b in blocks):
