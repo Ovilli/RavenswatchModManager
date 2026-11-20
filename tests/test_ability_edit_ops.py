@@ -167,3 +167,32 @@ def test_talent_number_adds_a_per_rarity_value_of_the_talent():
     assert _names(g["Dash Stacks"]) == ["Dash Stacks Selector"]
     with pytest.raises(AE.AbilityEditError, match="talent = <name>"):
         _mel_apply([{"talent_number": "X", "values": [1]}])
+
+
+# --- spawned entities: owner_read (#202, from #192) -----------------------------
+
+_WISP = ("EntitySettings/Heroes/Hero_Melusine/Hero_Melusine_Wisp.entity.ot"
+         ".EntitySettingsResource.gen")
+
+
+@needs_corpus
+def test_owner_read_reads_the_owners_part_and_switches_on_at_start_up():
+    from rsmm.engine import corpus
+    mel, wisp = corpus.read(_MEL), corpus.read(_WISP)
+    if mel is None or wisp is None:
+        pytest.skip("no Melusine family")
+    files = {"Hero_Melusine": mel, "Hero_Melusine_Wisp": wisp}
+    out = AE.apply(files, [{"owner_read": "Owner Max Health", "entity": "Wisp",
+                            "node": "Raw Max Health"}],
+                   main="Hero_Melusine", seed="t").files["Hero_Melusine_Wisp"]
+    assert EC.check(out, wisp, name="Hero_Melusine_Wisp") == []
+    g = {c.name: c for c in EG.parse(out).components}
+    owner = next(c for c in EG.parse(mel).components if c.name == "Raw Max Health")
+    assert [r.guid for r in g["Owner Max Health"].refs] == [owner.guid]
+    assert any(r.guid == g["Owner Max Health"].guid
+               for c in g.values() if c.name.endswith("Event Initialize") for r in c.refs)
+    with pytest.raises(AE.AbilityEditError, match="node"):
+        AE.apply(files, [{"owner_read": "X", "entity": "Wisp"}], main="Hero_Melusine", seed="t")
+    with pytest.raises(AE.AbilityEditError, match="itself"):
+        AE.apply(files, [{"owner_read": "X", "node": "Raw Max Health"}],
+                 main="Hero_Melusine", seed="t")

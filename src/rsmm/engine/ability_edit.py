@@ -74,6 +74,12 @@ One step per table::
     values = [1, 2, 3, 4]                 the next ``{N}``; ``flag = true``
                                           adds the talent's owned flag
 
+    owner_read = "Owner Bite Damage"      in a spawned entity (``entity``), a
+    entity = "Wisp"                       value read from its owner's part
+    node = "Bite Damage"                  ``node`` (``from``: the owner, default
+                                          the main entity), switched on at
+                                          start-up with its other owner reads
+
     add_subobject = "Wolf Basic Attack Combo.bytes_4"   append a copy of entry
     donor_index = 1                       ``donor_index`` of that id list (a
     replace_ref = { "Step 2" = "Step 3" } combo's steps), its links to the
@@ -97,7 +103,7 @@ from .entity_graph_edit import EntityEditError, EntityFile, id_list_pad
 _OPS = ("clone", "set", "link", "add_link", "remove_link", "percent", "add_subobject",
         "replace_subobject", "switch_off", "override", "retarget", "retarget_targets", "event",
         "append_operand", "add_cinebloc", "animatic_speed", "add_selector", "unlink_reads",
-        "swap_ref", "scale_by_talent", "talent_number", "scale_with_level")
+        "swap_ref", "scale_by_talent", "talent_number", "owner_read", "scale_with_level")
 #: Every key a step may carry; anything else is a typo that would otherwise be
 #: ignored silently (a `rename` the old clone did not read left its copies
 #: under the default suffix, and the next step found nothing).
@@ -220,6 +226,8 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
                 edits[ef.name] = _scale_by_talent(ef, step, f"{seed}:{n}")
             elif op == "talent_number":
                 edits[ef.name] = _talent_number(ef, step, f"{seed}:{n}")
+            elif op == "owner_read":
+                _owner_read(ef, step, f"{seed}:{n}", files, edits, main, refs)
             elif op == "scale_with_level":
                 if "value" not in step:
                     raise AbilityEditError("scale_with_level needs value = <ratio>")
@@ -414,6 +422,42 @@ def _talent_number(ef: EntityFile, step: dict, seed: str) -> EntityFile:
     if fmt:
         out.add_format_slot(fmt.name, sel, percent=bool(step.get("percent", False)))
     return out
+
+
+def _owner_read(ef: EntityFile, step: dict, seed: str, files: dict[str, bytes],
+                edits: dict[str, EntityFile], main: str, refs: dict[str, str] | None) -> None:
+    """A get-value node ``owner_read`` in a spawned entity (the step's
+    ``entity``) reading part ``node`` of its owner (``from``, default the main
+    entity), walking the owner chain so a summon's child still finds the hero.
+    It is switched on with the entity's other readers of that owner."""
+    from . import entity_parts as P
+    from . import talent_status as TS
+    from . import talent_writer as TW
+    from .entity_graph_edit import kind_label
+
+    if not step.get("node"):
+        raise AbilityEditError("owner_read needs node = <owner part>")
+    want = str(step.get("from") or main)
+    owner_stem = want if want in files else f"{main}_{want}"
+    if owner_stem not in files:
+        raise AbilityEditError(f"owner_read: no family entity {want!r}")
+    if owner_stem == ef.name:
+        raise AbilityEditError("owner_read: the entity cannot read itself as its owner")
+    owner = edits.get(owner_stem) or EntityFile(files[owner_stem], owner_stem)
+    t = owner.component(str(step["node"]))
+    label = f"[{kind_label(t.cls)}] {owner_stem}\\" + (f"{t.group}\\" if t.group else "") + t.name
+    owner_ref = (refs or {}).get(owner_stem) or hero_entity_ref(owner_stem)
+    name = str(step["owner_read"])
+    TW.TalentWriter(ef, seed, "").reader(name, owner_ref, P.Link(t.guid, label),
+                                         owners=(0,), walk_owners=True)
+    have = {c.name for c in ef.graph().components}
+    init = (TS.startup_state(ef.graph(), owner_ref, but=name)
+            or next((n for n in ("Child Event Initialize", "Event Initialize") if n in have),
+                    None))
+    if init is None:
+        raise AbilityEditError(f"owner_read: {ef.name} has no start-up state to switch "
+                               f"{name!r} on")
+    ef.insert_ref(init, "activates", 0, name)
 
 
 def _scale_with_level(ef: EntityFile, target: str, ratio: float, seed: str) -> None:
