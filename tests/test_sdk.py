@@ -968,3 +968,51 @@ def test_load_kind_still_reports_a_genuinely_absent_builder(monkeypatch):
     monkeypatch.setitem(content_mod._KIND_MODULES, "item", "does_not_exist")
     with pytest.raises(content_mod.ContentError, match="no builder for kind"):
         content_mod._load_kind("item")
+
+
+def test_transaction_ctrl_c_mid_commit_rolls_back(tmp_path: Path, monkeypatch):
+    """KeyboardInterrupt is not an Exception: commit used to skip the rollback
+    and still drop the marker, leaving a half-written install that said
+    nothing. It rolls back now, and a rollback that fails keeps the marker so
+    the next recover() reports the interruption."""
+    import os
+
+    from rsmm.sdk import transaction as T
+
+    cooking = tmp_path / "cooking"
+    cooking.mkdir()
+    dests = [cooking / "a", cooking / "b"]
+    dests[0].write_bytes(b"vanilla")
+    tx = ApplyTransaction(cooking)
+    for i, d in enumerate(dests):
+        src = tmp_path / f"src{i}"
+        src.write_bytes(b"new")
+        tx.stage_write(d.name, src, d)
+
+    real = os.replace
+    calls = []
+
+    def replace(a, b):
+        if ".rsmm_stage" not in Path(b).parts and ".rsmm_stage" in Path(a).parts:  # stage -> live
+            calls.append(b)
+            if len(calls) == 2:
+                raise KeyboardInterrupt
+        real(a, b)
+
+    monkeypatch.setattr(T.os, "replace", replace)
+    with pytest.raises(KeyboardInterrupt):
+        tx.commit()
+    assert dests[0].read_bytes() == b"vanilla" and not dests[1].exists()
+    assert not tx.commit_marker.exists()
+
+    # Same interruption, but the rollback cannot restore: the marker stays.
+    calls.clear()
+    tx = ApplyTransaction(cooking)
+    tx.stage_write("a", tmp_path / "src0", dests[0])
+    tx.stage_write("b", tmp_path / "src1", dests[1])
+    monkeypatch.setattr(T, "atomic_copy", lambda *a: (_ for _ in ()).throw(OSError("disk")))
+    with pytest.raises(KeyboardInterrupt):
+        tx.commit()
+    assert tx.commit_marker.exists()
+    assert ApplyTransaction(cooking).recover() == "interrupted"
+    assert not tx.commit_marker.exists()
