@@ -118,6 +118,9 @@
   box-shadow: 0 8px 24px hsl(var(--pitch) / 0.65), inset 0 0 0 4px hsl(var(--pitch) / 0.45);
 }
 .empty-grimoire-portrait-face {
+  /* WebKit can flatten the card's 3D layers. Prefer the portrait in that
+     fallback paint order; composited cards still use backface culling. */
+  z-index: 1;
   transform: translateZ(1.5px);
   background: radial-gradient(
     ellipse at 35% 20%,
