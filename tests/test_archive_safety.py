@@ -528,6 +528,18 @@ def test_lua_scan_reads_every_lua_file_whatever_its_case(tmp_path):
     assert "notes.txt" not in str(e.value)
 
 
+def test_lua_scan_is_linear_in_brackets_and_comments():
+    """Each `[` and `--` used to copy the rest of the source: an 8 MB file of
+    them took hours. A quarter million of each has to finish in seconds."""
+    import time
+
+    from rsmm.engine.mod_scope import lowlevel_primitives
+    src = "x[1] -- c\n" * 250_000
+    t0 = time.perf_counter()
+    assert lowlevel_primitives(src) == []
+    assert time.perf_counter() - t0 < 10
+
+
 def test_lua_scan_refuses_oversized_lua(tmp_path, monkeypatch):
     monkeypatch.setattr(archive, "MAX_LUA_BYTES", 8)
     z = _zip(tmp_path / "a.zip", {"M/init.lua": b"local x = 12345\n"})
@@ -539,6 +551,24 @@ def test_install_refuses_lua_primitives(tmp_path):
     z = _zip(tmp_path / "a.zip", {"M/manifest.toml": b"x", "M/init.lua": _POKE})
     mods = tmp_path / "mods"
     with pytest.raises(ArchiveError, match="low-level primitives"):
+        cmd_install._safe_extract(z.read_bytes(), mods)
+    assert not (mods / "M").exists()
+
+
+_BYTECODE = b"\x1bLuaT\x00\x19\x93\r\n\x1a\n\x04\x08\x08"
+
+
+def test_lua_scan_refuses_precompiled_bytecode(tmp_path):
+    z = _zip(tmp_path / "a.zip", {"M/init.lua": _BYTECODE})
+    with zipfile.ZipFile(z) as zf, pytest.raises(ArchiveError, match="bytecode") as e:
+        archive.scan_lua_primitives(zf, "M")
+    assert "M/init.lua" in str(e.value)
+
+
+def test_install_refuses_precompiled_bytecode(tmp_path):
+    z = _zip(tmp_path / "a.zip", {"M/manifest.toml": b"x", "M/init.lua": _BYTECODE})
+    mods = tmp_path / "mods"
+    with pytest.raises(ArchiveError, match="bytecode"):
         cmd_install._safe_extract(z.read_bytes(), mods)
     assert not (mods / "M").exists()
 
@@ -564,5 +594,28 @@ def test_update_refuses_lua_primitives_and_keeps_going(tmp_path, monkeypatch, ca
     assert update_cmd.main([]) == 1
     err = capsys.readouterr().err
     assert "refusing to install A" in err and "low-level primitives" in err
+    assert (mods / "A" / "manifest.toml").read_text() == "old"
+    assert (mods / "B" / "manifest.toml").read_text() == "new"
+
+
+def test_update_skips_a_corrupt_download_and_keeps_going(tmp_path, monkeypatch, capsys):
+    import json as _json
+    mods = tmp_path / "mods"
+    for mid in ("A", "B"):
+        (mods / mid).mkdir(parents=True)
+        (mods / mid / "manifest.toml").write_text("old")
+    monkeypatch.setattr(update_cmd, "MODS_DIR", mods)
+    good_a = _zip(tmp_path / "A.zip", {"A/manifest.toml": b"new"}).read_bytes()
+    zips = {"A": good_a[: len(good_a) // 2],   # truncated download
+            "B": _zip(tmp_path / "B.zip", {"B/manifest.toml": b"new"}).read_bytes()}
+    index = {"schema": update_cmd.RepoIndex(name="").dump()["schema"], "mods": [
+        {"id": m, "version": "2.0.0", "url": m, "sha256": "x"} for m in zips]}
+    monkeypatch.setattr(update_cmd, "_load_repos", lambda: ["idx"])
+    monkeypatch.setattr(update_cmd, "_installed_mods", lambda: {"A": "1.0.0", "B": "1.0.0"})
+    monkeypatch.setattr(update_cmd, "_fetch", lambda url: (
+        _json.dumps(index).encode() if url == "idx" else zips[url]))
+    monkeypatch.setattr(update_cmd, "_verify_download", lambda *a: (True, "ok"))
+    assert update_cmd.main([]) == 1
+    assert "refusing to install A" in capsys.readouterr().err
     assert (mods / "A" / "manifest.toml").read_text() == "old"
     assert (mods / "B" / "manifest.toml").read_text() == "new"

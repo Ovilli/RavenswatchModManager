@@ -100,6 +100,7 @@ _CHUNK = 1 << 16  # 64 KiB — keeps memory flat on large assets.
 #: Largest ``.lua`` member read for the primitive scan. Mod Lua runs to tens of
 #: KB; a bigger one is refused rather than read into memory.
 MAX_LUA_BYTES = 8 * 1024 * 1024
+LUA_BYTECODE_SIGNATURE = b"\x1bLua"
 
 # Windows refuses these as filenames regardless of extension; rejecting them
 # up front turns a confusing mid-extract OSError into a clear diagnostic.
@@ -300,6 +301,7 @@ def scan_lua_primitives(zf: zipfile.ZipFile, label: str) -> None:
     from rsmm.engine.mod_scope import lowlevel_primitives
 
     hits = []
+    bytecode = []
     for info in zf.infolist():
         if info.is_dir() or not info.filename.lower().endswith(".lua"):
             continue
@@ -308,14 +310,25 @@ def scan_lua_primitives(zf: zipfile.ZipFile, label: str) -> None:
                 f"{label}: {info.filename!r} is over the {MAX_LUA_BYTES}-byte "
                 "limit for mod Lua")
         with zf.open(info) as src:
-            text = src.read(MAX_LUA_BYTES + 1).decode("utf-8", errors="replace")
+            raw = src.read(MAX_LUA_BYTES + 1)
+        # Lua 5.4 does not verify bytecode; the loader loads text only.
+        if raw.startswith(LUA_BYTECODE_SIGNATURE):
+            bytecode.append(_norm(info.filename))
+            continue
+        text = raw.decode("utf-8", errors="replace")
         found = lowlevel_primitives(text)
         if found:
             hits.append(f"{_norm(info.filename)}: {', '.join(found)}")
-    if hits:
-        raise ArchiveError(
-            f"{label} uses low-level primitives only the SDK may use "
-            "(_internal, raw memory, raw calls):\n  " + "\n  ".join(hits[:20]))
+    if bytecode or hits:
+        lines = [f"{n}: precompiled Lua bytecode (only Lua source is accepted)"
+                 for n in bytecode]
+        lines += hits
+        head = (f"{label} contains precompiled Lua bytecode"
+                if bytecode and not hits else
+                f"{label} uses low-level primitives only the SDK may use "
+                "(_internal, raw memory, raw calls)"
+                + (" and contains precompiled Lua bytecode" if bytecode else ""))
+        raise ArchiveError(head + ":\n  " + "\n  ".join(lines[:20]))
 
 
 def check_limits(zf: zipfile.ZipFile, label: str, *,
