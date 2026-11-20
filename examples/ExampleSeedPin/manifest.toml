@@ -6,3 +6,6 @@ author      = "rsmm-examples"
 description = "Pin the run RNG seed via raw memory write on the game's Forced-seed option. Demonstrates the SDK escape-hatch (R._internal) and per-mod config (R.config.get)."
 enabled     = false
 sdk_version = ">=3.0,<4"
+# The game saves what R.options.set wrote to _Save/GameSettings.ini; rsmm clears
+# these two lines when the mod is disabled or uninstalled.
+restore_options = ["Forced seed", "Dev"]

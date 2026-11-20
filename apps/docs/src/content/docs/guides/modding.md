@@ -318,9 +318,20 @@ Place next to `manifest.toml`. Fires from `./rsmm apply` when the mod flips `ena
 
 The hook runs as the player, outside the game, with no sandbox, so it never runs unasked: `rsmm apply` lists the pending hooks and waits for a yes (or `--yes`), and uninstalling from the desktop app asks whether to run it before removing the mod.
 
-Use for cleanup the loader DLL can't do at apply time — clearing settings keys, deleting profile caches, etc.
+Use for cleanup the loader DLL can't do at apply time — deleting profile caches, etc.
 
-See `examples/ExampleSeedPin/on_disable.py` for a canonical example.
+**Game options you pin need no hook.** The game saves what `R.options.set` wrote
+to `_Save/GameSettings.ini`, so a forced seed outlives the mod that set it. List
+those options in the manifest instead, and rsmm clears their lines itself when
+the mod is disabled or uninstalled (no Python, nothing to approve):
+
+```toml
+[mod]
+restore_options = ["Forced seed", "Dev"]
+```
+
+`rsmm lint` checks each name against the options `R.options` knows.
+`examples/ExampleSeedPin` does exactly this.
 
 ### ConsoleRuntime / dev_mode
 
