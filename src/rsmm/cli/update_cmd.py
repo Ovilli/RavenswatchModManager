@@ -242,7 +242,7 @@ def main(argv: list[str] | None = None) -> int:
                     continue
             try:
                 _install_zip(zp, mid, args.dry_run)
-            except RepoError as e:
+            except (RepoError, zipfile.BadZipFile, OSError) as e:
                 print(f"  refusing to install {mid}: {e}", file=sys.stderr)
                 code = 1
                 continue
