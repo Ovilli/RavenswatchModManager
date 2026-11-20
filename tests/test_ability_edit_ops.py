@@ -250,3 +250,27 @@ def test_the_shared_level_links_name_character_commons_values():
     for guid, label in (AE.LEVEL_DAMAGE, AE.XP_LEVEL):
         c = g[bytes.fromhex(guid)]
         assert label == f"[Value] Character_Common\\{c.path}"
+
+
+# --- statuses (#202 A2, from #192) -----------------------------------------------
+
+
+@needs_corpus
+def test_add_status_step_goes_through_the_donors():
+    from rsmm.engine import talent_add_stat as TA
+    from rsmm.engine import talent_status as TS
+    if TS.donor_of("Marked")[1] is None:
+        pytest.skip("no Juliet")
+    from rsmm.engine import corpus
+    mel = corpus.read(_MEL)
+    ctl = next(c for c in EG.parse(mel).components if c.name == "Skill Controller Attack Speed")
+    state = TA.owned_state(EG.parse(mel), ctl, "Attack Speed").name
+    dmg = "Skill Defense Block Attack Damage"
+    step = {"add_status": [dmg], "status": "Marked", "switch": state,
+            "talent": "Attack Speed", "duration": 4}
+    g = _mel_apply([step])
+    assert f"Skill Attack Speed Marked On {dmg}" in g
+    with pytest.raises(AE.AbilityEditError, match="needs a duration"):
+        _mel_apply([{**step, "duration": ""}])
+    with pytest.raises(AE.AbilityEditError, match="needs status"):
+        _mel_apply([{"add_status": dmg, "switch": state, "talent": "Attack Speed"}])

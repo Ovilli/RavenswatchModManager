@@ -91,6 +91,11 @@ One step per table::
     value = 2.5                           ``base + value * hero level``
     base = 10
 
+    add_status = ["Bite Hit Damage"]      damage records also apply ``status``
+    status = "Bleed"                      while ``switch`` (a state or flag of
+    switch = "Skill Attack Bite Owned"    this entity) is on; Marked needs
+    talent = "Attack Feral Bite"          ``duration`` (seconds, or a value part)
+
     add_subobject = "Wolf Basic Attack Combo.bytes_4"   append a copy of entry
     donor_index = 1                       ``donor_index`` of that id list (a
     replace_ref = { "Step 2" = "Step 3" } combo's steps), its links to the
@@ -116,13 +121,13 @@ _OPS = ("clone", "set", "link", "add_link", "remove_link", "percent", "add_subob
         "append_operand", "add_cinebloc", "animatic_speed", "animatic_clip", "sound_volume",
         "add_selector", "unlink_reads",
         "swap_ref", "scale_by_talent", "talent_number", "owner_read", "scale_with_level",
-        "level_linear")
+        "level_linear", "add_status")
 #: Every key a step may carry; anything else is a typo that would otherwise be
 #: ignored silently (a `rename` the old clone did not read left its copies
 #: under the default suffix, and the next step found nothing).
 _KEYS = {*_OPS, "value", "to", "entity", "as", "suffix", "from", "rename",
          "donor_index", "donor", "replace_ref", "node", "from_kind", "when", "talent",
-         "values", "tag", "flag", "factor", "base"}
+         "values", "tag", "flag", "factor", "base", "status", "switch", "duration"}
 
 
 class AbilityEditError(ValueError):
@@ -263,6 +268,8 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
                         "level_linear needs value = <per level> (and optional base = <offset>)")
                 _level_linear(ef, str(step["level_linear"]), float(step["value"]),
                               float(step.get("base", 0.0)), f"{seed}:{n}")
+            elif op == "add_status":
+                _add_status(ef, step, f"{seed}:{n}")
             elif op == "retarget_targets":
                 part, _, fld = str(step[op]).rpartition(".")
                 if not part or not step.get("to"):
@@ -581,6 +588,23 @@ def _level_linear(ef: EntityFile, target: str, per_level: float, base: float,
         if startup is not None:
             ef.add_ref(startup, "activates", mul_name)
             ef.add_ref(startup, "activates", sum_name)
+
+
+def _add_status(ef: EntityFile, step: dict, seed: str) -> None:
+    """Damage records (``add_status``, one or a list) also put ``status`` on
+    whoever they hit while ``switch`` is on, for ``talent``: every status
+    through ``talent_status.DONORS`` (Marked with its own ``duration``)."""
+    from . import talent_status as TS
+    if not step.get("status") or not step.get("switch") or not step.get("talent"):
+        raise AbilityEditError("add_status needs status, switch and talent")
+    raw_targets = step["add_status"]
+    targets = [raw_targets] if isinstance(raw_targets, str) else [str(x) for x in raw_targets]
+    status = str(step["status"])
+    donor, donor_raw = TS.donor_of(status)
+    for dmg in targets:
+        TS.add_status(ef, donor, donor_raw, damage=dmg, status=status,
+                      switch=str(step["switch"]), talent=str(step["talent"]), seed=seed,
+                      duration=step.get("duration"))
 
 
 def _source(ef: EntityFile, step: dict, read) -> EntityFile:
