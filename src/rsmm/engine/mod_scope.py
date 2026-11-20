@@ -14,9 +14,10 @@ is reported so an author can see what to change.
 
 What counts as client-only:
 
-* no ``[[content]]`` and no ``[[patch]]`` in the manifest (both edit game data);
-* asset overrides only in presentation families: cooked textures, FMOD sound
-  banks, UI text banks, and the mod's own ``lang/`` strings;
+* no ``[[patch]]`` in the manifest, and no ``[[content]]`` except
+  :data:`CLIENT_KINDS` (``mesh``: an in-place model swap);
+* asset overrides only in presentation families: cooked textures and meshes,
+  FMOD sound banks, UI text banks, and the mod's own ``lang/`` strings;
 * Lua that touches the SDK only through :data:`CLIENT_NAMESPACES` (whole
   namespaces) and :data:`CLIENT_CALLS` (single functions). Any other ``R.*``
   path, dynamic access (``R[...]``), passing the SDK table around, the native
@@ -69,6 +70,10 @@ CLIENT_CALLS: frozenset[str] = frozenset({
 })
 
 
+#: `[[content]]` kinds whose whole output is a presentation-only asset.
+CLIENT_KINDS: frozenset[str] = frozenset({"mesh"})
+
+
 _IDENT = r"[A-Za-z_]\w*"
 
 #: A module name `require` can be checked against: plain characters only, so
@@ -106,6 +111,10 @@ def asset_is_client_only(decoded: str) -> bool:
     p = decoded.replace("\\", "/")
     name = p.rsplit("/", 1)[-1]
     if name.endswith((".Texture.dxt", ".Texture.nrm")):
+        return True
+    # A cooked mesh is a texture-style override that carries geometry: same
+    # resource name, drawn on this machine only (collision is entity data).
+    if name.endswith(".Geometry.gen"):
         return True
     if p.startswith("Audio/") and name.endswith(".bank"):
         return True
@@ -292,9 +301,16 @@ def lua_reasons(src: str) -> list[str]:
 
 def manifest_reasons(manifest: dict) -> list[str]:
     reasons = []
-    if manifest.get("content"):
-        n = len(manifest["content"])
-        reasons.append(f"adds or changes game content ({n} [[content]] entries)")
+    content = manifest.get("content")
+    if content:
+        # `kind = "mesh"` only cooks one .Geometry.gen over a shipped mesh: a
+        # presentation override (see asset_is_client_only). Anything else, or
+        # a malformed entry, is gameplay.
+        if not isinstance(content, list):
+            content = [content]
+        n = sum(1 for c in content if not (isinstance(c, dict) and c.get("kind") in CLIENT_KINDS))
+        if n:
+            reasons.append(f"adds or changes game content ({n} [[content]] entries)")
     if manifest.get("patch"):
         reasons.append(f"patches game data ({len(manifest['patch'])} [[patch]] entries)")
     return reasons

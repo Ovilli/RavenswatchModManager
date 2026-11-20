@@ -185,6 +185,18 @@
     {
       "src": "[mod]\nid = \"a\"\n\n[overlay]\ncontent = \"hud\"\n",
       "gameplay": false
+    },
+    {
+      "src": "[mod]\nid = \"a\"\n\n[[content]]\nkind = \"mesh\"\ntarget = \"X.fbx\"\n\n[content.transform]\nkind = \"hero\"\nskin = \"gltf\"\n",
+      "gameplay": false
+    },
+    {
+      "src": "[mod]\nid = \"a\"\n\n[[content]]\nkind = \"mesh\"\n\n[[content]]\nkind = \"item\"\n",
+      "gameplay": true
+    },
+    {
+      "src": "[mod]\nid = \"a\"\n\n[[content]]\ntarget = \"X.fbx\"\n\n[content.transform]\nkind = \"mesh\"\n",
+      "gameplay": true
     }
   ],
   "asset": [
@@ -211,6 +223,10 @@
     {
       "path": "_root/DarkTalesResources/x.ot",
       "client_only": false
+    },
+    {
+      "path": "3D/Characters/Heroes/X/X_GEO.fbx.Geometry.gen",
+      "client_only": true
     }
   ],
   "client_namespaces": [
