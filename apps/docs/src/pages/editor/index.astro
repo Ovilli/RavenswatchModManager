@@ -532,17 +532,35 @@ async function afterSave(responseText) {
   try { const j = JSON.parse(responseText); saved = j.saved || j.path || ""; } catch { return; }
   const m = /mods\/([^/]+)\/manifest\.toml$/.exec(saved.replace(/\\/g, "/"));
   if (!m) return;
+  let blob;
   try {
-    const data = await call("zip", { mod: m[1] });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([data], { type: "application/zip" }));
-    a.download = m[1] + ".zip";
-    document.body.append(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
-    toast(`Downloaded ${m[1]}.zip. Unzip it into your mods folder, then apply it with the desktop app or rsmm apply.`);
+    blob = new Blob([await call("zip", { mod: m[1] })], { type: "application/zip" });
   } catch (err) {
     toast("Could not build the download: " + err.message);
+    return;
   }
+  const name = m[1] + ".zip";
+  // Let the player pick where it lands where the browser can ask (Chromium's
+  // save dialog). It needs the click that started the save to be recent, so a
+  // refusal, or a browser without it, falls back to a plain download.
+  if (window.showSaveFilePicker) {
+    try {
+      const h = await window.showSaveFilePicker({
+        suggestedName: name, types: [{ description: "Mod zip", accept: { "application/zip": [".zip"] } }] });
+      const w = await h.createWritable();
+      await w.write(blob); await w.close();
+      toast(`Saved ${name}. Unzip it into your mods folder, then apply it with the desktop app or rsmm apply.`);
+      return;
+    } catch (err) {
+      if (err && err.name === "AbortError") { toast(`Not saved: ${name} stays in this page until you save again.`); return; }
+    }
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+  toast(`Downloaded ${name}. Unzip it into your mods folder, then apply it with the desktop app or rsmm apply.`);
 }
 
 function toast(text) {
