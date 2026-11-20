@@ -127,7 +127,12 @@ from rsmm.engine.versiondef import (
     collect_item_bans,
     sync_versiondef,
 )
-from rsmm.sdk.archive import DANGEROUS_EXTENSIONS, ArchiveError, windows_name
+from rsmm.sdk.archive import (
+    DANGEROUS_EXTENSIONS,
+    ROOT_OVERLAY_DIR,
+    ArchiveError,
+    windows_name,
+)
 from rsmm.sdk.transaction import ApplyTransaction
 
 
@@ -666,8 +671,9 @@ def resolve_special(decoded: str, dec2enc: dict[str, str], *,
     45 of a mod's caches as unmapped (46 of 63 doctor WARNs were this), while
     the files were in fact installed and hash-verified.
     """
-    if decoded.startswith("_root/"):
-        return ROOT_PREFIX + decoded[len("_root/"):].replace("/", "\\")
+    overlay = ROOT_OVERLAY_DIR + "/"
+    if decoded.startswith(overlay):
+        return ROOT_PREFIX + decoded[len(overlay):].replace("/", "\\")
     if decoded.endswith(rsc_cache.CACHE_SUFFIX):
         return synthesize_encoded(decoded, dec2enc, index=index)
     bank = resolve_audio_bank(decoded)
@@ -1505,12 +1511,14 @@ def plan_apply(mods: list[Mod],
     additions: list[tuple[str, Path, Path, str]] = []
     removals: list[str] = []
 
+    refused: list[str] = []
     for enc, (src, mod_id) in wanted.items():
         dest = encoded_to_dest(enc, cooking, game_dir)
-        if (enc.startswith(ROOT_PREFIX)
-                and Path(windows_name(dest.name)).suffix.lower() in _DANGEROUS_ROOT_EXTS):
+        reason = _root_refusal(enc)
+        if reason:
             print(f"  [error] {mod_id}: refusing to write {dest.name!r} into the "
-                  f"game root (blocked file type)", file=sys.stderr)
+                  f"game root ({reason})", file=sys.stderr)
+            refused.append(enc)
             continue
         cur = active.get(enc)
         # Auto-cook source-format inputs (.gltf/.dds/etc) into cached cooked
@@ -1554,6 +1562,11 @@ def plan_apply(mods: list[Mod],
             continue
         additions.append((enc, src, dest, mod_id))
 
+    # A refused key an older release already applied goes through the normal
+    # restore, so the file it planted comes back out.
+    for enc in refused:
+        del wanted[enc]
+
     for enc in list(active.keys()):
         if enc not in wanted:
             removals.append(enc)
@@ -1564,6 +1577,27 @@ def plan_apply(mods: list[Mod],
 # The extractor's list: a local mod is warned about exactly what a downloaded
 # one is refused for, rather than a shorter copy that had drifted from it.
 _DANGEROUS_ROOT_EXTS = DANGEROUS_EXTENSIONS
+
+# Files the manager and loader own in the game root. A `_root` overlay that
+# lands on one would replace the Lua SDK, the loader or the manager's own state.
+_MANAGER_ROOT_FILES = frozenset({
+    "winhttp.dll", "winhttp_real.dll", "asset_map.json",
+    STATE_FILE_NAME, JOURNAL_FILE_NAME,
+})
+
+
+def _root_refusal(enc: str) -> str | None:
+    """Why a `_root` overlay may not write `enc`, or None when it may."""
+    if not enc.startswith(ROOT_PREFIX):
+        return None
+    parts = [windows_name(p).lower() for p in enc[len(ROOT_PREFIX):].split("\\")]
+    name = parts[-1]
+    if Path(name).suffix in _DANGEROUS_ROOT_EXTS:
+        return "blocked file type"
+    if (parts[0] == "rsmm" or name in _MANAGER_ROOT_FILES
+            or name.endswith(BACKUP_SUFFIX)):
+        return "file owned by the mod manager"
+    return None
 
 
 class VanillaMissing(RuntimeError):
@@ -1600,10 +1634,10 @@ def apply_one(enc: str, src: Path, dest: Path, mod_id: str,
     the install half-modded. Called without `stage` (tests, single-file
     paths) it writes directly, as before.
     """
-    if (enc.startswith(ROOT_PREFIX)
-            and Path(windows_name(dest.name)).suffix.lower() in _DANGEROUS_ROOT_EXTS):
+    reason = _root_refusal(enc)
+    if reason:
         raise ArchiveError(f"{mod_id}: refusing to write {dest.name!r} into the "
-                           f"game root (blocked file type)")
+                           f"game root ({reason})")
     cur = state.active.get(enc)
     # NB: `dest.parent / (dest.name + SUFFIX)`, never `with_suffix` — the
     # cooked names carry dots, so `with_suffix` would eat the last segment and

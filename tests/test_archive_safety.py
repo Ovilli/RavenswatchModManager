@@ -67,6 +67,16 @@ def test_safe_extract_rejects_windows_rewritten_components(tmp_path, name):
         archive.safe_extract(zf, tmp_path / "out")
 
 
+@pytest.mark.parametrize("name", [
+    "m/assets/aux.txt", "m/assets/CON/x.bin", "m/a/com1.tar.gz", "m/nul",
+    "m/a/LPT9 .txt",
+])
+def test_safe_extract_rejects_device_names_at_any_depth(tmp_path, name):
+    z = _zip(tmp_path / "a.zip", {name: b"x"})
+    with zipfile.ZipFile(z) as zf, pytest.raises(ArchiveError, match="device name"):
+        archive.safe_extract(zf, tmp_path / "out")
+
+
 # --- extraction guards -----------------------------------------------------
 
 
@@ -171,7 +181,7 @@ def test_scan_dangerous_reports_every_root_overlay(tmp_path):
     z = _zip(tmp_path / "a.zip", {
         "M/manifest.toml": b"",
         "M/assets/normal.bin": b"x",                       # not an overlay
-        "M/_root/DarkTalesResources/ApplicationSettings.ot": b"x",
+        "M/assets/_root/DarkTalesResources/ApplicationSettings.ot": b"x",
     })
     with zipfile.ZipFile(z) as zf:
         assert archive.scan_dangerous(zf, "M") == [
@@ -338,10 +348,22 @@ def test_pack_refuses_what_install_would_reject(tmp_path, monkeypatch, capsys):
 
 def test_pack_warns_about_root_overlays_but_still_packs(tmp_path, monkeypatch, capsys):
     _packable(tmp_path / "mods", "Overlay",
-              {"_root/DarkTalesResources/Settings.ot": b"x"})
+              {"assets/_root/DarkTalesResources/Settings.ot": b"x"})
     assert _run_pack(tmp_path, monkeypatch, "Overlay") == 0
     assert "overwrites game install root file" in capsys.readouterr().err
     assert (tmp_path / "dist" / "Overlay.zip").is_file()
+
+
+def test_install_scan_reports_the_overlay_in_a_packed_archive(tmp_path, monkeypatch):
+    """The overlay path apply reads is the one `rsmm pack` ships and install warns about."""
+    _packable(tmp_path / "mods", "Overlay",
+              {"assets/_root/DarkTalesResources/Settings.ot": b"x"})
+    assert _run_pack(tmp_path, monkeypatch, "Overlay") == 0
+    with zipfile.ZipFile(tmp_path / "dist" / "Overlay.zip") as zf:
+        assert archive.scan_dangerous(zf, "Overlay") == ["DarkTalesResources/Settings.ot"]
+    from rsmm.cli import apply_mods
+    assert apply_mods.resolve_special("_root/DarkTalesResources/Settings.ot", {}) \
+        == apply_mods.ROOT_PREFIX + "DarkTalesResources\\Settings.ot"
 
 
 def test_pack_takes_the_folder_as_tab_completion_writes_it(tmp_path, monkeypatch, capsys):
