@@ -463,7 +463,8 @@ House style, measured off the 60 shipped icons: **48x48** (42 of them),
 transparent background, a thick dark outline fully enclosing the shape, flat
 saturated fill with a little vertical shading, and a rim light on the top-left
 edge. Matching it matters more than the drawing — an icon in a different style
-reads as a bug rather than as content. `tools/make_shrine_assets.py::build_icon`
+reads as a bug rather than as content. `build_icon` in the mods repo's
+`tools/make_shrine_assets.py` (it moved there with runestone-shrine, #202 D3)
 draws one by rasterising a material-id mask (supersampled, so diagonals are not
 jagged) and then *growing that finished mask* for the outline; stroking each
 shape separately instead leaves seams where they meet.
