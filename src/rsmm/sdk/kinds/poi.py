@@ -3669,9 +3669,12 @@ def _emit_cloned_level(mod_id: str, defn: ContentDef, out_dir: Path,
 
 
 def _emit_custom_prop(mod_id: str, defn: ContentDef, out_dir: Path,
-                      base: str, written: list[Path]) -> str:
+                      base: str, written: list[Path]) -> tuple[str, list[str], list[str]]:
     """Additive path: the mod's prop, plus a cloned tile level and prefab that
-    place it. Returns the new prefab reference for the cloned tiledef."""
+    place it. Returns ``(new prefab reference, extra cache deps, borrow
+    sources)`` like :func:`_emit_cloned_level`: a ``[marker]`` prop inherits a
+    parent whose closure the tile cache must list, or it resolves to NULL at
+    level build."""
     spec = defn.fields["prop"]
     tag = f"{mod_id}_{defn.id}".replace("-", "_")
     if (defn.fields.get("prop") or {}).get("extra_models"):
@@ -3680,7 +3683,7 @@ def _emit_custom_prop(mod_id: str, defn: ContentDef, out_dir: Path,
             f"entity = \"@prop\" (and own_level): each extra mesh is an entity "
             f"of its own, stood where the prop stands, and taking over one "
             f"shipped object (`replaces`) leaves nowhere to stand the rest.")
-    ent_ref, _deps, _borrow = _emit_prop_art(mod_id, defn, out_dir, written)
+    ent_ref, deps, borrow = _emit_prop_art(mod_id, defn, out_dir, written)
 
     # Tile level: the base tile's dressing, its centrepiece swapped for ours.
     donor_prefab_dec = _prefab_ref_of(base, defn.id)
@@ -3698,7 +3701,7 @@ def _emit_custom_prop(mod_id: str, defn: ContentDef, out_dir: Path,
                _corpus(PC.entity_cooked_path(donor_prefab_dec), defn.id,
                        "the tile's prefab entity"),
                level_ref, new_level_ref, new_prefab_ref), written)
-    return new_prefab_ref
+    return new_prefab_ref, deps, borrow
 
 
 def _prefab_ref_of(base: str, defn_id: str) -> str:
@@ -3920,8 +3923,9 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     # branches are not interchangeable here: one replaces an object, the other
     # adds one, and PLACES_OWN_PROP asked for the second.
     if defn.fields.get("prop") and not _places_own_prop(defn):
-        td.entity_ref = ["EntitySettings",
-                         _emit_custom_prop(mod_id, defn, out_dir, base, written)]
+        prefab_ref, own_deps, own_borrow = _emit_custom_prop(
+            mod_id, defn, out_dir, base, written)
+        td.entity_ref = ["EntitySettings", prefab_ref]
     elif defn.fields.get("own_level"):
         prefab_ref, own_deps, own_borrow = _emit_cloned_level(
             mod_id, defn, out_dir, base, written)
