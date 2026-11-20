@@ -614,7 +614,9 @@ def test_update_skips_a_corrupt_download_and_keeps_going(tmp_path, monkeypatch, 
     monkeypatch.setattr(update_cmd, "_installed_mods", lambda: {"A": "1.0.0", "B": "1.0.0"})
     monkeypatch.setattr(update_cmd, "_fetch", lambda url: (
         _json.dumps(index).encode() if url == "idx" else zips[url]))
-    monkeypatch.setattr(update_cmd, "_verify_download", lambda *a: (True, "ok"))
+    monkeypatch.setattr(update_cmd, "check_entry",
+                        lambda *a, **kw: Trust(ok=True, warn=False, reason="ok"))
+    monkeypatch.setattr(update_cmd, "KEYS_DIR", tmp_path / "keys")
     assert update_cmd.main([]) == 1
     assert "refusing to install A" in capsys.readouterr().err
     assert (mods / "A" / "manifest.toml").read_text() == "old"
