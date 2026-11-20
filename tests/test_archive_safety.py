@@ -15,7 +15,7 @@ import pytest
 from rsmm.cli import cmd_install, json_bridge, update_cmd
 from rsmm.sdk import archive
 from rsmm.sdk.archive import ArchiveError
-from rsmm.sdk.repo import RepoError
+from rsmm.sdk.repo import RepoError, Trust
 
 
 def _zip(path: Path, entries: dict[str, bytes]) -> Path:
@@ -536,7 +536,8 @@ def test_update_refuses_lua_primitives_and_keeps_going(tmp_path, monkeypatch, ca
     monkeypatch.setattr(update_cmd, "_installed_mods", lambda: {"A": "1.0.0", "B": "1.0.0"})
     monkeypatch.setattr(update_cmd, "_fetch", lambda url: (
         _json.dumps(index).encode() if url == "idx" else zips[url]))
-    monkeypatch.setattr(update_cmd, "_verify_download", lambda *a: (True, "ok"))
+    monkeypatch.setattr(update_cmd, "check_entry",
+                        lambda *a: Trust(ok=True, warn=False, reason="ok"))
     assert update_cmd.main([]) == 1
     err = capsys.readouterr().err
     assert "refusing to install A" in err and "low-level primitives" in err

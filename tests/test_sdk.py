@@ -877,13 +877,16 @@ def test_install_from_repo_json(tmp_path: Path, monkeypatch):
     }
     repo_path = tmp_path / "repo.json"
     repo_path.write_text(json.dumps(repo), encoding="utf-8")
-    rc = cmd_install.main(["DemoMod", "--from", str(repo_path)])
+    # Unsigned: refused unattended, installed once the user says --yes.
+    assert cmd_install.main(["DemoMod", "--from", str(repo_path)]) == 1
+    assert not (mods_dir / "DemoMod").exists()
+    rc = cmd_install.main(["DemoMod", "--from", str(repo_path), "--yes"])
     assert rc == 0
     assert (mods_dir / "DemoMod" / "manifest.toml").exists()
     # already installed without --force -> error
-    assert cmd_install.main(["DemoMod", "--from", str(repo_path)]) == 1
+    assert cmd_install.main(["DemoMod", "--from", str(repo_path), "--yes"]) == 1
     # --force overwrites
-    assert cmd_install.main(["DemoMod", "--from", str(repo_path), "--force"]) == 0
+    assert cmd_install.main(["DemoMod", "--from", str(repo_path), "--force", "--yes"]) == 0
 
 
 def test_install_checksum_mismatch(tmp_path: Path, monkeypatch):
@@ -905,7 +908,8 @@ def test_install_direct_zip(tmp_path: Path, monkeypatch):
     from rsmm.cli import cmd_install
     zip_path, _ = _make_packed_mod(tmp_path, mod_id="ZipMod")
     monkeypatch.setattr(cmd_install, "MODS_DIR", tmp_path / "mods")
-    assert cmd_install.main([zip_path.as_uri()]) == 0
+    assert cmd_install.main([zip_path.as_uri()]) == 1      # unverified, unattended
+    assert cmd_install.main([zip_path.as_uri(), "--yes"]) == 0
     assert (tmp_path / "mods" / "ZipMod" / "init.lua").exists()
 
 
