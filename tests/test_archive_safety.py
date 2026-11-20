@@ -69,7 +69,8 @@ def test_safe_extract_rejects_windows_rewritten_components(tmp_path, name):
 
 @pytest.mark.parametrize("name", [
     "m/assets/aux.txt", "m/assets/CON/x.bin", "m/a/com1.tar.gz", "m/nul",
-    "m/a/LPT9 .txt",
+    "m/a/LPT9 .txt", "m/a/CONIN$", "m/a/conout$.log", "m/a/COM0.txt",
+    "m/a/com¹.txt", "m/a/LPT³",
 ])
 def test_safe_extract_rejects_device_names_at_any_depth(tmp_path, name):
     z = _zip(tmp_path / "a.zip", {name: b"x"})
