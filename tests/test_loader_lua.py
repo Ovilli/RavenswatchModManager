@@ -167,8 +167,10 @@ _LUA_MAXVARS = 200
 #: while lifting another namespace out (see `_submodule_fn`) is still a choice.
 _MIN_FREE_LOCALS = 40
 
-_FN_HEADER = re.compile(r"^(?:main|function) <([^:>]+):(\d+),\d+> \(.*? at (0x[0-9a-f]+)\)", re.M)
-_LOCALS = re.compile(r"^locals \(\d+\) for (0x[0-9a-f]+):\n((?:\t.*\n)*)", re.M)
+#: Function addresses print as `%p`: `0x55d0…` on glibc, `000002D1…` on Windows.
+_ADDR = r"((?:0x)?[0-9a-fA-F]+)"
+_FN_HEADER = re.compile(rf"^(?:main|function) <([^:>]+):(\d+),\d+> \(.*? at {_ADDR}\)", re.M)
+_LOCALS = re.compile(rf"^locals \(\d+\) for {_ADDR}:\n((?:\t.*\n)*)", re.M)
 
 
 def _peak_live_locals(listing: str) -> list[tuple[int, int]]:

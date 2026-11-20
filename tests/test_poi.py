@@ -2009,6 +2009,13 @@ def _strings(path: Path) -> list[str]:
     return [s for _sec, _off, s in entity_strings.list_strings(path.read_bytes())]
 
 
+def test_teleporter_pair_names_keep_lookalike_mod_ids_apart():
+    """#229 review: `night-watch` and `night_watch` both made night_watch_Cave."""
+    a, b = poi._pair_id("night-watch", "Cave"), poi._pair_id("night_watch", "Cave")
+    assert a != b and a.startswith("night_watch_Cave_") and b.startswith("night_watch_Cave_")
+    assert poi._pair_id("m", "Cave") == poi._pair_id("m", "Cave")
+
+
 @needs_corpus
 def test_entrance_needs_room_and_teleporters_pair_by_mod_id(tmp_path):
     from rsmm.engine import level_placements as LP
@@ -2034,14 +2041,15 @@ def test_entrance_needs_room_and_teleporters_pair_by_mod_id(tmp_path):
               ".EntitySettingsResource.gen"]
     inn = rel["EntitySettings/Objects_Common/m_room_Teleporter_In.entity.ot"
               ".EntitySettingsResource.gen"]
-    assert {"Mod_Pair_Out", "Mod_Pair_In"} <= set(_strings(out))
-    assert {"Mod_Pair_Out", "Mod_Pair_In"} <= set(_strings(inn))
+    pid = poi._pair_id("m", "Mod_Pair")
+    assert {f"{pid}_Out", f"{pid}_In"} <= set(_strings(out))
+    assert {f"{pid}_Out", f"{pid}_In"} <= set(_strings(inn))
     assert not any(s.startswith(("Cave_Entrance", "Thieves_Underground_Entrance"))
                    for s in _strings(out) + _strings(inn))
     # the state that actually teleports (missing from the generic Out model),
     # and the stash event renamed so the door does not count as a stash
     assert "Child Event Teleport Hero" in _strings(out)
-    assert "HERO_ENTER_MOD_PAIR" in _strings(out)
+    assert f"HERO_ENTER_{pid.upper()}" in _strings(out)
     assert "HERO_ENTER_THIEVES_STASH" not in _strings(out)
 
     level = next(f for r, f in rel.items() if r.endswith("m_room.level.ot.GameStream.gen"))
@@ -2084,10 +2092,11 @@ def test_room_takes_over_its_shipped_teleporter(tmp_path):
     assert level.count(b"m_room_Teleporter_In") == 3      # the ref + two override labels
     # the LEVEL sets the pair names too, and those win over the entity's
     assert b"Gold_Room_In" not in level and b"Gold_Room_Out" not in level
-    assert b"Mod_Pair_In" in level and b"Mod_Pair_Out" in level
+    pid = poi._pair_id("m", "Mod_Pair")
+    assert f"{pid}_In".encode() in level and f"{pid}_Out".encode() in level
     ent = next(f for f in files if "m_room_Teleporter_In.entity.ot" in f.name)
     names = set(_strings(ent))
-    assert {"Mod_Pair_In", "Mod_Pair_Out"} <= names
+    assert {f"{pid}_In", f"{pid}_Out"} <= names
     assert not any(n.startswith("Thieves_Underground_Entrance") for n in names)
 
 
@@ -2155,3 +2164,24 @@ def test_an_anchor_must_name_exactly_one_placement():
         poi._anchor(defn, "move[0]", {"entity": rock, "at": [1, 2]}, need_at=False)
     with pytest.raises(ContentError, match="needs an `entity`"):
         poi._anchor(defn, "clear.remove[0]", {"at": [1, 2, 3]}, need_at=False)
+
+
+def test_swapped_prop_hands_its_deps_and_borrows_back(tmp_path, monkeypatch):
+    """A `replaces` prop with a [marker] parent has a cache closure of its own.
+    `_emit_custom_prop` dropped what `_emit_prop_art` returned, so the tile
+    cache never listed the parent's resources and they resolved to NULL at
+    level build. It must hand them back like `_emit_cloned_level` does."""
+    monkeypatch.setattr(poi, "_emit_prop_art",
+                        lambda *a: ("Mod\\Prop.entity.ot", ["Ui\\Reveal.entity.ot"],
+                                    ["Shipped\\Marker.entity.ot"]))
+    monkeypatch.setattr(poi, "_prefab_ref_of", lambda *a: "Tiles\\Donor.entity.ot")
+    monkeypatch.setattr(poi, "_level_ref_of", lambda *a: "Levels\\Donor.level.ot")
+    monkeypatch.setattr(poi, "_corpus", lambda *a: b"")
+    monkeypatch.setattr(PC, "clone_tile_level", lambda *a: b"")
+    monkeypatch.setattr(PC, "clone_tile_prefab", lambda *a: b"")
+    monkeypatch.setattr(poi, "_write", lambda *a: None)
+    defn = ContentDef("poi", "camp", {"prop": {"replaces": "A.entity.ot"}})
+    ref, deps, borrow = poi._emit_custom_prop("m", defn, tmp_path, "Base", [])
+    assert ref.endswith("m_camp.entity.ot")
+    assert deps == ["Ui\\Reveal.entity.ot"]
+    assert borrow == ["Shipped\\Marker.entity.ot"]

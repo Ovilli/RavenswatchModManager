@@ -15,7 +15,7 @@ import pytest
 from rsmm.cli import cmd_install, json_bridge, update_cmd
 from rsmm.sdk import archive
 from rsmm.sdk.archive import ArchiveError
-from rsmm.sdk.repo import RepoError
+from rsmm.sdk.repo import RepoError, Trust
 
 
 def _zip(path: Path, entries: dict[str, bytes]) -> Path:
@@ -34,9 +34,48 @@ def test_safe_dir_name_rejects(bad):
         archive.safe_dir_name(bad)
 
 
+@pytest.mark.parametrize("bad", ["foo.", "foo "])
+def test_safe_dir_name_rejects_trailing_dot_or_space(bad):
+    with pytest.raises(ArchiveError):
+        archive.safe_dir_name(bad)
+
+
 @pytest.mark.parametrize("ok", ["MyMod", "my-mod", "my_mod.v2", "Mod123"])
 def test_safe_dir_name_accepts(ok):
     assert archive.safe_dir_name(ok) == ok
+
+
+# --- Windows name rewriting ------------------------------------------------
+
+
+@pytest.mark.parametrize("name", [
+    "m/_root/version.dll.", "m/_root/version.dll ",
+    "m/_root/version.dll::$DATA", "m/_root/version.dll",
+])
+def test_classify_members_blocks_windows_aliases_of_a_dll(name):
+    blocked, _ = archive.classify_members([name])
+    assert blocked == [name]
+
+
+@pytest.mark.parametrize("name", [
+    "m/_root./x.txt", "m/a /x.txt", "m/a:b/x.txt", "m/x.txt.", "m/x.txt ",
+    "m/x.txt:stream",
+])
+def test_safe_extract_rejects_windows_rewritten_components(tmp_path, name):
+    z = _zip(tmp_path / "a.zip", {name: b"x"})
+    with zipfile.ZipFile(z) as zf, pytest.raises(ArchiveError, match="Windows"):
+        archive.safe_extract(zf, tmp_path / "out")
+
+
+@pytest.mark.parametrize("name", [
+    "m/assets/aux.txt", "m/assets/CON/x.bin", "m/a/com1.tar.gz", "m/nul",
+    "m/a/LPT9 .txt", "m/a/CONIN$", "m/a/conout$.log", "m/a/COM0.txt",
+    "m/a/com¹.txt", "m/a/LPT³",
+])
+def test_safe_extract_rejects_device_names_at_any_depth(tmp_path, name):
+    z = _zip(tmp_path / "a.zip", {name: b"x"})
+    with zipfile.ZipFile(z) as zf, pytest.raises(ArchiveError, match="device name"):
+        archive.safe_extract(zf, tmp_path / "out")
 
 
 # --- extraction guards -----------------------------------------------------
@@ -143,7 +182,7 @@ def test_scan_dangerous_reports_every_root_overlay(tmp_path):
     z = _zip(tmp_path / "a.zip", {
         "M/manifest.toml": b"",
         "M/assets/normal.bin": b"x",                       # not an overlay
-        "M/_root/DarkTalesResources/ApplicationSettings.ot": b"x",
+        "M/assets/_root/DarkTalesResources/ApplicationSettings.ot": b"x",
     })
     with zipfile.ZipFile(z) as zf:
         assert archive.scan_dangerous(zf, "M") == [
@@ -310,10 +349,22 @@ def test_pack_refuses_what_install_would_reject(tmp_path, monkeypatch, capsys):
 
 def test_pack_warns_about_root_overlays_but_still_packs(tmp_path, monkeypatch, capsys):
     _packable(tmp_path / "mods", "Overlay",
-              {"_root/DarkTalesResources/Settings.ot": b"x"})
+              {"assets/_root/DarkTalesResources/Settings.ot": b"x"})
     assert _run_pack(tmp_path, monkeypatch, "Overlay") == 0
     assert "overwrites game install root file" in capsys.readouterr().err
     assert (tmp_path / "dist" / "Overlay.zip").is_file()
+
+
+def test_install_scan_reports_the_overlay_in_a_packed_archive(tmp_path, monkeypatch):
+    """The overlay path apply reads is the one `rsmm pack` ships and install warns about."""
+    _packable(tmp_path / "mods", "Overlay",
+              {"assets/_root/DarkTalesResources/Settings.ot": b"x"})
+    assert _run_pack(tmp_path, monkeypatch, "Overlay") == 0
+    with zipfile.ZipFile(tmp_path / "dist" / "Overlay.zip") as zf:
+        assert archive.scan_dangerous(zf, "Overlay") == ["DarkTalesResources/Settings.ot"]
+    from rsmm.cli import apply_mods
+    assert apply_mods.resolve_special("_root/DarkTalesResources/Settings.ot", {}) \
+        == apply_mods.ROOT_PREFIX + "DarkTalesResources\\Settings.ot"
 
 
 def test_pack_takes_the_folder_as_tab_completion_writes_it(tmp_path, monkeypatch, capsys):
@@ -433,3 +484,141 @@ def test_pack_keeps_emitted_files_when_a_kind_cannot_rebuild_them(tmp_path, monk
     names = zipfile.ZipFile(tmp_path / "dist" / "ItemMod.zip").namelist()
     assert "ItemMod/assets/Items/X.gen" in names
 
+
+
+# --- low-level primitives in mod Lua ---------------------------------------
+
+_POKE = b'local R = require "rsmm"\nlocal I = R._internal\nI.write_u32(0, 1)\n'
+
+
+@pytest.mark.parametrize("lua", [
+    b'local I = R._internal\n',
+    b'R["_internal"].poke(0, 1)\n',
+    b'local v = x.read_u64(p)\n',
+    b'x.write_f32(p, 1)\n',
+    b'local b = I.module_base()\n',
+    b'R.engine.resolve("Foo")\n',
+    b'--[[ note ]] local I = R._internal\n',
+    b'local s = "--" local I = R._internal\n',
+])
+def test_lua_scan_refuses_primitives(tmp_path, lua):
+    z = _zip(tmp_path / "a.zip", {"M/init.lua": lua})
+    with zipfile.ZipFile(z) as zf, pytest.raises(ArchiveError, match="M/init.lua"):
+        archive.scan_lua_primitives(zf, "M")
+
+
+@pytest.mark.parametrize("lua", [
+    b'local R = require "rsmm"\nR.on("tick", function() end)\n',
+    b'-- R._internal is off limits\nlocal x = 1\n',
+    b'--[[\nI.write_u32(p, 1)\n]]\nlocal x = 1\n',
+    b'local internal_count = 0\n',
+])
+def test_lua_scan_passes_sdk_only_lua(tmp_path, lua):
+    z = _zip(tmp_path / "a.zip", {"M/init.lua": lua})
+    with zipfile.ZipFile(z) as zf:
+        archive.scan_lua_primitives(zf, "M")
+
+
+def test_lua_scan_reads_every_lua_file_whatever_its_case(tmp_path):
+    z = _zip(tmp_path / "a.zip", {"M/init.lua": b"local x = 1\n",
+                                  "M/lib/Mem.LUA": _POKE,
+                                  "M/notes.txt": _POKE})
+    with zipfile.ZipFile(z) as zf, pytest.raises(ArchiveError) as e:
+        archive.scan_lua_primitives(zf, "M")
+    assert "M/lib/Mem.LUA: _internal, .write_u32(" in str(e.value)
+    assert "notes.txt" not in str(e.value)
+
+
+def test_lua_scan_is_linear_in_brackets_and_comments():
+    """Each `[` and `--` used to copy the rest of the source: an 8 MB file of
+    them took hours. A quarter million of each has to finish in seconds."""
+    import time
+
+    from rsmm.engine.mod_scope import lowlevel_primitives
+    src = "x[1] -- c\n" * 250_000
+    t0 = time.perf_counter()
+    assert lowlevel_primitives(src) == []
+    assert time.perf_counter() - t0 < 10
+
+
+def test_lua_scan_refuses_oversized_lua(tmp_path, monkeypatch):
+    monkeypatch.setattr(archive, "MAX_LUA_BYTES", 8)
+    z = _zip(tmp_path / "a.zip", {"M/init.lua": b"local x = 12345\n"})
+    with zipfile.ZipFile(z) as zf, pytest.raises(ArchiveError, match="limit for mod Lua"):
+        archive.scan_lua_primitives(zf, "M")
+
+
+def test_install_refuses_lua_primitives(tmp_path):
+    z = _zip(tmp_path / "a.zip", {"M/manifest.toml": b"x", "M/init.lua": _POKE})
+    mods = tmp_path / "mods"
+    with pytest.raises(ArchiveError, match="low-level primitives"):
+        cmd_install._safe_extract(z.read_bytes(), mods)
+    assert not (mods / "M").exists()
+
+
+_BYTECODE = b"\x1bLuaT\x00\x19\x93\r\n\x1a\n\x04\x08\x08"
+
+
+def test_lua_scan_refuses_precompiled_bytecode(tmp_path):
+    z = _zip(tmp_path / "a.zip", {"M/init.lua": _BYTECODE})
+    with zipfile.ZipFile(z) as zf, pytest.raises(ArchiveError, match="bytecode") as e:
+        archive.scan_lua_primitives(zf, "M")
+    assert "M/init.lua" in str(e.value)
+
+
+def test_install_refuses_precompiled_bytecode(tmp_path):
+    z = _zip(tmp_path / "a.zip", {"M/manifest.toml": b"x", "M/init.lua": _BYTECODE})
+    mods = tmp_path / "mods"
+    with pytest.raises(ArchiveError, match="bytecode"):
+        cmd_install._safe_extract(z.read_bytes(), mods)
+    assert not (mods / "M").exists()
+
+
+def test_update_refuses_lua_primitives_and_keeps_going(tmp_path, monkeypatch, capsys):
+    import json as _json
+    mods = tmp_path / "mods"
+    for mid in ("A", "B"):
+        (mods / mid).mkdir(parents=True)
+        (mods / mid / "manifest.toml").write_text("old")
+    monkeypatch.setattr(update_cmd, "MODS_DIR", mods)
+    zips = {"A": _zip(tmp_path / "A.zip", {"A/init.lua": _POKE}).read_bytes(),
+            "B": _zip(tmp_path / "B.zip", {"B/manifest.toml": b"new"}).read_bytes()}
+    index = {"schema": update_cmd.RepoIndex(name="").dump()["schema"], "mods": [
+        {"id": m, "version": "2.0.0", "url": m, "sha256": "x"} for m in zips]}
+    monkeypatch.setattr(update_cmd, "_load_repos", lambda: ["idx"])
+    monkeypatch.setattr(update_cmd, "_installed_mods", lambda: {"A": "1.0.0", "B": "1.0.0"})
+    monkeypatch.setattr(update_cmd, "_fetch", lambda url: (
+        _json.dumps(index).encode() if url == "idx" else zips[url]))
+    monkeypatch.setattr(update_cmd, "check_entry",
+                        lambda *a, **kw: Trust(ok=True, warn=False, reason="ok"))
+    monkeypatch.setattr(update_cmd, "KEYS_DIR", tmp_path / "keys")
+    assert update_cmd.main([]) == 1
+    err = capsys.readouterr().err
+    assert "refusing to install A" in err and "low-level primitives" in err
+    assert (mods / "A" / "manifest.toml").read_text() == "old"
+    assert (mods / "B" / "manifest.toml").read_text() == "new"
+
+
+def test_update_skips_a_corrupt_download_and_keeps_going(tmp_path, monkeypatch, capsys):
+    import json as _json
+    mods = tmp_path / "mods"
+    for mid in ("A", "B"):
+        (mods / mid).mkdir(parents=True)
+        (mods / mid / "manifest.toml").write_text("old")
+    monkeypatch.setattr(update_cmd, "MODS_DIR", mods)
+    good_a = _zip(tmp_path / "A.zip", {"A/manifest.toml": b"new"}).read_bytes()
+    zips = {"A": good_a[: len(good_a) // 2],   # truncated download
+            "B": _zip(tmp_path / "B.zip", {"B/manifest.toml": b"new"}).read_bytes()}
+    index = {"schema": update_cmd.RepoIndex(name="").dump()["schema"], "mods": [
+        {"id": m, "version": "2.0.0", "url": m, "sha256": "x"} for m in zips]}
+    monkeypatch.setattr(update_cmd, "_load_repos", lambda: ["idx"])
+    monkeypatch.setattr(update_cmd, "_installed_mods", lambda: {"A": "1.0.0", "B": "1.0.0"})
+    monkeypatch.setattr(update_cmd, "_fetch", lambda url: (
+        _json.dumps(index).encode() if url == "idx" else zips[url]))
+    monkeypatch.setattr(update_cmd, "check_entry",
+                        lambda *a, **kw: Trust(ok=True, warn=False, reason="ok"))
+    monkeypatch.setattr(update_cmd, "KEYS_DIR", tmp_path / "keys")
+    assert update_cmd.main([]) == 1
+    assert "refusing to install A" in capsys.readouterr().err
+    assert (mods / "A" / "manifest.toml").read_text() == "old"
+    assert (mods / "B" / "manifest.toml").read_text() == "new"

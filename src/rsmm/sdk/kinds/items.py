@@ -40,7 +40,7 @@ from pathlib import Path
 
 from ...engine import corpus
 from ...engine import magic_item_cook as cook
-from ..content import ContentDef, ContentError, SchemaNotMined
+from ..content import ContentDef, ContentError, SchemaNotMined, written_this_run
 from . import _common as C
 
 _log = logging.getLogger(__name__)
@@ -420,8 +420,9 @@ def _bank_prior(out_dir: Path) -> dict[str, bytes]:
     it; rebuilding from vanilla dropped every earlier item's text."""
     bank = out_dir.joinpath(*cook.MAGIC_TEXT_BANK.split("/"))
     out = {".Lang" + f.name[len(bank.name) + len(".Lang"):]: f.read_bytes()
-           for f in bank.parent.glob(bank.name + ".Lang*")} if bank.parent.is_dir() else {}
-    if bank.is_file():
+           for f in bank.parent.glob(bank.name + ".Lang*")
+           if written_this_run(f)} if bank.parent.is_dir() else {}
+    if written_this_run(bank):
         out["__base__"] = bank.read_bytes()
     return out
 
@@ -553,6 +554,12 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
         raise _base_not_found(defn.id, base)
 
     base_cooked, base_rarity = found
+    # Case-insensitive: one file name on Windows (#229 review).
+    if not replace and defn.id.casefold() in {i.casefold() for i in _vanilla_item_ids()}:
+        raise ContentError(
+            f"item {defn.id}: a shipped item is already called {defn.id!r}, and a "
+            f"clone under that name would silently replace it. Pick another id "
+            f"(mode = 'replace' edits the shipped item).")
     if replace:
         for key in ("rarity", "unique_identity"):
             if defn.fields.get(key):

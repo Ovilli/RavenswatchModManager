@@ -256,6 +256,15 @@ def stems(directory: str, suffix: str) -> list[str]:
     return sorted(out)
 
 
+def shipped_stem(directory: str, suffix: str, stem: str) -> str | None:
+    """The shipped ``<directory>/<X><suffix>`` whose stem is ``stem`` ignoring
+    case, or None. A mod def whose id differs from a shipped one only by case
+    lands on the same file on Windows, so clash checks go through this rather
+    than an exact-case :func:`exists`."""
+    want = stem.casefold()
+    return next((s for s in stems(directory, suffix) if s.casefold() == want), None)
+
+
 @dataclass(frozen=True, order=True)
 class CorpusFile:
     """One shipped file, addressed by decoded path — a drop-in for the

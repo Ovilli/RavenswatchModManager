@@ -188,7 +188,11 @@ def verify_file(path: Path, sig_b64: str, public_key_path: Path) -> bool:
         raise RepoError(f"unreadable public key {public_key_path}: {e}") from None
     if len(key_bytes) != 32:
         raise RepoError(f"public key {public_key_path} is not a raw 32-byte Ed25519 key")
-    message = sha256_file(path).encode("ascii")
+    return _verify_digest(key_bytes, sha256_file(path), sig_b64)
+
+
+def _verify_digest(key_bytes: bytes, digest_hex: str, sig_b64: str) -> bool:
+    message = digest_hex.encode("ascii")
     try:
         signature = base64.b64decode(sig_b64, validate=True)
     except (ValueError, TypeError):
@@ -225,3 +229,237 @@ def keygen() -> tuple[str, str]:
         encoding=ser.Encoding.Raw, format=ser.PublicFormat.Raw,
     )
     return base64.b64encode(priv_raw).decode("ascii"), base64.b64encode(pub_raw).decode("ascii")
+
+
+# ---------------------------------------------------------------------------
+# Install trust: signature + per-mod key pinning
+# ---------------------------------------------------------------------------
+
+PINS_NAME = "pins.json"
+PINS_LOCK_NAME = "pins.lock"
+
+
+@dataclass(frozen=True)
+class Pin:
+    """The signer a mod is pinned to: its key id and the SHA-256 of the key
+    itself, so a key file swapped under the same name is not that signer.
+    ``fpr`` is empty for a pin written before fingerprints were kept."""
+    key: str
+    fpr: str = ""
+
+
+def pin_key(mod_id: str) -> str:
+    """The pin-store key for a mod: the id case-folded, because ``Foo`` and
+    ``foo`` are one folder on Windows and must not carry two pins."""
+    return mod_id.casefold()
+
+
+def _pins(keys_dir: Path) -> dict[str, Pin]:
+    import json
+    path = keys_dir / PINS_NAME
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as e:
+        # A pin file we cannot read must not quietly become "no pins": that is
+        # exactly the state in which a swapped key installs.
+        raise RepoError(f"unreadable key pins {path}: {e}") from None
+    # The same holds for one that parses but is not a pin map (`[]` used to
+    # read as "no pins", putting every pinned mod back on first-install
+    # policy). Nothing is rewritten here, so the file stays for the user.
+    if not isinstance(raw, dict):
+        raise RepoError(f"key pins {path} is not a JSON object; fix or remove it")
+    out: dict[str, Pin] = {}
+    for k, v in raw.items():
+        if isinstance(v, str) and v:
+            pin = Pin(v)
+        elif (isinstance(v, dict) and isinstance(v.get("key"), str) and v["key"]
+              and isinstance(v.get("fpr", ""), str)):
+            pin = Pin(v["key"], v.get("fpr", ""))
+        else:
+            raise RepoError(f"key pins {path}: bad entry for {k!r}; fix or remove it")
+        out[pin_key(k)] = pin
+    return out
+
+
+def _write_pins(keys_dir: Path, pins: dict[str, Pin]) -> None:
+    import json
+
+    from rsmm.engine.safeio import atomic_write_text
+    keys_dir.mkdir(parents=True, exist_ok=True)
+    body = {k: {"key": v.key, "fpr": v.fpr} for k, v in sorted(pins.items())}
+    atomic_write_text(keys_dir / PINS_NAME, json.dumps(body, indent=2) + "\n")
+
+
+class pin_lock:
+    """Hold ``<keys_dir>/pins.lock`` across a trust decision, the install it
+    allows and the pin it records. Two installs reading the same pin map and
+    each writing their own entry lost one of them; two first installs of one
+    mod could each pin a different signer."""
+
+    def __init__(self, keys_dir: Path) -> None:
+        self.keys_dir = keys_dir
+        self._fh = None
+
+    def __enter__(self) -> pin_lock:
+        import os
+        self.keys_dir.mkdir(parents=True, exist_ok=True)
+        fh = open(self.keys_dir / PINS_LOCK_NAME, "a+b")  # held until __exit__
+        try:
+            if os.name == "nt":
+                import msvcrt
+                fh.seek(0)
+                while True:
+                    try:
+                        msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+                        break
+                    except OSError:     # LK_LOCK gives up after ~10 s; keep waiting
+                        continue
+            else:
+                import fcntl
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        except BaseException:
+            fh.close()
+            raise
+        self._fh = fh
+        return self
+
+    def __exit__(self, *exc) -> None:
+        import os
+        fh, self._fh = self._fh, None
+        if fh is None:
+            return
+        try:
+            if os.name == "nt":
+                import msvcrt
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            fh.close()
+
+
+@dataclass
+class Trust:
+    """Outcome of :func:`check_entry`. ``ok`` False = refuse. ``warn`` = install
+    only after the user confirms (unsigned, or a signer we hold no key for).
+    ``pin``: ``(mod id, Pin)`` to record with :func:`record_pin` once the
+    install succeeded; the check itself never writes."""
+    ok: bool
+    warn: bool
+    reason: str
+    pin: tuple[str, Pin] | None = None
+
+
+def record_pin(keys_dir: Path, trust: Trust) -> None:
+    """Persist ``trust.pin`` after a successful install. Call it inside the
+    same :class:`pin_lock` as the check, so the store re-read here is the one
+    the decision saw; a conflicting pin is still refused, not overwritten."""
+    if trust.pin is None:
+        return
+    mod_id, pin = trust.pin
+    pins = _pins(keys_dir)
+    have = pins.get(pin_key(mod_id))
+    if have is not None and have.key != pin.key:
+        raise RepoError(f"{mod_id} is already pinned to {have.key!r}; not re-pinning "
+                        f"it to {pin.key!r}")
+    if have == pin:
+        return
+    pins[pin_key(mod_id)] = pin
+    _write_pins(keys_dir, pins)
+
+
+def check_unsigned(dest_id: str, keys_dir: Path, what: str) -> Trust:
+    """Trust for an install with no signature to check (a direct archive URL,
+    a registry download): allowed after consent, unless the mod it replaces
+    is pinned to a signer, which it cannot prove it is."""
+    have = _pins(keys_dir).get(pin_key(dest_id))
+    if have is not None:
+        return Trust(False, False, f"{what} cannot be verified, but {dest_id} is pinned "
+                                   f"to signer {have.key!r}; refusing (install it from "
+                                   f"a signed repo, or remove the pin in "
+                                   f"{keys_dir / PINS_NAME})")
+    return Trust(True, True, what)
+
+
+def check_entry(digest_hex: str, entry: RepoEntry, keys_dir: Path, *,
+                dest_id: str | None = None) -> Trust:
+    """Decide whether a downloaded archive (``digest_hex`` = its SHA-256) may
+    install, by the index entry's signature and the signer pinned for its mod.
+
+    ``dest_id`` is the installed mod the archive will replace (its folder
+    under ``mods/``); the pin consulted is that mod's, and the entry has to
+    name the same mod. Trusting on ``entry.id`` while replacing whatever the
+    archive's folder said let a mislabelled entry replace a different mod.
+
+    Trust on first use: the first verified signature yields a pin for the
+    mod (recorded by :func:`record_pin` once the install succeeds). After that
+    a version signed by another key, not signed at all, or signed by a key
+    whose file is missing or changed, is refused.
+    """
+    from .archive import safe_dir_name  # archive imports this module
+
+    if digest_hex != entry.sha256:
+        return Trust(False, False, f"sha256 mismatch: expected {entry.sha256}, got {digest_hex}")
+    mod_id = entry.id if dest_id is None else dest_id
+    if pin_key(entry.id) != pin_key(mod_id):
+        return Trust(False, False, f"the index entry is for {entry.id!r} but the archive "
+                                   f"replaces {mod_id!r}; refusing")
+    pinned = _pins(keys_dir).get(pin_key(mod_id))
+    if not entry.sig or not entry.pubkey_id:
+        if pinned:
+            return Trust(False, False, f"unsigned, but {mod_id} is pinned to signer "
+                                       f"{pinned.key!r}; refusing (remove the pin in "
+                                       f"{keys_dir / PINS_NAME} to accept it)")
+        return Trust(True, True, "unsigned")
+    # The id comes from the index. `../…` or an absolute path would reach a
+    # .pub file anywhere, including one shipped inside an installed mod.
+    try:
+        safe_dir_name(entry.pubkey_id, what="signer id")
+    except ValueError as e:
+        return Trust(False, False, str(e))
+    if pinned and pinned.key != entry.pubkey_id:
+        return Trust(False, False, f"signed by {entry.pubkey_id!r}, but {mod_id} is pinned "
+                                   f"to {pinned.key!r}; refusing (remove the pin in "
+                                   f"{keys_dir / PINS_NAME} if the author changed keys)")
+    pub = keys_dir / f"{entry.pubkey_id}.pub"
+    if not pub.exists():
+        if pinned:
+            # The pinned signer's key is gone: this cannot be verified, and a
+            # pinned mod never takes the unknown-signer consent path.
+            return Trust(False, False, f"{mod_id} is pinned to {pinned.key!r}, but {pub} "
+                                       f"is missing; refusing (restore the key)")
+        return Trust(True, True, f"unknown signer {entry.pubkey_id!r} (no key in {keys_dir})")
+    try:
+        key_bytes = base64.b64decode(pub.read_text(encoding="utf-8").strip(), validate=True)
+    except (OSError, ValueError) as e:
+        return Trust(False, False, f"unreadable public key {pub}: {e}")
+    fpr = hashlib.sha256(key_bytes).hexdigest()
+    if pinned and pinned.fpr and pinned.fpr != fpr:
+        return Trust(False, False, f"{pub} is not the key {mod_id} was pinned with "
+                                   f"(fingerprint changed); refusing")
+    # Can't verify is a refusal, not a pass.
+    if len(key_bytes) != 32 or not _verify_digest(key_bytes, digest_hex, entry.sig):
+        return Trust(False, False, f"signature INVALID ({entry.pubkey_id})")
+    pin = Pin(entry.pubkey_id, fpr)
+    if not pinned:
+        return Trust(True, False, f"signature ok ({entry.pubkey_id}, pinned for {mod_id} "
+                                  f"once installed)", pin=(mod_id, pin))
+    # A pin from before fingerprints were kept gets one now.
+    return Trust(True, False, f"signature ok ({entry.pubkey_id})",
+                 pin=(mod_id, pin) if not pinned.fpr else None)
+
+
+def confirm_untrusted(what: str, yes: bool) -> bool:
+    """Ask before installing something unverified. ``--yes`` answers for the
+    user; with no terminal to ask and no ``--yes`` the answer is no."""
+    import sys
+    if yes:
+        return True
+    if not sys.stdin.isatty():
+        print(f"  {what}: not verified; pass --yes to install it anyway", file=sys.stderr)
+        return False
+    return input(f"  {what}: not verified. Install anyway? [y/N] ").strip().lower() == "y"

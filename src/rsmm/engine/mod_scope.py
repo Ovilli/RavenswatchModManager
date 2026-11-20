@@ -93,6 +93,18 @@ _BEFORE_STATEMENT_KW = frozenset({
     "do", "then", "else", "repeat", "end", "break", "true", "false", "nil",
 })
 
+#: The engine escape hatches only the SDK may use: the native `_internal`
+#: table, raw memory reads and writes, the module base, scratch memory, raw
+#: calls and address resolution. `rsmm lint` errors on them in a mod's Lua,
+#: and installing a mod archive refuses one whose Lua uses them.
+LOWLEVEL_PRIMITIVE_RE = re.compile(
+    r"""(?:\b_internal\b"""
+    r"""|\.peek\(|\.poke\("""
+    r"""|\.module_base\(|\.scratch\("""
+    r"""|\.read_(?:u\d+|f\d+|cstr|f32|f64)\(|\.write_(?:u\d+|f\d+|f32|f64)\("""
+    r"""|\.call_raw\(|\.engine\.resolve\()"""
+)
+
 
 @dataclass
 class ScopeVerdict:
@@ -123,6 +135,10 @@ def asset_is_client_only(decoded: str) -> bool:
 
 # ---- Lua --------------------------------------------------------------------
 
+_LONG_COMMENT_OPEN = re.compile(r"--\[(=*)\[")
+_LONG_BRACKET_OPEN = re.compile(r"\[(=*)\[")
+
+
 def _strip_comments(src: str) -> str:
     """Remove Lua comments, keeping string literals (requires live in them)."""
     out, i, n = [], 0, len(src)
@@ -135,16 +151,15 @@ def _strip_comments(src: str) -> str:
             out.append(src[i:j + 1])
             i = j + 1
         elif src.startswith("--", i):
-            m = re.match(r"--\[(=*)\[", src[i:])
+            m = _LONG_COMMENT_OPEN.match(src, i)
             if m:
-                end = src.find("]" + m.group(1) + "]", i + m.end())
+                end = src.find("]" + m.group(1) + "]", m.end())
                 i = n if end < 0 else end + len(m.group(1)) + 2
             else:
                 nl = src.find("\n", i)
                 i = n if nl < 0 else nl
-        elif c == "[" and re.match(r"\[(=*)\[", src[i:]):
-            m = re.match(r"\[(=*)\[", src[i:])
-            end = src.find("]" + m.group(1) + "]", i + m.end())
+        elif c == "[" and (m := _LONG_BRACKET_OPEN.match(src, i)):
+            end = src.find("]" + m.group(1) + "]", m.end())
             stop = n if end < 0 else end + len(m.group(1)) + 2
             out.append(src[i:stop])
             i = stop
@@ -152,6 +167,15 @@ def _strip_comments(src: str) -> str:
             out.append(c)
             i += 1
     return "".join(out)
+
+
+def lowlevel_primitives(src: str) -> list[str]:
+    """The low-level primitives Lua `src` uses outside comments, each once.
+
+    Strings count: `R["_internal"]` reaches the same table as `R._internal`.
+    """
+    found = LOWLEVEL_PRIMITIVE_RE.finditer(_strip_comments(src))
+    return list(dict.fromkeys(m.group(0) for m in found))
 
 
 def _blank_strings(src: str) -> str:

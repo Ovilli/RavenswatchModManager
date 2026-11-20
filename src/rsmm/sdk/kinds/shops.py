@@ -64,9 +64,10 @@ become prices. The grid's layout, labels and look are the mod's own
 declaration — this kind only reads the stored value. A section id that is not a
 slot key raises, so a mistyped schema cannot silently edit nothing.
 
-Confidence: ``experimental``. Field meaning is read off the generator,
-quality-roll, pool-match and price routines in the live exe, and every edit
-round-trips byte-for-byte, but no edited shop has been opened in-game yet.
+Confidence: ``confirmed``. Field meaning is read off the generator,
+quality-roll, pool-match and price routines in the live exe, every edit
+round-trips byte-for-byte, and edited prices were what the shop charged in game
+(sandman-shop-test, 2026-09-13).
 """
 
 from __future__ import annotations

@@ -51,7 +51,7 @@ from ...engine import cooked, corpus
 from ...engine import enemy_pools as EP
 from ...engine import rsc_cache as RC
 from ...engine.cooked_schemas import definitions as _defs
-from ..content import ContentDef, ContentError, SchemaNotMined
+from ..content import ContentDef, ContentError, SchemaNotMined, written_this_run
 from . import _common as C
 
 _log = logging.getLogger(__name__)
@@ -141,10 +141,6 @@ ENEMY_CAMP_TIER_DEF_LIBRARY: Final[int] = 0x141411560
 EMPTY_STRING_SENTINEL: Final[int] = C.EMPTY_STRING_SENTINEL
 UNRESOLVED_NAME_HASH: Final[int] = C.UNRESOLVED_NAME_HASH
 
-#: Schema version of the JSON intermediate written by :func:`emit`. Bump
-#: whenever any field below moves or its semantics change so the migrations
-#: pipeline (`src/rsmm/sdk/migrations.py`) can rewrite older mods.
-ENEMY_MANIFEST_SCHEMA_VERSION: Final[int] = 1
 
 
 # --------------------------------------------------------------------------- #
@@ -285,6 +281,11 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     except ValueError as e:
         raise ContentError(str(e)) from e
 
+    if EP.corpus.shipped_stem(EP.ENEMY_ASSET_SUBDIR, EP.GEN_SUFFIX, defn.id):
+        raise ContentError(
+            f"enemy {defn.id}: a shipped enemy is already called {defn.id!r}, and a "
+            f"clone under that name would silently replace it. Pick another id "
+            f"(mode = 'override' edits the shipped enemy).")
     base_cooked = _load_base_cooked(base)
     if base_cooked is None:
         raise SchemaNotMined(
@@ -483,7 +484,7 @@ def _append_pool(biome: str, base: str, ref: str, out_dir: Path, defn_id: str) -
     from ...engine import level_placements as LP
     rel = EP.pool_cooked_rel(biome)
     dest = out_dir / Path(*rel.split("/"))
-    raw = dest.read_bytes() if dest.is_file() else EP.corpus_read(rel)
+    raw = dest.read_bytes() if written_this_run(dest) else EP.corpus_read(rel)
     if raw is None:
         raise SchemaNotMined(f"enemy {defn_id}: {rel} is missing, so {biome}'s pool "
                              f"cannot stream the clone's entity.")

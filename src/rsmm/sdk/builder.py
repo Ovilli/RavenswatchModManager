@@ -16,7 +16,7 @@ from pathlib import Path
 from rsmm.engine.paths import MODS_DIR
 
 from .api import sdk_export
-from .config import ConfigSchema
+from .config import ConfigSchema, ConfigStore
 from .content import ContentRef, ContentRegistry, _deref
 from .i18n import KEY_RE, SUPPORTED_LOCALES
 
@@ -520,8 +520,16 @@ class ModBuilder:
             if self._i18n:
                 self._write_i18n(staging)
             if self._content.defs:
-                (staging / "assets").mkdir(exist_ok=True)
-                self._content.emit(staging / "assets")
+                assets = staging / "assets"
+                assets.mkdir(exist_ok=True)
+                written = self._content.emit(assets)
+                # The manifest carries the defs as [[content]] blocks, so apply
+                # re-emits them (after a game patch too) and lint sees them. The
+                # marker makes this build's output apply's own: the first apply
+                # replaces it, and a failed one drops it instead of planting it.
+                (staging / ".rsmm_emitted.json").write_text(json.dumps(sorted(
+                    p.relative_to(assets).as_posix() for p in written), indent=2),
+                    encoding="utf-8")
             if self._assets:
                 self._write_assets(staging)
             if self._skinpacks:
@@ -530,6 +538,10 @@ class ModBuilder:
                 self._write_tags(staging)
             if any(d.kind == "item" for d in self._content.defs):
                 self._write_item_init(staging)
+            mine = dst / "init.lua"
+            if mine.is_file() and not mine.read_text(
+                    encoding="utf-8", errors="replace").startswith(_INIT_HEADER):
+                shutil.copy2(mine, staging / "init.lua")   # hand-written: keep it
             # Park the old tree beside dst (same filesystem, so the rename is
             # atomic) and drop it only once the new tree is in place — the
             # staging dir may be on another filesystem, where move is a copy
@@ -563,16 +575,23 @@ class ModBuilder:
 
     @staticmethod
     def _toml_str(s: str) -> str:
-        """Quote a string as a TOML basic string (escape backslash + quote)."""
-        return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+        """Quote a string as a TOML basic string (control characters too)."""
+        return ConfigStore._toml_repr(str(s))
+
+    @staticmethod
+    def _toml_table(header: str, body: dict) -> list[str]:
+        """``[header]`` / ``[[header]]`` and one ``key = value`` line per entry.
+        None has no TOML form, so a None value is left out (= the default)."""
+        return ["", header] + [f"{ConfigStore._toml_key(str(k))} = {ConfigStore._toml_repr(v)}"
+                               for k, v in body.items() if v is not None]
 
     def _write_manifest(self, root: Path) -> None:
         lines = [
             "[mod]",
-            f'id = "{self.id}"',
-            f'name = "{self.name}"',
-            f'version = "{self.version}"',
-            f'author = "{self.author}"',
+            f"id = {self._toml_str(self.id)}",
+            f"name = {self._toml_str(self.name)}",
+            f"version = {self._toml_str(self.version)}",
+            f"author = {self._toml_str(self.author)}",
             f'enabled = {"true" if self.enabled else "false"}',
             'sdk_version = ">=3.0,<4"',
         ]
@@ -606,36 +625,20 @@ class ModBuilder:
             lines.append(
                 f"replaces = [{', '.join(self._toml_str(m) for m in self._replaces)}]")
         if self._api_name:
-            lines += ["", "[provides]", f'api = "{self._api_name}"']
-        if self._patch_blocks:
-            for block in self._patch_blocks:
-                lines += ["", "[[patch]]"]
-                for k, v in block.items():
-                    if isinstance(v, bool):
-                        lines.append(f'{k} = {"true" if v else "false"}')
-                    elif isinstance(v, (int, float)):
-                        lines.append(f'{k} = {v}')
-                    else:
-                        lines.append(f'{k} = "{v}"')
+            lines += ["", "[provides]", f"api = {self._toml_str(self._api_name)}"]
+        for block in self._patch_blocks:
+            lines += self._toml_table("[[patch]]", block)
+        for d in self._content.defs:
+            lines += self._toml_table("[[content]]", {"kind": d.kind, "id": d.id, **d.fields})
         (root / "manifest.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     def _write_config_schema(self, root: Path) -> None:
         s = self._config_schema or {}
         out = []
         for name, body in (s.get("fields") or {}).items():
-            out.append(f"[fields.{name}]")
-            for k, v in body.items():
-                if isinstance(v, bool):
-                    out.append(f"{k} = {'true' if v else 'false'}")
-                elif isinstance(v, (int, float)):
-                    out.append(f"{k} = {v}")
-                elif isinstance(v, list):
-                    rendered = ", ".join(f'"{x!s}"' for x in v)
-                    out.append(f"{k} = [{rendered}]")
-                else:
-                    out.append(f'{k} = "{v}"')
-            out.append("")
-        (root / "config_schema.toml").write_text("\n".join(out), encoding="utf-8")
+            out += self._toml_table(f"[fields.{ConfigStore._toml_key(str(name))}]", body)
+        (root / "config_schema.toml").write_text("\n".join(out).lstrip() + "\n",
+                                                 encoding="utf-8")
 
     def _write_assets(self, root: Path) -> None:
         import json
@@ -653,14 +656,16 @@ class ModBuilder:
                     json.dumps(tf), encoding="utf-8")
 
     def _write_item_init(self, root: Path) -> None:
-        import json
         items = [d for d in self._content.defs if d.kind == "item"]
         if not items:
             return
         lines = [
-            '-- Auto-generated by rsmm SDK builder.',
-            '-- Delete and write your own init.lua to customize.',
+            _INIT_HEADER,
+            '-- Replace this file with your own init.lua to customize; a build keeps it.',
             'local R = require "rsmm"',
+            # One local for every registration: a `local ok` per item hit
+            # Lua's 200-locals-per-function limit at ~200 items (#229 review).
+            'local ok',
             '',
         ]
         for item in items:
@@ -669,15 +674,12 @@ class ModBuilder:
                 v = item.fields.get(k)
                 if v is not None:
                     reg[k] = v
-            lines.append("local ok = R.item.register("
-                         + json.dumps(reg, indent=2, sort_keys=True)
-                         + ")")
+            body = "".join(f"  {k} = {_lua_repr(v)},\n" for k, v in sorted(reg.items()))
+            lines.append("ok = R.item.register({\n" + body + "})")
             lines.append("if ok then")
-            lines.append('  R.log("' + self.id + ': registered item '
-                         + item.id + '")')
+            lines.append(f"  R.log({_lua_repr(f'{self.id}: registered item {item.id}')})")
             lines.append("else")
-            lines.append('  R.log("' + self.id + ': item reg rejected '
-                         + item.id + '")')
+            lines.append(f"  R.log({_lua_repr(f'{self.id}: item reg rejected {item.id}')})")
             lines.append("end")
             lines.append("")
         (root / "init.lua").write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -693,3 +695,24 @@ class ModBuilder:
             (lang_dir / f"{loc}.toml").write_text(
                 "\n".join(lines) + "\n", encoding="utf-8"
             )
+
+
+_INIT_HEADER = "-- Auto-generated by rsmm SDK builder."
+
+
+def _lua_repr(v) -> str:
+    """``v`` as a Lua literal. Strings use decimal escapes for control bytes,
+    since Lua has no JSON-style ``\\uXXXX`` (JSON output was a syntax error)."""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return repr(v)
+    out = []
+    for ch in str(v):
+        if ch in '\\"':
+            out.append("\\" + ch)
+        elif ch < " " or ch == "\x7f":
+            out.append(f"\\{ord(ch):03d}")
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'

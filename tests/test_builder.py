@@ -138,3 +138,78 @@ def test_mod_facade_forwards_every_public_builder_method():
               if not n.startswith("_") and callable(getattr(ModBuilder, n))}
     missing = sorted(public - internal - set(dir(sdk.Mod)))
     assert not missing, f"sdk.Mod does not forward: {missing}"
+
+
+def test_builder_output_parses(tmp_path, monkeypatch):
+    """Generated TOML and Lua parse, with values that need escaping, and the
+    defs land as [[content]] blocks apply can re-emit. JSON in init.lua was a
+    Lua syntax error; raw f-strings broke the manifest on a quote and turned
+    lists into strings."""
+    import json
+    import shutil
+    import subprocess
+    import tomllib
+    import types
+
+    import pytest
+
+    from rsmm.sdk import content as content_mod
+    from rsmm.sdk.builder import ModBuilder
+
+    def emit(mod_id, defn, out_dir):
+        dest = out_dir / "Items" / f"{defn.id}.gen"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"x")
+        return [dest]
+
+    monkeypatch.setattr(content_mod, "_load_kind", lambda kind: types.SimpleNamespace(emit=emit))
+    monkeypatch.setattr("rsmm.sdk.builder.MODS_DIR", tmp_path)
+    odd = 'Bob "X" \\ Mod\nline2'
+    b = ModBuilder("Odd", version="1.0.0", author=odd, name=odd)
+    b.config({"fields": {"pick": {"type": "multiselect", "choices": [1, 2], "default": [1]}}})
+    b.stat("Health", value=100, tags=["a", "b"])
+    b.item("Ring", base="Armor_Per_Object", name=odd)
+    dst = b.commit()
+
+    mf = tomllib.loads((dst / "manifest.toml").read_text(encoding="utf-8"))
+    assert mf["mod"]["name"] == odd and mf["mod"]["author"] == odd
+    assert mf["patch"][0]["tags"] == ["a", "b"]
+    assert mf["content"] == [{"kind": "item", "id": "Ring",
+                              "base": "Armor_Per_Object", "name": odd}]
+    cfg = tomllib.loads((dst / "config_schema.toml").read_text(encoding="utf-8"))
+    assert cfg["fields"]["pick"]["default"] == [1]
+    assert json.loads((dst / ".rsmm_emitted.json").read_text()) == ["Items/Ring.gen"]
+
+    luac = shutil.which("luac5.4") or shutil.which("luac")
+    if luac is None:
+        pytest.skip("no luac to syntax-check init.lua")
+    subprocess.run([luac, "-p", str(dst / "init.lua")], check=True)
+
+    # A hand-written init.lua survives the next build.
+    (dst / "init.lua").write_text("print('mine')\n", encoding="utf-8")
+    b.commit()
+    assert (dst / "init.lua").read_text(encoding="utf-8") == "print('mine')\n"
+
+
+def test_item_init_compiles_with_hundreds_of_items(tmp_path, monkeypatch):
+    """#229 review: every item declared its own `local ok`, and Lua allows
+    200 locals per function, so a 200-item mod's init.lua did not compile."""
+    import shutil
+    import subprocess
+    import types
+
+    import pytest
+
+    from rsmm.sdk import content as content_mod
+    from rsmm.sdk.builder import ModBuilder
+
+    luac = shutil.which("luac5.4") or shutil.which("luac")
+    if luac is None:
+        pytest.skip("no luac to syntax-check init.lua")
+    monkeypatch.setattr(content_mod, "_load_kind",
+                        lambda kind: types.SimpleNamespace(emit=lambda *a: []))
+    monkeypatch.setattr("rsmm.sdk.builder.MODS_DIR", tmp_path)
+    b = ModBuilder("Many", version="1.0.0", author="a", name="Many")
+    for i in range(250):
+        b.item(f"Ring{i}", base="Armor_Per_Object")
+    subprocess.run([luac, "-p", str(b.commit() / "init.lua")], check=True)
