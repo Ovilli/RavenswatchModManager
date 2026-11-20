@@ -2183,13 +2183,26 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
             if ref == fx_ref:
                 return fx
             return own_projectiles.get(ref) or HK.reader(kit_copies)(ref)
+        copy_by_stem = {c.ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot"): c
+                        for c in kit_copies if not c.shipped and c.data is not None}
+        proj_by_stem = {r.rsplit("\\", 1)[-1].removesuffix(".entity.ot"): r
+                        for r in own_projectiles}
+        edit_files = {scope: main, **{s: c.data for s, c in copy_by_stem.items()},
+                      **{s: own_projectiles[r] for s, r in proj_by_stem.items()}}
+        edit_refs = {scope: main_ref, **{s: c.ref for s, c in copy_by_stem.items()},
+                     **proj_by_stem}
         try:
-            res = AE.apply({scope: main}, [own_values(dict(e)) for e in edits], main=scope,
+            res = AE.apply(edit_files, [own_values(dict(e)) for e in edits], main=scope,
                            seed=f"{mod_id}:{hid}:edits", read=edit_read,
-                           aliases={a.guid: a.stream for a in H.aliases(app)})
+                           aliases={a.guid: a.stream for a in H.aliases(app)},
+                           refs=edit_refs)
         except AE.AbilityEditError as e:
             raise ContentError(f"hero {hid}: edits: {e}") from e
         main = res.files[scope]
+        for s, c in copy_by_stem.items():
+            c.data = res.files[s]
+        for s, r in proj_by_stem.items():
+            own_projectiles[r] = res.files[s]
         kit_resources |= set(res.resources)
         for w in res.warnings:
             print(f"warning: hero {hid}: edits: {w}", file=sys.stderr)

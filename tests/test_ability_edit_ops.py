@@ -73,3 +73,59 @@ def test_scale_with_level_reads_the_owners_level_damage():
     assert any(r.guid == scaled.guid for r in g[mod].refs)
     assert {r.path.rsplit("\\", 1)[-1] for r in scaled.refs} >= {
         "Owner Level Damage", f"{mod} Level Ratio"}
+
+
+@needs_corpus
+def test_retarget_updates_owned_fx_subobjects():
+    from rsmm.engine.entity_graph_edit import EntityFile
+    out = _apply([
+        {"clone": ["Fx Howl Hands Trails"], "from": "Heroes/Hero_Red/Hero_Red_FX",
+         "rename": {"Fx Howl Hands Trails": "Wolf Innate Claw Trails"}},
+        {"retarget": "Wolf Innate Claw Trails",
+         "node": "Character_Common/Character_Common|Character Mesh"},
+    ])
+    ef = EntityFile(out, "Hero_Red")
+    fx = ef.component("Wolf Innate Claw Trails")
+    picker_cls = [c.name for c in ef.cf.classes].index("oCEntityCpntPicker")
+    paths = [r.path for o in sorted(ef.subtree({fx.index - 1}))
+             for _, r in EG._pickers(bytes(ef.objects[o]), picker_cls) if r.path]
+    assert paths == [
+        "[3d graphic object] Character_Common\\Base\\Character Mesh",
+        "[3d graphic object] Character_Common\\Base\\Character Mesh",
+    ]
+
+
+# --- graph editing ops (#202, from #192) --------------------------------------
+
+_OP = "Ability Ultimate 1 Final Damage Multiplier Operation"
+_VAL = "Ability Ultimate 1 Attack Radius"
+
+
+def _part(out, name):
+    return next(c for c in EG.parse(out, "Hero_Red").components if c.name == name)
+
+
+@needs_corpus
+def test_append_operand_reads_one_more_node():
+    val = _part(_raw(), _VAL)
+    assert val.guid not in {r.guid for r in _part(_raw(), _OP).refs}
+    out = _apply([{"append_operand": _OP, "to": _VAL}])
+    assert val.guid in {r.guid for r in _part(out, _OP).refs}
+    with pytest.raises(AE.AbilityEditError, match="needs to"):
+        _apply([{"append_operand": _OP}])
+
+
+@needs_corpus
+def test_swap_ref_repoints_a_link_across_kinds():
+    old = _part(_raw(), _OP).refs[0]
+    node = old.path.rsplit("\\", 1)[-1]
+    out = _apply([{"swap_ref": _OP, "node": node, "to": _VAL}])
+    guids = {r.guid for r in _part(out, _OP).refs}
+    assert old.guid not in guids and _part(_raw(), _VAL).guid in guids
+
+
+@needs_corpus
+def test_unlink_reads_drops_the_value_reads():
+    assert _part(_raw(), _OP).refs
+    out = _apply([{"unlink_reads": _OP}])
+    assert len(_part(out, _OP).refs) < len(_part(_raw(), _OP).refs)

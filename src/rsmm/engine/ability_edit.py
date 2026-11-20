@@ -43,7 +43,25 @@ One step per table::
     retarget = "My Spawner Value"         point the part's link into ANOTHER
     node = "Heroes\\Hero_Kintaro\\Hero_Kintaro_Special_Delayed_AOE.entity.ot|Radius"
                                           entity at that node (a spawner value's
-                                          target: the spawned entity's number)
+                                          target: the spawned entity's number);
+                                          links held in the part's own
+                                          sub-objects (an FX emitter) move too
+
+    swap_ref = "Wolf FX Spawner"          re-point every link in the part (and
+    node = "Old Hit FX"                   its sub-objects) from ``node`` to
+    to = "New Hit FX"                     ``to``, any kind; ``from`` reads
+                                          ``node`` from another entity
+
+    append_operand = "Damage Multiply"    one more operand of a value operation
+    to = "Bonus Damage Value"             (an f32 node of this entity)
+
+    add_selector = "Attack Selector"      a first branch on a component
+    to = "Empowered Attack"               selector: pick ``to`` while ``when``
+    when = "State Empowered"              (a state, value or get-value) holds
+
+    unlink_reads = "Attack Cooldown"      every number slot of the part (and
+                                          its sub-objects) that reads another
+                                          part keeps its own number instead
 
     add_subobject = "Wolf Basic Attack Combo.bytes_4"   append a copy of entry
     donor_index = 1                       ``donor_index`` of that id list (a
@@ -67,12 +85,13 @@ from .entity_graph_edit import EntityEditError, EntityFile, id_list_pad
 
 _OPS = ("clone", "set", "link", "add_link", "remove_link", "percent", "add_subobject",
         "replace_subobject", "switch_off", "override", "retarget", "retarget_targets", "event",
-        "add_cinebloc", "animatic_speed", "scale_with_level")
+        "append_operand", "add_cinebloc", "animatic_speed", "add_selector", "unlink_reads",
+        "swap_ref", "scale_with_level")
 #: Every key a step may carry; anything else is a typo that would otherwise be
 #: ignored silently (a `rename` the old clone did not read left its copies
 #: under the default suffix, and the next step found nothing).
 _KEYS = {*_OPS, "value", "to", "entity", "as", "suffix", "from", "rename",
-         "donor_index", "donor", "replace_ref", "node", "from_kind"}
+         "donor_index", "donor", "replace_ref", "node", "from_kind", "when"}
 
 
 class AbilityEditError(ValueError):
@@ -102,11 +121,14 @@ def hero_entity_ref(name: str) -> str:
 
 
 def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
-          read=None, aliases: dict[bytes, str] | None = None) -> Result:
+          read=None, aliases: dict[bytes, str] | None = None,
+          refs: dict[str, str] | None = None) -> Result:
     """Apply ``steps`` to ``files`` (entity stem -> bytes, the base family).
     ``aliases`` (alias GUID -> entity ref) lets an override reach an ancestor
     the entity inherits by alias (a hero written from scratch reaches
-    Hero_Common and Character_Common only that way)."""
+    Hero_Common and Character_Common only that way). ``refs`` (stem -> entity
+    ref) names the files edited together, so the check reads each one's
+    EDITED bytes when another of them links to it."""
     read = read or CK._corpus_reader
     edits: dict[str, EntityFile] = {}
 
@@ -161,6 +183,24 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
                 if "value" not in step:
                     raise AbilityEditError("animatic_speed needs value = <rate>")
                 ef.set_animatic_speed(str(step["animatic_speed"]), float(step["value"]))
+            elif op == "add_selector":
+                if not step.get("to") or not step.get("when"):
+                    raise AbilityEditError("add_selector needs to = <part> and when = <condition>")
+                ef.prepend_selector_entry(
+                    str(step["add_selector"]), str(step["to"]), str(step["when"]))
+            elif op == "unlink_reads":
+                from . import hero_ability as HA
+                HA._unlink_value_reads(ef, str(step["unlink_reads"]))
+            elif op == "swap_ref":
+                if not step.get("node") or not step.get("to"):
+                    raise AbilityEditError("swap_ref needs node = <old part> and to = <new part>")
+                old = _source(ef, step, read).component(str(step["node"])).guid
+                ef.swap_refs(str(step["swap_ref"]), old, str(step["to"]),
+                             subobjects=True, cross_kind=True)
+            elif op == "append_operand":
+                if not step.get("to"):
+                    raise AbilityEditError("append_operand needs to = <part>")
+                ef.append_operand(str(step[op]), str(step["to"]))
             elif op == "scale_with_level":
                 if "value" not in step:
                     raise AbilityEditError("scale_with_level needs value = <ratio>")
@@ -223,12 +263,20 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
             raise AbilityEditError(f"ability step {n} ({op}): {e}") from e
 
     out = Result(dict(files))
+    edited_map: dict[str, bytes] = {}
     for stem, ef in edits.items():
         try:
-            edited = ef.to_bytes()
+            edited_map[stem] = ef.to_bytes()
         except EntityEditError as e:
             raise AbilityEditError(f"the ability edits to {stem} do not hold together: {e}") from e
-        issues = CK.check(edited, files[stem], name=stem, read=read)
+    by_ref = {refs[s]: b for s, b in edited_map.items() if refs and s in refs}
+
+    def check_read(ref: str):
+        stem = ref.rsplit("\\", 1)[-1].removesuffix(".entity.ot")
+        return by_ref.get(ref) or edited_map.get(stem) or read(ref)
+
+    for stem, edited in edited_map.items():
+        issues = CK.check(edited, files[stem], name=stem, read=check_read)
         errs = list(CK.errors(issues))
         if errs:
             raise AbilityEditError(
@@ -474,8 +522,23 @@ def _retarget(ef: EntityFile, step: dict, read) -> None:
         return
     src_kind = str(step.get("from_kind") or kind)
     mine = {c.guid for c in ef.graph().components}
-    old = [r.guid for r in part.refs if r.guid not in mine and r.path.startswith(f"[{src_kind}] ")]
+    prefix = f"[{src_kind}] "
+    old = [r.guid for r in part.refs if r.guid not in mine and r.path.startswith(prefix)]
+    subobjects = False
+    if not old:
+        # The link can sit in a sub-object the part owns (an FX's emitter).
+        from . import entity_graph as EG
+        classes = [c.name for c in ef.cf.classes]
+        if "oCEntityCpntPicker" in classes:
+            picker_cls = classes.index("oCEntityCpntPicker")
+            for o in sorted(ef.subtree({part.index - 1})):
+                old.extend(r.guid for _, r in EG._pickers(bytes(ef.objects[o]), picker_cls)
+                           if r.guid not in mine and r.path.startswith(prefix))
+        subobjects = bool(old)
     if not old:
         raise AbilityEditError(f"retarget: {part.name!r} has no outside {src_kind} link to move")
+    acc = ef.VEC3_ACCESSOR.get(node.cls) if src_kind != kind else None
     for g in dict.fromkeys(old):
-        ef.retarget_external(part.name, g, node.guid, label, cross_kind=src_kind != kind)
+        ef.retarget_external(part.name, g, node.guid, label,
+                             subobjects=subobjects, cross_kind=src_kind != kind,
+                             accessor=acc)

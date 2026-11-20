@@ -100,9 +100,9 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     steps = defn.fields.get("steps")
     if not isinstance(steps, list) or not steps or not all(isinstance(s, dict) for s in steps):
         raise ContentError(f"entity {defn.id}: needs 'steps', a list of [[content.steps]] tables")
-    if any("clone" in s for s in steps):
-        raise ContentError(f"entity {defn.id}: clone steps are not supported here; "
-                           f"use set / link / add_link / remove_link / percent")
+    if any("clone" in s and s.get("from") for s in steps):
+        raise ContentError(f"entity {defn.id}: cross-file clone steps are not supported here; "
+                           f"use same-file clone / set / link / add_link / remove_link / percent")
 
     steps = _resolve_config(defn, steps, out_dir.parent)
 
