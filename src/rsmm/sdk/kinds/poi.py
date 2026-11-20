@@ -163,7 +163,7 @@ mesh and maps (:mod:`rsmm.engine.prop_cook`). The donors supply *structure*
     on the entrance, ``side = "in"`` with the same ``id`` in the room. Each is
     a clone of the shipped Thieves' stash teleporter
     (``Thieves_Underground_Teleporter_<Side>``) with its pair renamed to
-    ``<id>_In`` / ``<id>_Out`` and its stash event renamed. A shipped room already
+    ``<mod>_<id>_In`` / ``_Out`` and its stash event renamed. A shipped room already
     stands its own teleporter (not a plain placement, so ``clear`` keeps it):
     ``{ side = "in", id = ..., replace = "<that entity>" }`` takes it over
     instead, so it stops answering its shipped pair. A room may stand several
@@ -1852,6 +1852,14 @@ def _validated_teleporters(defn: ContentDef) -> list[dict]:
     return out
 
 
+def _pair_id(mod_id: str, tid: str) -> str:
+    """The in-game pair name for teleporter ``id`` ``tid``: prefixed with the
+    mod, since the engine pairs teleporters by name across the whole map and
+    two mods both using ``id = "Cave"`` would answer each other's doors. Both
+    sides of a pair come from one mod, so they still match."""
+    return re.sub(r"[^A-Za-z0-9_]", "_", f"{mod_id}_{tid}")
+
+
 def _emit_teleporter(mod_id: str, defn: ContentDef, out_dir: Path, tp: dict,
                      written: list[Path]) -> str:
     """Clone the side's shipped teleporter under this mod's name with the
@@ -1871,10 +1879,11 @@ def _emit_teleporter(mod_id: str, defn: ContentDef, out_dir: Path, tp: dict,
         raise ContentError(f"poi {defn.id}: teleporter donor {donor_ref} does not carry "
                            f"one In/Out pair name (found {sorted(pair)})")
     present = {s for _sec, _off, s in ES.list_strings(raw)}
+    pid = _pair_id(mod_id, tp["id"])
     stem, new_stem = (r.rsplit("\\", 1)[-1].removesuffix(".entity.ot") for r in (donor_ref, ref))
     out = ES.replace_strings(raw, {
-        ins[0]: f"{tp['id']}_In", outs[0]: f"{tp['id']}_Out",
-        **{k: v.format(ID=tp["id"].upper()) for k, v in TELEPORTER_EVENTS.items()
+        ins[0]: f"{pid}_In", outs[0]: f"{pid}_Out",
+        **{k: v.format(ID=pid.upper()) for k, v in TELEPORTER_EVENTS.items()
            if k in present},
         # its own override labels (`[Entity 3d Node] <Stem>\\...`) follow the
         # clone's name, as the level-side labels do in a takeover
@@ -1921,7 +1930,7 @@ def _teleporter_takeovers(mod_id: str, defn: ContentDef, level_ref: str,
 _PAIR_NAME = re.compile(rb"[A-Za-z0-9_]*Entrance[A-Za-z0-9_]*_(?:In|Out)")
 
 
-def _rename_level_pair(level: bytes, defn: ContentDef) -> bytes:
+def _rename_level_pair(level: bytes, defn: ContentDef, mod_id: str) -> bytes:
     """A taken-over teleporter's pair names as its LEVEL sets them.
 
     ⚠ The level overrides them: the Thieves Gold Room's own level renames its
@@ -1949,7 +1958,7 @@ def _rename_level_pair(level: bytes, defn: ContentDef) -> bytes:
     if len(tps) != 1 or len(ins) != 1 or len(outs) != 1:
         raise ContentError(f"poi {defn.id}: the base level names teleporter pair(s) "
                            f"{sorted(found)}; cannot tell which one to take over")
-    tid = tps[0]["id"]
+    tid = _pair_id(mod_id, tps[0]["id"])
     _log.info("poi %s: level pair %s/%s -> %s_In/_Out", defn.id, ins[0], outs[0], tid)
     return LP.replace_strings(level, {ins[0]: f"{tid}_In", outs[0]: f"{tid}_Out"})
 
@@ -3612,7 +3621,7 @@ def _emit_cloned_level(mod_id: str, defn: ContentDef, out_dir: Path,
                 scale=(item["scale"],) * 3)
             _log.info("poi %s: placed %s at %s scale %.2f", defn.id,
                       ent.split("\\")[-1], item["pos"], item["scale"])
-    level = _rename_level_pair(level, defn)
+    level = _rename_level_pair(level, defn, mod_id)
     # Several teleporters of one side and id (a room with more than one way
     # out) share one cloned entity: emit it once, place it each time.
     emitted: dict[tuple[str, str], str] = {}

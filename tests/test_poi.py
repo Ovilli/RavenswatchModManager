@@ -2034,14 +2034,14 @@ def test_entrance_needs_room_and_teleporters_pair_by_mod_id(tmp_path):
               ".EntitySettingsResource.gen"]
     inn = rel["EntitySettings/Objects_Common/m_room_Teleporter_In.entity.ot"
               ".EntitySettingsResource.gen"]
-    assert {"Mod_Pair_Out", "Mod_Pair_In"} <= set(_strings(out))
-    assert {"Mod_Pair_Out", "Mod_Pair_In"} <= set(_strings(inn))
+    assert {"m_Mod_Pair_Out", "m_Mod_Pair_In"} <= set(_strings(out))
+    assert {"m_Mod_Pair_Out", "m_Mod_Pair_In"} <= set(_strings(inn))
     assert not any(s.startswith(("Cave_Entrance", "Thieves_Underground_Entrance"))
                    for s in _strings(out) + _strings(inn))
     # the state that actually teleports (missing from the generic Out model),
     # and the stash event renamed so the door does not count as a stash
     assert "Child Event Teleport Hero" in _strings(out)
-    assert "HERO_ENTER_MOD_PAIR" in _strings(out)
+    assert "HERO_ENTER_M_MOD_PAIR" in _strings(out)
     assert "HERO_ENTER_THIEVES_STASH" not in _strings(out)
 
     level = next(f for r, f in rel.items() if r.endswith("m_room.level.ot.GameStream.gen"))
@@ -2084,10 +2084,10 @@ def test_room_takes_over_its_shipped_teleporter(tmp_path):
     assert level.count(b"m_room_Teleporter_In") == 3      # the ref + two override labels
     # the LEVEL sets the pair names too, and those win over the entity's
     assert b"Gold_Room_In" not in level and b"Gold_Room_Out" not in level
-    assert b"Mod_Pair_In" in level and b"Mod_Pair_Out" in level
+    assert b"m_Mod_Pair_In" in level and b"m_Mod_Pair_Out" in level
     ent = next(f for f in files if "m_room_Teleporter_In.entity.ot" in f.name)
     names = set(_strings(ent))
-    assert {"Mod_Pair_In", "Mod_Pair_Out"} <= names
+    assert {"m_Mod_Pair_In", "m_Mod_Pair_Out"} <= names
     assert not any(n.startswith("Thieves_Underground_Entrance") for n in names)
 
 

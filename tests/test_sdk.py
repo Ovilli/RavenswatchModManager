@@ -968,3 +968,27 @@ def test_load_kind_still_reports_a_genuinely_absent_builder(monkeypatch):
     monkeypatch.setitem(content_mod._KIND_MODULES, "item", "does_not_exist")
     with pytest.raises(content_mod.ContentError, match="no builder for kind"):
         content_mod._load_kind("item")
+
+
+@pytest.mark.parametrize("first, second", [
+    (("shop", {}), ("shop", {})),
+    (("melody", {"base": "M1"}), ("melody", {"base": "M1"})),
+    (("tilegen", {"chapter": 1}), ("tilegen", {"chapter": 1})),
+    (("scenery", {"chapter": "c", "level": "L"}), ("scenery", {"chapter": "c", "level": "L"})),
+    (("map", {"chapter": 2}), ("map", {"chapter": 2})),
+    (("map", {"chapter": 2}), ("game_mode", {})),
+])
+def test_two_defs_rewriting_one_retail_file_are_refused(first, second, monkeypatch):
+    """These kinds rebuild their retail file from vanilla per def, so the
+    second def silently erased the first (batch 7)."""
+    from rsmm.sdk import content as content_mod
+    monkeypatch.setattr(content_mod, "content_confidence", lambda k, f: "confirmed")
+    monkeypatch.setattr("rsmm.sdk.manifest_spec.content_fields", lambda k: None)
+    cr = ContentRegistry(mod_id="T")
+    cr.register(first[0], id="a", **first[1])
+    with pytest.raises(ContentError, match="same retail file"):
+        cr.register(second[0], id="b", **second[1])
+    # A different target is fine.
+    cr2 = ContentRegistry(mod_id="T")
+    cr2.register("map", id="a", chapter=1)
+    cr2.register("map", id="b", chapter=2)

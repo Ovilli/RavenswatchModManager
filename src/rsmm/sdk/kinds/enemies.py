@@ -285,6 +285,11 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     except ValueError as e:
         raise ContentError(str(e)) from e
 
+    if _load_base_cooked(defn.id) is not None:
+        raise ContentError(
+            f"enemy {defn.id}: a shipped enemy is already called {defn.id!r}, and a "
+            f"clone under that name would silently replace it. Pick another id "
+            f"(mode = 'override' edits the shipped enemy).")
     base_cooked = _load_base_cooked(base)
     if base_cooked is None:
         raise SchemaNotMined(
