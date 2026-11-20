@@ -1137,7 +1137,12 @@ def emit_content_blocks(mods: list[Mod], game_dir: Path | None = None) -> int:
             continue
         # Honor the manifest's `experimental = true` so non-confirmed content
         # kinds the author opted into actually emit (lint already respects it).
-        cr = ContentRegistry(mod_id=m.id, experimental=m.experimental)
+        try:
+            cr = ContentRegistry(mod_id=m.id, experimental=m.experimental)
+        except ContentError as e:
+            print(f"  [content] {m.id!r}: {e}; its content is skipped", file=sys.stderr)
+            _drop_emitted(m)
+            continue
         clean = True            # only a fully clean emit is worth caching
         for block in m.content_blocks:
             kind = block.get("kind")

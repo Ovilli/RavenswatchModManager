@@ -12,6 +12,9 @@ kind is trusted in game is `KIND_CONFIDENCE` below.
 
 from __future__ import annotations
 
+import os
+import sys
+import threading
 from contextlib import suppress
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -288,6 +291,98 @@ def _files_under(root: Path) -> set[Path]:
     return {p.resolve() for p in root.rglob("*") if p.is_file()} if root.is_dir() else set()
 
 
+class _Guard:
+    """Copy-on-write for the files already under an emit's ``out_dir``.
+
+    Kinds may legitimately rewrite one (a packed mod ships last build's
+    output without its marker, and apply rebuilds it in place), so nothing is
+    refused. But a failed emit must leave them as they were. Copying every
+    file up front costs a mod's whole texture set per emit, and a hard link
+    does not survive an in-place write, so a process audit hook copies a file
+    aside just before the first write, replace or unlink that reaches it, and
+    :meth:`restore` puts the copies back.
+    """
+
+    _active: _Guard | None = None
+    _hooked = False
+    _lock = threading.Lock()
+    _WRITE_FLAGS = (os.O_WRONLY | os.O_RDWR | os.O_APPEND | os.O_TRUNC
+                    | getattr(os, "O_CREAT", 0))
+
+    def __init__(self, out_dir: Path, files: set[Path]) -> None:
+        self.out_dir = out_dir
+        self.files = {os.path.normcase(str(f)): f for f in files}
+        self.saved: dict[Path, Path] = {}
+        self.side: Path | None = None
+        self.busy = False
+        if files:
+            cls = type(self)
+            with cls._lock:
+                if not cls._hooked:
+                    sys.addaudithook(cls._audit)
+                    cls._hooked = True
+                cls._active = self
+
+    @classmethod
+    def _audit(cls, event: str, args: tuple) -> None:
+        g = cls._active
+        if g is None or g.busy:
+            return
+        if event == "open":
+            path, mode, flags = args
+            if isinstance(mode, str):
+                if not any(c in mode for c in "wax+"):
+                    return
+            elif not (flags or 0) & cls._WRITE_FLAGS:
+                return
+            g._before_change(path)
+        elif event == "os.rename":
+            g._before_change(args[0])
+            g._before_change(args[1])
+        elif event in ("os.remove", "os.truncate"):
+            g._before_change(args[0])
+
+    def _before_change(self, path) -> None:
+        if isinstance(path, int) or path is None:
+            return
+        try:
+            key = os.path.normcase(os.path.realpath(os.fsdecode(path)))
+        except (TypeError, ValueError, OSError):
+            return
+        f = self.files.get(key)
+        if f is None or f in self.saved or not f.is_file():
+            return
+        import shutil
+        import tempfile
+        self.busy = True
+        try:
+            if self.side is None:
+                self.side = Path(tempfile.mkdtemp(prefix=".rsmm_emit_guard_",
+                                                  dir=self.out_dir.parent))
+            keep = self.side / str(len(self.saved))
+            shutil.copy2(f, keep)
+            self.saved[f] = keep
+        finally:
+            self.busy = False
+
+    def restore(self) -> None:
+        """Put every file changed since the emit began back to its bytes."""
+        self.busy = True
+        for f, keep in self.saved.items():
+            with suppress(OSError):
+                f.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(keep, f)
+
+    def release(self) -> None:
+        import shutil
+        cls = type(self)
+        with cls._lock:
+            if cls._active is self:
+                cls._active = None
+        if self.side is not None:
+            shutil.rmtree(self.side, ignore_errors=True)
+
+
 def _output_target(kind: str, fields: dict) -> tuple | None:
     """The retail file a def rewrites in place, for the kinds where that file
     is rebuilt from vanilla on every def (so two defs on it are last-wins), or
@@ -318,6 +413,17 @@ class ContentRegistry:
     defs: list[ContentDef] = field(default_factory=list)
     #: Author opted into unverified kinds via ``sdk.Mod(experimental=True)``.
     experimental: bool = False
+
+    def __post_init__(self) -> None:
+        # Kinds build output paths from the mod id (POI tiles, hero files) and
+        # write before anything sees the result, so an id carrying a path
+        # component would write outside the mod's assets. Checked once here,
+        # at the one door every emit goes through.
+        from .archive import ArchiveError, safe_dir_name
+        try:
+            safe_dir_name(self.mod_id)
+        except ArchiveError as e:
+            raise ContentError(str(e)) from None
 
     @sdk_export("ContentRegistry.register")
     def register(self, kind: str, *, id: str, schema_version: int = 1,
@@ -383,22 +489,30 @@ class ContentRegistry:
         return value, so a raise used to leave earlier defs' output (and the
         failing def's partial writes) on disk, unlisted in the marker, where
         apply planted it and the next emit read it back as base data.
+
+        Files already under ``out_dir`` (hand-authored assets, or a packed
+        mod's shipped output) get their bytes back too: a def may rewrite
+        one, and a later def's failure must not leave that rewrite behind
+        (:class:`_Guard`).
         """
         before = _files_under(out_dir)
         written: list[Path] = []
         run: set[Path] = set()
         token = _EMITTED_THIS_RUN.set(run)
+        guard = _Guard(out_dir, before)
         try:
             for d in self.defs:
                 got = self._emit_one(d, out_dir)
                 written.extend(got)
                 run.update(p.resolve() for p in got)
         except BaseException:           # Ctrl+C mid-emit orphans files too
+            guard.restore()
             for p in _files_under(out_dir) - before:
                 with suppress(OSError):
                     p.unlink()
             raise
         finally:
+            guard.release()
             _EMITTED_THIS_RUN.reset(token)
         return written
 
