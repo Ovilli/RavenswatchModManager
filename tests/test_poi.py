@@ -2155,3 +2155,24 @@ def test_an_anchor_must_name_exactly_one_placement():
         poi._anchor(defn, "move[0]", {"entity": rock, "at": [1, 2]}, need_at=False)
     with pytest.raises(ContentError, match="needs an `entity`"):
         poi._anchor(defn, "clear.remove[0]", {"at": [1, 2, 3]}, need_at=False)
+
+
+def test_swapped_prop_hands_its_deps_and_borrows_back(tmp_path, monkeypatch):
+    """A `replaces` prop with a [marker] parent has a cache closure of its own.
+    `_emit_custom_prop` dropped what `_emit_prop_art` returned, so the tile
+    cache never listed the parent's resources and they resolved to NULL at
+    level build. It must hand them back like `_emit_cloned_level` does."""
+    monkeypatch.setattr(poi, "_emit_prop_art",
+                        lambda *a: ("Mod\\Prop.entity.ot", ["Ui\\Reveal.entity.ot"],
+                                    ["Shipped\\Marker.entity.ot"]))
+    monkeypatch.setattr(poi, "_prefab_ref_of", lambda *a: "Tiles\\Donor.entity.ot")
+    monkeypatch.setattr(poi, "_level_ref_of", lambda *a: "Levels\\Donor.level.ot")
+    monkeypatch.setattr(poi, "_corpus", lambda *a: b"")
+    monkeypatch.setattr(PC, "clone_tile_level", lambda *a: b"")
+    monkeypatch.setattr(PC, "clone_tile_prefab", lambda *a: b"")
+    monkeypatch.setattr(poi, "_write", lambda *a: None)
+    defn = ContentDef("poi", "camp", {"prop": {"replaces": "A.entity.ot"}})
+    ref, deps, borrow = poi._emit_custom_prop("m", defn, tmp_path, "Base", [])
+    assert ref.endswith("m_camp.entity.ot")
+    assert deps == ["Ui\\Reveal.entity.ot"]
+    assert borrow == ["Shipped\\Marker.entity.ot"]
