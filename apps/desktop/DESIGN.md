@@ -139,6 +139,14 @@ slot. Browse cards and rows, and Library rows, open `/mod/$slug` on activation.
 There is no embedded detail panel. Toggles and action buttons operate independently
 of row navigation. Do not add a second Library row layout.
 
+Mod details in Browse, Library, and the browser preview use `RegistryDetailLayout`,
+the same full-page frame as the web registry. Keep tags in the header, section
+links in its sticky navigation, About in the unboxed reading column, and version
+history in the registry disclosure. Install controls and plain metadata rows use
+the registry action sidebar, followed by the author row. Reuse
+`packages/ui/src/registry-detail.css`; desktop overrides only the shell gutters
+and sticky offset. Do not restore separate About, Facts, or Tags panels.
+
 List columns use named grid tracks in the shared registry stylesheet. Missing
 category, rating, or download values leave their columns empty. Library reserves
 separate version/update cells and overlay/config/uninstall action cells, including

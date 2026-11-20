@@ -1,15 +1,18 @@
 import { ApiError } from '@rsmm/api-client';
 import { hasPrivateOnlyTag, isPrivateOnlyTag } from '@rsmm/schemas';
-import {
-  RegistryDetailContentLayout,
-  RegistryListingGallery,
-  RegistryModDetailHeader,
-  getRegistryMedia,
-} from '@rsmm/ui';
+import { RegistryDetailLayout, RegistryListingGallery, getRegistryMedia } from '@rsmm/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useCanGoBack, useNavigate, useRouter } from '@tanstack/react-router';
-import { ArrowLeft, ExternalLink, Globe, Plus, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronDown,
+  Download,
+  ExternalLink,
+  Plus,
+  Trash2,
+} from 'lucide-react';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { api, describeApiError, logApiError } from '../lib/api';
 import { getApiUrl } from '../lib/api-url';
 import { useSession } from '../lib/auth-client';
@@ -25,16 +28,7 @@ import {
   uninstallLocalMod,
 } from '../lib/rsmm';
 import { activeProfile, isEnabledIn, useApp } from '../store';
-import {
-  Button,
-  CopyButton,
-  Fleuron,
-  InkSwitch,
-  Markdown,
-  MonoTag,
-  Panel,
-  StatPill,
-} from './chrome';
+import { Button, CopyButton, InkSwitch, Markdown, MonoTag } from './chrome';
 import { useConfirmDisableHook } from './disable-hook-consent';
 import { ListingRatingSummary, ListingReviews } from './listing-reviews';
 import { OverlayButton } from './overlay-button';
@@ -243,19 +237,22 @@ export function ModDetail({ slug }: { slug: string }) {
   const media = getRegistryMedia({ name, imageUrl, screenshots, videos }, registryMediaLabels(t));
   const dependencies = apiMod?.dependencies ?? {};
 
-  const markdown =
-    liveBySlug?.markdown ??
-    (description ? `# ${name}\n\n${description}` : `# ${name}\n\n${summary || ''}`);
+  // The store generates a title + summary when no authored Markdown is known.
+  // The detail header already supplies that title; prefer the registry's full copy.
+  const generatedMarkdown = liveBySlug
+    ? `# ${liveBySlug.name}${liveBySlug.summary ? `\n\n${liveBySlug.summary}` : ''}`
+    : '';
+  const localMarkdown =
+    liveBySlug?.markdown !== generatedMarkdown ? liveBySlug?.markdown : undefined;
+  const markdown = apiMod?.description?.trim() || localMarkdown || description || summary;
   const sizeBytes = latestVersion?.sizeBytes ?? null;
   const apiBase = getApiUrl().replace(/\/+$/, '');
   const modFolderId = liveBySlug?.id ?? slug;
 
-  return (
-    <div className="space-y-6">
-      <Button type="button" size="sm" onClick={goBack}>
-        <ArrowLeft className="h-3.5 w-3.5" /> {t('back')}
-      </Button>
+  const versions = data?.versions ?? [];
 
+  return (
+    <div className="space-y-4">
       {fetchFailed ? (
         <div className="ember-banner flex items-center gap-3 px-4 py-2">
           <span className="font-serif-italic text-sm flex-1">
@@ -265,249 +262,307 @@ export function ModDetail({ slug }: { slug: string }) {
         </div>
       ) : null}
 
-      <RegistryModDetailHeader
+      <RegistryDetailLayout
+        as="div"
+        className="desktop-mod-detail"
         name={name}
         summary={summary}
-        labels={privateOnly ? <PrivateGamesOnlyBadge /> : null}
-        stats={
+        breadcrumbLabel={t('Breadcrumb')}
+        breadcrumb={
           <>
-            <span>
-              {author}
-              {localVersion ? ` · v${localVersion}` : ''}
-              {outdated && apiLatest
-                ? ` → ${apiLatest}`
-                : apiLatest && !localVersion
-                  ? ` · v${apiLatest}`
-                  : ''}
-            </span>
-            {apiMod ? (
-              <ListingRatingSummary target="mod" slug={slug} fallbackRating={rating} />
+            <button type="button" className="mod-back" onClick={goBack}>
+              <ArrowLeft size={16} aria-hidden /> {t('back')}
+            </button>
+            {category ? (
+              <>
+                <span aria-hidden>/</span>
+                <span className="capitalize">{category}</span>
+              </>
             ) : null}
           </>
         }
-        action={
-          installedHere && liveBySlug ? (
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <InkSwitch
-                on={enabled}
-                onClick={() => toggle(liveBySlug.id)}
-                label={enabled ? t('Disable {name}', { name }) : t('Enable {name}', { name })}
-              />
-              <MonoTag tone={enabled ? 'crimson' : 'default'}>
-                {enabled ? t('enabled') : t('disabled')}
-              </MonoTag>
-              <OverlayButton modId={liveBySlug.id} />
-              <Button
-                type="button"
-                variant="danger"
-                disabled={versionBusy !== null}
-                onClick={() => void uninstall(liveBySlug.id)}
-              >
-                <Trash2 className="h-4 w-4" />{' '}
-                {versionBusy === liveBySlug.id ? t('Uninstalling…') : t('Uninstall')}
-              </Button>
+        labels={
+          privateOnly || ordinaryTags.length > 0 || nsfw ? (
+            <div className="mod-labels">
+              {privateOnly ? <PrivateGamesOnlyBadge /> : null}
+              {ordinaryTags.length > 0 ? (
+                <ul className="mod-tags" aria-label={t('Tags')}>
+                  {ordinaryTags.map((tag) => (
+                    <li key={tag}>
+                      <span>{tag}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {nsfw ? <span className="mod-mature-label">{t('Mature content')}</span> : null}
             </div>
-          ) : (
-            <Button
-              type="button"
-              variant="primary"
-              disabled={versionBusy !== null}
+          ) : null
+        }
+        stats={
+          apiMod ? (
+            <>
+              <span>
+                <Download size={16} aria-hidden />
+                {t('{n} downloads', { n: downloads.toLocaleString(t.tag) })}
+              </span>
+              <ListingRatingSummary target="mod" slug={slug} fallbackRating={rating} />
+            </>
+          ) : null
+        }
+        media={
+          <RegistryListingGallery
+            media={media}
+            name={name}
+            nsfw={nsfw}
+            labels={registryGalleryLabels(t, name)}
+          />
+        }
+        navigationLabel={t('On this page')}
+        navigation={
+          <>
+            <a href="#about">{t('About this mod')}</a>
+            {apiMod ? <a href="#reviews">{t('Reviews')}</a> : null}
+            {liveBySlug?.changelog ? <a href="#changelog">{t('Changelog')}</a> : null}
+            {/* biome-ignore lint/a11y/useValidAnchor: expands the section before navigating to it. */}
+            <a
+              href="#version-history"
               onClick={() => {
-                const ver = apiLatest ?? latestVersion?.version;
-                if (!liveBySlug && ver && inTauri()) {
-                  void installVersion(ver, true);
-                  return;
-                }
-                installMod(modFolderId);
+                const history = document.getElementById('version-history');
+                if (history instanceof HTMLDetailsElement) history.open = true;
               }}
             >
-              <Plus className="h-4 w-4" /> {versionBusy ? t('Installing…') : t('Install')}
-            </Button>
-          )
+              {t('Version history')}
+              <span>{versions.length}</span>
+            </a>
+          </>
         }
-      />
-
-      <RegistryListingGallery
-        media={media}
-        name={name}
-        nsfw={nsfw}
-        labels={registryGalleryLabels(t, name)}
-      />
-
-      <RegistryDetailContentLayout
         sidebarLabel={t('Mod actions and details')}
         sidebar={
-          <div className="space-y-4">
-            <Panel>
-              <h4 className="font-mono text-ash mb-3">{t('Facts')}</h4>
-              <dl className="space-y-2 text-sm">
-                {category ? <Row k={t('Category')} v={category} /> : null}
-                {rating != null ? <Row k={t('Rating')} v={`${rating.toFixed(1)} ★`} /> : null}
-                <Row k={t('Downloads')} v={downloads.toLocaleString(t.tag)} />
-                {sizeBytes != null ? (
-                  <Row k={t('Size')} v={`${(sizeBytes / 1024 / 1024).toFixed(2)} MB`} />
-                ) : null}
-                {apiLatest ? <Row k={t('Latest')} v={`v${apiLatest}`} /> : null}
-                {license ? <Row k={t('License')} v={license} /> : null}
-              </dl>
-            </Panel>
-
-            {repoUrl || homepageUrl ? (
-              <Panel>
-                <h4 className="font-mono text-ash mb-3">{t('Links')}</h4>
-                <ul className="space-y-2 text-sm">
-                  {homepageUrl ? (
-                    <li>
-                      <a
-                        href={homepageUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-parchment underline-offset-2 hover:underline"
-                      >
-                        <Globe className="h-3.5 w-3.5" /> {t('Homepage')}
-                        <ExternalLink className="h-3 w-3 opacity-60" />
-                      </a>
-                    </li>
-                  ) : null}
-                  {repoUrl ? (
-                    <li>
-                      <a
-                        href={repoUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-parchment underline-offset-2 hover:underline"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" /> {t('Repository')}
-                      </a>
-                    </li>
-                  ) : null}
-                </ul>
-              </Panel>
-            ) : null}
-
-            {ordinaryTags.length > 0 ? (
-              <Panel>
-                <h4 className="font-mono text-ash mb-3">{t('Tags')}</h4>
-                <div className="flex flex-wrap gap-1.5">
-                  {ordinaryTags.map((t) => (
-                    <MonoTag key={t}>{t}</MonoTag>
-                  ))}
+          <>
+            <div className="mod-download-card">
+              <h2>{installedHere ? t('Installed mod') : t('Get this mod')}</h2>
+              {installedHere && liveBySlug ? (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <InkSwitch
+                      on={enabled}
+                      onClick={() => toggle(liveBySlug.id)}
+                      label={enabled ? t('Disable {name}', { name }) : t('Enable {name}', { name })}
+                    />
+                    <MonoTag tone={enabled ? 'crimson' : 'default'}>
+                      {enabled ? t('enabled') : t('disabled')}
+                    </MonoTag>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <OverlayButton modId={liveBySlug.id} />
+                    <Button
+                      type="button"
+                      variant="danger"
+                      disabled={versionBusy !== null}
+                      onClick={() => void uninstall(liveBySlug.id)}
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden />
+                      {versionBusy === liveBySlug.id ? t('Uninstalling…') : t('Uninstall')}
+                    </Button>
+                  </div>
                 </div>
-              </Panel>
-            ) : null}
-
-            {Object.keys(dependencies).length > 0 ? (
-              <Panel>
-                <h4 className="font-mono text-ash mb-3">{t('Requires')}</h4>
-                <ul className="space-y-1.5 text-sm">
-                  {Object.entries(dependencies).map(([depSlug, range]) => {
-                    const depInstalled = Object.values(useApp.getState().localMods).some(
-                      (m) => m.slug === depSlug,
-                    );
-                    return (
-                      <li key={depSlug} className="flex items-baseline justify-between gap-2">
-                        <Link
-                          to="/mod/$slug"
-                          params={{ slug: depSlug }}
-                          className="text-parchment hover:text-gilt hover:underline"
-                        >
-                          {depSlug}
-                        </Link>
-                        <span className="flex items-center gap-1.5">
-                          <code className="font-data text-xs text-ash">{range}</code>
-                          {depInstalled ? (
-                            <MonoTag tone="gilt">{t('ok')}</MonoTag>
-                          ) : (
-                            <MonoTag tone="crimson">{t('missing')}</MonoTag>
-                          )}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </Panel>
-            ) : null}
-          </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="primary"
+                  disabled={versionBusy !== null}
+                  onClick={() => {
+                    const ver = apiLatest ?? latestVersion?.version;
+                    if (!liveBySlug && ver && inTauri()) {
+                      void installVersion(ver, true);
+                      return;
+                    }
+                    installMod(modFolderId);
+                  }}
+                >
+                  <Plus className="h-4 w-4" aria-hidden />
+                  {versionBusy ? t('Installing…') : t('Install')}
+                </Button>
+              )}
+              {versionError ? (
+                <div role="alert" className="ember-banner mt-3 px-4 py-2 text-sm text-ash">
+                  {versionError}
+                </div>
+              ) : null}
+              {localVersion || apiLatest || sizeBytes != null || license || apiMod?.updatedAt ? (
+                <div className="mod-facts">
+                  <dl>
+                    {localVersion ? (
+                      <Row
+                        k={t('Installed version')}
+                        v={
+                          <>
+                            v{localVersion}
+                            {outdated && apiLatest ? (
+                              <>
+                                <ArrowRight className="mx-1 inline-block h-3.5 w-3.5" aria-hidden />
+                                v{apiLatest}
+                              </>
+                            ) : null}
+                          </>
+                        }
+                      />
+                    ) : null}
+                    {apiLatest ? <Row k={t('Latest')} v={`v${apiLatest}`} /> : null}
+                    {apiMod?.updatedAt ? (
+                      <Row
+                        k={t('Updated')}
+                        v={
+                          <time dateTime={apiMod.updatedAt}>
+                            {new Date(apiMod.updatedAt).toLocaleDateString(t.tag)}
+                          </time>
+                        }
+                      />
+                    ) : null}
+                    {sizeBytes != null ? (
+                      <Row k={t('Size')} v={`${(sizeBytes / 1024 / 1024).toFixed(2)} MB`} />
+                    ) : null}
+                    {license ? <Row k={t('License')} v={license} /> : null}
+                  </dl>
+                </div>
+              ) : null}
+            </div>
+            <div className="mod-author-row">
+              <span className="mod-author-avatar" aria-hidden>
+                {author.slice(0, 2).toUpperCase()}
+              </span>
+              <div className="mod-author">
+                <span>{t('Created by')}</span>
+                <strong>{author}</strong>
+              </div>
+            </div>
+          </>
         }
       >
-        <div className="space-y-4">
-          {' '}
-          <Panel>
-            <h3 className="font-fraktur text-xl text-parchment mb-3">{t('About')}</h3>
-            <Fleuron />
-            <Markdown source={markdown} className="mt-4" />
-          </Panel>
-          {apiMod ? (
-            <ListingReviews target="mod" slug={slug} isAuthor={apiMod.isAuthor ?? false} />
+        <section id="about" className="mod-section" aria-labelledby="mod-about-heading">
+          <h2 id="mod-about-heading">{t('About this mod')}</h2>
+          <Markdown source={markdown} className="mod-description" />
+          {Object.keys(dependencies).length > 0 ? (
+            <div className="mod-requirements">
+              <h3>{t('Requires')}</h3>
+              <ul>
+                {Object.entries(dependencies).map(([depSlug, range]) => {
+                  const depInstalled = Object.values(useApp.getState().localMods).some(
+                    (m) => m.slug === depSlug,
+                  );
+                  return (
+                    <li key={depSlug}>
+                      <Link to="/mod/$slug" params={{ slug: depSlug }}>
+                        {depSlug}
+                      </Link>
+                      <span>{range}</span>
+                      <MonoTag tone={depInstalled ? 'gilt' : 'crimson'}>
+                        {depInstalled ? t('ok') : t('missing')}
+                      </MonoTag>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           ) : null}
-          {liveBySlug?.changelog ? (
-            <Panel>
-              <h3 className="font-fraktur text-xl text-parchment mb-3">{t('Changelog')}</h3>
-              <Fleuron />
-              <pre className="font-mono mt-4 whitespace-pre-wrap text-ash">
-                {liveBySlug.changelog}
-              </pre>
-            </Panel>
-          ) : null}
-          {data?.versions && data.versions.length > 0 ? (
-            <Panel>
-              <h3 className="font-fraktur text-xl text-parchment mb-3">{t('Versions')}</h3>
-              <Fleuron />
-              {versionError ? (
-                <div className="ember-banner mb-3 px-4 py-2 text-sm text-ash">{versionError}</div>
+          {repoUrl || homepageUrl ? (
+            <div className="mod-project-links">
+              {repoUrl ? (
+                <a href={repoUrl} target="_blank" rel="noopener noreferrer">
+                  {t('Repository')}
+                  <ExternalLink size={14} aria-hidden />
+                </a>
               ) : null}
-              <ul className="mt-4 divide-y divide-oxblood/20">
-                {data.versions.map((v) => (
-                  <li key={v.id} className="flex items-center justify-between gap-4 py-2">
-                    <div className="flex items-baseline gap-3">
-                      <span className="font-data text-sm text-parchment">v{v.version}</span>
-                      <span className="font-mono text-xs text-ash">
-                        {new Date(v.createdAt).toLocaleDateString(t.tag)}
-                      </span>
-                      {v.sizeBytes ? (
-                        <span className="font-mono text-xs text-ash">
-                          {(v.sizeBytes / 1024 / 1024).toFixed(2)} MB
-                        </span>
-                      ) : null}
+              {homepageUrl ? (
+                <a href={homepageUrl} target="_blank" rel="noopener noreferrer">
+                  {t('Homepage')}
+                  <ExternalLink size={14} aria-hidden />
+                </a>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+        {apiMod ? (
+          <ListingReviews target="mod" slug={slug} isAuthor={apiMod.isAuthor ?? false} />
+        ) : null}
+        {liveBySlug?.changelog ? (
+          <section id="changelog" className="mod-section" aria-labelledby="mod-changelog-heading">
+            <h2 id="mod-changelog-heading">{t('Changelog')}</h2>
+            <pre className="font-mono whitespace-pre-wrap text-ash">{liveBySlug.changelog}</pre>
+          </section>
+        ) : null}
+        <details id="version-history" className="mod-version-history">
+          <summary>
+            <div>
+              <h2>{t('Version history')}</h2>
+              <p>{t('Release notes and previous downloads')}</p>
+            </div>
+            <span className="mod-version-count">
+              {t.n(versions.length, '{n} release', '{n} releases')}
+            </span>
+            <ChevronDown className="mod-disclosure-chevron" size={20} aria-hidden />
+          </summary>
+          {versions.length > 0 ? (
+            <div className="mod-version-list">
+              {versions.map((v) => (
+                <div key={v.id} className="mod-version-row">
+                  <div className="mod-version-summary">
+                    <div>
+                      <div className="mod-version-name">
+                        <h3>v{v.version}</h3>
+                        {localVersion === v.version ? <span>{t('current')}</span> : null}
+                      </div>
+                      <p>
+                        <time dateTime={v.createdAt}>
+                          {new Date(v.createdAt).toLocaleDateString(t.tag)}
+                        </time>
+                        {v.sizeBytes ? (
+                          <span>{(v.sizeBytes / 1024 / 1024).toFixed(2)} MB</span>
+                        ) : null}
+                      </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <a
                         href={`${apiBase}/api/mods/${slug}/${v.version}/download`}
                         className="font-mono text-xs text-gilt hover:underline"
                       >
                         {t('download')}
                       </a>
-                      {localVersion === v.version ? (
-                        <MonoTag tone="gilt">{t('current')}</MonoTag>
-                      ) : (
+                      {localVersion !== v.version ? (
                         <Button
                           type="button"
                           size="sm"
                           onClick={() => installVersion(v.version, !installedHere)}
-                          disabled={versionBusy === v.version}
+                          disabled={versionBusy !== null}
                         >
                           {installedHere ? t('downgrade') : t('install')}
                         </Button>
-                      )}
+                      ) : null}
                     </div>
-                  </li>
-                ))}
-              </ul>
-            </Panel>
-          ) : null}
-        </div>
-      </RegistryDetailContentLayout>
+                  </div>
+                  {v.changelog ? (
+                    <details className="mod-changelog">
+                      <summary>{t('Release notes')}</summary>
+                      <Markdown source={v.changelog} className="mod-description" />
+                    </details>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mod-history-empty">{t('No version history is available.')}</p>
+          )}
+        </details>
+      </RegistryDetailLayout>
     </div>
   );
 }
 
-function Row({ k, v }: { k: string; v: string }) {
+function Row({ k, v }: { k: string; v: ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-3">
-      <dt className="font-mono text-ash">{k}</dt>
-      <dd>
-        <StatPill value={v} className="tracking-normal" />
-      </dd>
+    <div>
+      <dt>{k}</dt>
+      <dd>{v}</dd>
     </div>
   );
 }

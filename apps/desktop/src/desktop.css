@@ -2,6 +2,19 @@
   --text-title: 0 0% 100%;
 }
 
+/* The app shell supplies the page gutters and scrolls beneath its own chrome. */
+.mod-detail.desktop-mod-detail {
+  --site-header-height: 0px;
+  width: 100%;
+  max-width: none;
+  padding: 0;
+}
+
+.desktop-mod-detail .mod-section-nav {
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
 /* Installed is a persistent label that sizes to its text, including at larger UI scales. */
 .mod-card-actions--overlay .installed-state {
   min-height: 2.5rem;

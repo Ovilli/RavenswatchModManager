@@ -136,7 +136,8 @@ body:has(.mod-detail) > .site-header {
   gap: 8px 14px;
   min-width: 0;
 }
-.mod-tags a {
+.mod-tags a,
+.mod-tags li > span {
   display: block;
   padding: 4px 11px;
   background: hsl(var(--surface-2));
