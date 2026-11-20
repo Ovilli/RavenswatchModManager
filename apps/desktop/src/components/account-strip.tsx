@@ -1,9 +1,10 @@
 import { Link } from '@tanstack/react-router';
-import { ChevronUp, ExternalLink, LogIn, LogOut, WifiOff } from 'lucide-react';
+import { ChevronUp, ExternalLink, LogOut, WifiOff } from 'lucide-react';
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
 import { signOut, useSession } from '../lib/auth-client';
 import { useT } from '../lib/i18n-react';
 import { CopyButton } from './chrome';
+import { UserRoundArrowLeft } from './icons/UserRoundArrowLeft';
 import { useToast } from './toast';
 
 function initialsFor(name: string | null | undefined, email: string | null | undefined): string {
@@ -94,16 +95,14 @@ export function AccountStrip({ collapsed = false }: { collapsed?: boolean }) {
 
   if (!user) {
     return (
-      <div className="shrink-0 border-t border-border/60 p-3">
+      <div className="sidebar-section shrink-0 border-t border-border/60 py-app">
         <Link
           to="/signin"
           aria-label={t('Sign in')}
           data-sidebar-tooltip={collapsed ? t('Sign in') : undefined}
-          className="sidebar-account-action grid h-14 w-full items-center overflow-hidden rounded border border-transparent py-1.5 text-left transition-colors duration-150 hover:bg-char/40"
+          className="sidebar-account-action w-full items-center border border-transparent transition-colors duration-150 hover:bg-char/40"
         >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-char/60 text-parchment">
-            <LogIn className="h-4 w-4" aria-hidden />
-          </span>
+          <UserRoundArrowLeft className="nav-icon shrink-0" aria-hidden />
           <span className="sidebar-expanded-content min-w-0" aria-hidden={collapsed}>
             <span className="block truncate text-base text-parchment">{t('Sign in')}</span>
             {status ? <span className="block truncate text-xs text-ash">{status}</span> : null}
@@ -116,7 +115,7 @@ export function AccountStrip({ collapsed = false }: { collapsed?: boolean }) {
   return (
     <div
       ref={wrapRef}
-      className="relative shrink-0 border-t border-border/60 p-3"
+      className="sidebar-section relative shrink-0 border-t border-border/60 py-app"
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
       }}
@@ -136,7 +135,7 @@ export function AccountStrip({ collapsed = false }: { collapsed?: boolean }) {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={menuId}
-        className="sidebar-account-action grid h-14 w-full items-center overflow-hidden rounded border border-transparent py-1.5 text-left transition-colors duration-150 hover:bg-char/40"
+        className="sidebar-account-action w-full items-center border border-transparent transition-colors duration-150 hover:bg-char/40"
       >
         <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-char/60 text-xs font-semibold text-parchment">
           {user.image ? (

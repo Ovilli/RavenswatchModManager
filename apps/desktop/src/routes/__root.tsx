@@ -101,7 +101,7 @@ function NavLink({ to, icon: Icon, label: source, collapsed }: Nav & { collapsed
       activeProps={{ 'data-active': 'true' }}
       inactiveProps={{ 'data-active': 'false' }}
     >
-      <Icon className="nav-icon shrink-0" />
+      <Icon className="nav-icon shrink-0" aria-hidden />
       <span
         className="sidebar-expanded-content truncate font-serif-italic text-base"
         aria-hidden={collapsed}
@@ -114,7 +114,7 @@ function NavLink({ to, icon: Icon, label: source, collapsed }: Nav & { collapsed
           aria-hidden={collapsed}
         >
           <span
-            className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${activeCount > 0 ? 'bg-gilt/15 text-gilt' : 'bg-parchment/5 text-ash'}`}
+            className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium tabular-nums text-white ${activeCount > 0 ? 'bg-gilt/15' : 'bg-parchment/5'}`}
             title={activeDescription}
           >
             {t('{n} Active', { n: activeCount })}
@@ -153,10 +153,10 @@ function SidebarSearch({ collapsed }: { collapsed: boolean }) {
       className={
         collapsed
           ? 'nav-link-grim sidebar-nav-item'
-          : 'flex h-9 w-9 shrink-0 items-center justify-center rounded text-ash transition-colors duration-150 hover:bg-char/40 hover:text-parchment'
+          : 'sidebar-header-search flex items-center justify-center text-ash transition-colors duration-150 hover:bg-char/40 hover:text-parchment'
       }
     >
-      <Search className="h-5 w-5 shrink-0" aria-hidden />
+      <Search className="nav-icon shrink-0" aria-hidden />
     </button>
   );
 }
@@ -205,7 +205,7 @@ function SidebarLaunch({ collapsed }: { collapsed: boolean }) {
   return (
     <div
       ref={wrapRef}
-      className="relative flex shrink-0 flex-col gap-2 px-3 pb-3"
+      className="sidebar-section relative flex shrink-0 flex-col gap-2 pb-app-sm"
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget)) setMenuOpen(false);
       }}
@@ -228,11 +228,11 @@ function SidebarLaunch({ collapsed }: { collapsed: boolean }) {
           </button>
         </div>
       ) : null}
-      <div className="flex overflow-hidden rounded border border-crimson bg-crimson">
+      <div className="sidebar-launch-control flex bg-crimson">
         <button
           type="button"
           disabled={busy}
-          className="sidebar-launch-action grid min-h-11 min-w-0 flex-1 items-center overflow-hidden py-2 text-base font-semibold text-parchment transition-colors duration-150 hover:bg-parchment/10 disabled:pointer-events-none disabled:opacity-50"
+          className="sidebar-launch-action grid min-w-0 flex-1 items-center text-base font-semibold text-parchment transition-colors duration-150 hover:bg-parchment/10 disabled:pointer-events-none disabled:opacity-50"
           aria-label={label}
           data-sidebar-tooltip={collapsed ? label : undefined}
           onClick={() => {
@@ -240,7 +240,7 @@ function SidebarLaunch({ collapsed }: { collapsed: boolean }) {
             void launch('modded');
           }}
         >
-          <LaunchIcon className="h-5 w-5 shrink-0" />
+          <LaunchIcon className="h-5 w-5 shrink-0" aria-hidden />
           <span
             className="sidebar-expanded-content truncate pr-2 text-left"
             aria-hidden={collapsed}
@@ -253,7 +253,7 @@ function SidebarLaunch({ collapsed }: { collapsed: boolean }) {
             ref={disclosureRef}
             type="button"
             disabled={busy}
-            className="flex w-11 shrink-0 items-center justify-center border-l border-parchment/20 text-parchment transition-colors duration-150 hover:bg-parchment/10 disabled:pointer-events-none disabled:opacity-50"
+            className="sidebar-launch-disclosure flex shrink-0 items-center justify-center border-l border-parchment/20 text-parchment transition-colors duration-150 hover:bg-parchment/10 disabled:pointer-events-none disabled:opacity-50"
             aria-label={t('Launch options')}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
@@ -471,73 +471,64 @@ function RootLayout() {
                 }
               }}
               className={`app-sidebar relative z-40 flex shrink-0 flex-col border-r border-border transition-[width] duration-150 ease-grimoire ${
-                collapsed ? 'w-20' : 'w-72'
+                collapsed ? 'w-[var(--sidebar-collapsed-width)]' : 'w-72'
               }`}
             >
               <div
-                className={`shrink-0 px-4 pt-4 pb-3 ${collapsed ? 'overflow-hidden' : ''}`}
+                className="sidebar-section shrink-0 py-app"
                 data-tauri-drag-region={collapsed ? undefined : true}
               >
                 <div
-                  className="flex w-64 items-center gap-2"
+                  className="sidebar-header"
                   data-tauri-drag-region={collapsed ? undefined : true}
                 >
-                  <div className="sidebar-brand relative h-11 w-11 shrink-0">
-                    <img
-                      src="/logo.png"
-                      alt="Ravenswatch Mod Manager"
-                      className="sidebar-logo h-full w-full rounded-md object-cover"
-                    />
-                    {collapsed ? (
-                      <button
-                        type="button"
-                        onClick={() => update({ sidebarCollapsed: false })}
-                        aria-label={t('Expand the sidebar')}
-                        data-sidebar-tooltip={t('Expand the sidebar')}
-                        className="sidebar-expand absolute inset-0 flex items-center justify-center rounded text-ash hover:bg-char/40 hover:text-parchment"
-                      >
-                        <PanelLeftOpen className="h-4 w-4" aria-hidden />
-                      </button>
-                    ) : null}
+                  <div className="sidebar-brand">
+                    <img src="/logo.png" alt="Ravenswatch Mod Manager" className="sidebar-logo" />
                   </div>
-                  {collapsed ? null : (
-                    <div
-                      className="min-w-0 flex-1 font-serif-italic text-lg leading-tight text-parchment"
-                      data-tauri-drag-region
-                    >
-                      <span className="block">Ravenswatch</span>
-                      <span className="block">Mod Manager</span>
-                    </div>
-                  )}
+                  <div
+                    className="sidebar-expanded-content min-w-0 overflow-hidden font-serif-italic text-lg leading-none text-parchment"
+                    aria-hidden={collapsed}
+                    data-tauri-drag-region
+                  >
+                    <span className="block truncate">Ravenswatch</span>
+                    <span className="block truncate text-sm leading-none text-ash">
+                      Mod Manager
+                    </span>
+                  </div>
                   {collapsed ? null : <SidebarSearch collapsed={false} />}
-                  {collapsed ? null : (
-                    <button
-                      type="button"
-                      onClick={() => update({ sidebarCollapsed: true })}
-                      aria-label={t('Collapse the sidebar to icons')}
-                      title={t('Collapse the sidebar to icons')}
-                      className="shrink-0 rounded border border-transparent p-2 text-ash transition hover:border-border hover:bg-char/40 hover:text-parchment"
-                    >
-                      <PanelLeftClose className="h-4 w-4" aria-hidden />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => update({ sidebarCollapsed: !collapsed })}
+                    aria-label={
+                      collapsed ? t('Expand the sidebar') : t('Collapse the sidebar to icons')
+                    }
+                    aria-expanded={!collapsed}
+                    data-sidebar-tooltip={
+                      collapsed ? t('Expand the sidebar') : t('Collapse the sidebar to icons')
+                    }
+                    className="sidebar-toggle flex items-center justify-center text-ash transition-colors duration-150 hover:bg-char/40 hover:text-parchment"
+                  >
+                    {collapsed ? <PanelLeftOpen aria-hidden /> : <PanelLeftClose aria-hidden />}
+                  </button>
                 </div>
               </div>
 
               <nav
-                className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 py-1"
+                className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-1"
                 data-tauri-drag-region={collapsed ? undefined : true}
               >
-                {nav.map((n) => (
-                  <Fragment key={n.to}>
-                    <NavLink {...n} collapsed={collapsed} />
-                    {collapsed && n.to === '/' ? <SidebarSearch collapsed /> : null}
-                  </Fragment>
-                ))}
+                <div className="sidebar-section sidebar-nav-content flex flex-col gap-app-sm">
+                  {nav.map((n) => (
+                    <Fragment key={n.to}>
+                      <NavLink {...n} collapsed={collapsed} />
+                      {collapsed && n.to === '/' ? <SidebarSearch collapsed /> : null}
+                    </Fragment>
+                  ))}
+                </div>
               </nav>
 
               <SidebarLaunch collapsed={collapsed} />
-              <div className="shrink-0 px-3 pb-3">
+              <div className="sidebar-section shrink-0 pb-app">
                 <NavLink {...SETTINGS_NAV} collapsed={collapsed} />
               </div>
               <AccountStrip collapsed={collapsed} />
@@ -558,7 +549,7 @@ function RootLayout() {
               <UpdaterBanner />
               <ChannelStatusBanner />
               {LIBRARY_PREVIEW ? (
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-6 py-2 text-sm text-ash md:px-8">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-app py-2 text-sm text-ash">
                   <span>Library preview · sample mods · reload to reset</span>
                   <a
                     href="/?preview=off"
@@ -571,13 +562,9 @@ function RootLayout() {
               <main
                 ref={mainRef}
                 // Clear the 7rem footer fade, with another 1rem below the last item.
-                className={`rsmm-main min-h-0 flex-1 overflow-y-auto px-6 pb-32 md:px-8 ${inTauri() ? 'pt-2' : 'pt-6'}`}
+                className="rsmm-main min-h-0 flex-1 overflow-y-auto px-app pt-app pb-32"
               >
-                <div
-                  className={`mx-auto w-full animate-page-in ${
-                    location.pathname === '/browse' ? 'max-w-none' : 'max-w-7xl'
-                  }`}
-                >
+                <div className="w-full animate-page-in">
                   <Outlet />
                 </div>
               </main>

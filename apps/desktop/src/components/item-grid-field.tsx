@@ -14,6 +14,7 @@
  * share that space and never overflow it.
  */
 import { Input } from '@rsmm/ui';
+import { X } from 'lucide-react';
 import { type CSSProperties, Fragment, useEffect, useRef, useState } from 'react';
 import { useT } from '../lib/i18n-react';
 import {
@@ -430,7 +431,6 @@ function GridCard({
   onFocusItem: (id: string | null) => void;
 }) {
   const t = useT();
-  const [hoverRemove, setHoverRemove] = useState(false);
   const label = option?.label ?? id;
   const n = option ? optionNumber(spec, value, option) : null;
   const editable = option ? numberEditable(spec, option) : false;
@@ -448,12 +448,9 @@ function GridCard({
           title={t('Remove {name}', { name: label })}
           onClick={onRemove}
           onFocus={() => onFocusItem(id)}
-          onMouseEnter={() => setHoverRemove(true)}
-          onMouseLeave={() => setHoverRemove(false)}
           className="absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded text-ash text-xs opacity-60 transition hover:text-crimson hover:opacity-100 group-hover:opacity-100"
-          style={skin(hoverRemove ? theme.removeHover || theme.remove : theme.remove)}
         >
-          {theme.remove ? null : '✕'}
+          <X className="h-3.5 w-3.5" aria-hidden />
         </button>
       ) : null}
       {option?.icon ? (

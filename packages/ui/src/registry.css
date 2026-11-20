@@ -117,26 +117,26 @@
 @media(prefers-reduced-motion:reduce){.mod-card .mod-card-identity h2,.mod-card .mod-card-identity h3,.mod-card-actions--overlay .registry-install-button,.mod-card-actions--overlay .registry-install-label{transition:none}}
 
 /* Shared registry search and filter controls used by the website and desktop client. */
-.registry-search-slot{min-width:0;width:min(100%,640px)}
-.registry-search{display:flex;align-items:center;width:100%;min-width:0;height:40px;padding:3px;border:1px solid hsl(var(--char));border-radius:8px;background:hsl(var(--surface-1))}
-.registry-search:focus-within{border-color:hsl(var(--gilt))}
+.registry-search-slot{min-width:0;width:min(100%,640px);margin-inline:auto}
+.registry-search{--registry-search-inset:4px;display:flex;align-items:center;width:100%;min-width:0;height:40px;padding:var(--registry-search-inset);border:0;border-radius:8px;background:hsl(var(--surface-1))}
+.registry-search:has(input:focus-visible){outline:2px solid hsl(var(--ring));outline-offset:2px}
 .registry-search input{flex:1;min-width:0;width:100%;padding-inline:6px;border:0;outline:0;background:transparent;color:hsl(var(--foreground));font-size:1rem;line-height:1.4}
 .registry-search input::placeholder{color:hsl(32 17% 68%);opacity:1}
 .registry-search input::-webkit-search-cancel-button{-webkit-appearance:none}
 .registry-search-submit,.registry-search-clear{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;border-radius:8px;color:hsl(32 17% 68%)}
 .registry-search-submit:hover,.registry-search-clear:hover{color:hsl(var(--foreground));background:hsl(var(--surface-2))}
-.registry-search-filters{position:relative;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;gap:7px;height:32px;margin-left:8px;padding:0 15px;border-left:1px solid hsl(var(--char));border-radius:0 8px 8px 0;font-size:.9375rem;font-weight:600}
+.registry-search-filters{position:relative;display:inline-flex;align-items:center;justify-content:center;align-self:stretch;flex-shrink:0;gap:7px;margin-block:calc(-1 * var(--registry-search-inset));margin-right:calc(-1 * var(--registry-search-inset));margin-left:8px;padding:0 15px;border-left:1px solid hsl(var(--background));border-radius:0 8px 8px 0;font-size:.9375rem;font-weight:600}
 .registry-search-filters:hover{background:hsl(var(--surface-2))}
 .registry-search-filters[data-active="true"]{color:hsl(var(--crimson-text))}
 .registry-search-filter-count{position:absolute;top:-4px;right:2px;display:grid;place-items:center;min-width:18px;height:18px;padding-inline:4px;border-radius:50%;background:hsl(var(--parchment));color:hsl(var(--background));font-size:.6875rem;line-height:1}
 .registry-result-controls{display:flex;align-items:center;justify-content:flex-end;gap:20px;min-width:0}
 .registry-sort{display:flex;align-items:center;gap:6px;font-size:.9375rem;white-space:nowrap}
 .registry-sort>span{color:hsl(32 17% 68%)}
-.registry-sort select{appearance:none;min-height:44px;padding:8px 20px 8px 6px;background:transparent;border:0;color:inherit;font:inherit;cursor:pointer}
+.registry-sort select{appearance:none;min-height:var(--icon-button-size,40px);padding:0 20px 0 6px;background:transparent;border:0;color:inherit;font:inherit;cursor:pointer}
 .registry-sort option{color:hsl(var(--foreground));background:hsl(var(--background))}
 .registry-sort>svg{margin-left:-22px;pointer-events:none}
 .registry-view-switch{display:flex;gap:4px;padding-left:16px;border-left:1px solid hsl(var(--char)/.6)}
-.registry-icon-button{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:40px;height:40px;border-radius:8px;color:hsl(32 17% 68%)}
+.registry-icon-button{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:var(--icon-button-size);height:var(--icon-button-size);border-radius:var(--icon-button-radius);color:hsl(32 17% 68%)}
 .registry-icon-button:hover,.registry-icon-button[aria-pressed="true"]{color:hsl(var(--parchment));background:hsl(var(--surface-2))}
 .registry-icon-button[data-variant="danger"]:hover{color:hsl(var(--crimson-text))}
 .registry-chip{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;gap:8px;min-height:44px;padding:9px 18px;border:1px solid hsl(var(--char));border-radius:999px;font-size:.9375rem;line-height:1.4;white-space:nowrap;transition:background-color 140ms ease-out,border-color 140ms ease-out}
@@ -162,7 +162,7 @@
 .registry-filter-toggle strong{font-size:1rem;font-weight:500}
 .registry-filter-toggle input{flex-shrink:0;width:22px;height:22px;accent-color:hsl(var(--crimson))}
 .registry-filter-footer{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px 28px;border-top:1px solid hsl(var(--border))}
-.registry-icon-button{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:40px;height:40px;border-radius:8px;color:var(--registry-muted,hsl(32 17% 68%))}
+.registry-icon-button{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:var(--icon-button-size);height:var(--icon-button-size);border-radius:var(--icon-button-radius);color:var(--registry-muted,hsl(32 17% 68%))}
 .registry-icon-button:hover,.registry-icon-button[aria-pressed="true"]{color:hsl(var(--parchment));background:hsl(var(--surface-2))}
 .registry-clear{min-height:44px;flex-shrink:0;text-decoration:underline;text-underline-offset:4px;font-size:.9375rem;font-weight:600}
 .registry-apply{display:inline-flex;justify-content:center;align-items:center;min-height:46px;padding:11px 24px;border-radius:8px;background:hsl(var(--crimson));color:hsl(var(--parchment));font-weight:700;font-size:1rem}
@@ -176,7 +176,7 @@
 .registry-search-dialog{position:relative;display:flex;flex-direction:column;margin:0;max-height:76dvh;border-radius:8px}
 .registry-search-dialog-header{display:flex;align-items:center;flex-shrink:0;height:40px;border-bottom:1px solid hsl(var(--char))}
 .registry-search-dialog-header:focus-within{border-bottom-color:hsl(var(--gilt))}
-.registry-search-dialog-header .registry-search{height:100%;border:0;border-radius:0;background:transparent}
+.registry-search-dialog .registry-search-dialog-header .registry-search{height:100%;border:0;border-radius:0;background:transparent;outline:none}
 .registry-search-dialog-header>.registry-icon-button{width:32px;height:32px;margin-right:4px}
 .registry-search-dialog .registry-search-slot{flex:1;width:100%;height:100%}
 .registry-search-results{min-height:0;max-height:50vh;overflow-y:auto;overscroll-behavior:contain;padding:12px}
