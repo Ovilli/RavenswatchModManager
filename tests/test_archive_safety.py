@@ -34,9 +34,37 @@ def test_safe_dir_name_rejects(bad):
         archive.safe_dir_name(bad)
 
 
+@pytest.mark.parametrize("bad", ["foo.", "foo "])
+def test_safe_dir_name_rejects_trailing_dot_or_space(bad):
+    with pytest.raises(ArchiveError):
+        archive.safe_dir_name(bad)
+
+
 @pytest.mark.parametrize("ok", ["MyMod", "my-mod", "my_mod.v2", "Mod123"])
 def test_safe_dir_name_accepts(ok):
     assert archive.safe_dir_name(ok) == ok
+
+
+# --- Windows name rewriting ------------------------------------------------
+
+
+@pytest.mark.parametrize("name", [
+    "m/_root/version.dll.", "m/_root/version.dll ",
+    "m/_root/version.dll::$DATA", "m/_root/version.dll",
+])
+def test_classify_members_blocks_windows_aliases_of_a_dll(name):
+    blocked, _ = archive.classify_members([name])
+    assert blocked == [name]
+
+
+@pytest.mark.parametrize("name", [
+    "m/_root./x.txt", "m/a /x.txt", "m/a:b/x.txt", "m/x.txt.", "m/x.txt ",
+    "m/x.txt:stream",
+])
+def test_safe_extract_rejects_windows_rewritten_components(tmp_path, name):
+    z = _zip(tmp_path / "a.zip", {name: b"x"})
+    with zipfile.ZipFile(z) as zf, pytest.raises(ArchiveError, match="Windows"):
+        archive.safe_extract(zf, tmp_path / "out")
 
 
 # --- extraction guards -----------------------------------------------------
