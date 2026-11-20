@@ -4,9 +4,10 @@ A mod registers content via `ContentRegistry.register("item", id=..., ...)`
 which delegates to the `kinds/<kind>.py` implementation. Each kind owns
 its own template + field-patcher + emit step.
 
-Kinds that aren't fully schema-mined yet (bosses, maps, heroes at v3.0)
-register their builder but fail with a clear `SchemaNotMined` error on
-emit, so authors see exactly which class needs RE work next.
+A kind raises `SchemaNotMined` on emit when the game data it needs is not
+readable (no install or mirror) or a class it touches is not decoded yet, so
+authors see what is missing instead of a mod that emits nothing. How far each
+kind is trusted in game is `KIND_CONFIDENCE` below.
 """
 
 from __future__ import annotations
@@ -149,6 +150,12 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # constraints (a story tile like Wood_House forces 3 Treant camps).
                               # The earlier "count is ignored" reading was the fill pass.
     "shop": "confirmed",      # Sandman shop prices + offer generators, overridden in place.
+                              # Field meaning is read off the live exe's generator (0x1402d9280),
+                              # quality roll and price function (0x1402d4200), and every edit
+                              # round-trips byte-for-byte. PROVEN IN GAME 2026-09-13
+                              # (sandman-shop-test): edited prices of 1 were what the shop
+                              # charged. Minor must roll >= 2 items or opening the shop
+                              # divides by zero (enforced by shops._check_rollable).
     "skin": "confirmed",      # NEW skins appended to a shipped hero's skin list. PROVEN IN GAME
                               # 2026-11-06: scarlet-crimson's tinted "Crimson" skin listed after
                               # Scarlet's shipped ones and spawned in a run. The herodef edit is
@@ -159,12 +166,6 @@ KIND_CONFIDENCE: dict[str, str] = {
                               # entity the chapter already places). Every shipped level
                               # rewrites byte-identically and the emit is anchored, but no
                               # moved, sunk or added object has been seen in game yet.
-                              # Field meaning is read off the live exe's generator (0x1402d9280),
-                              # quality roll and price function (0x1402d4200), and every edit
-                              # round-trips byte-for-byte. PROVEN IN GAME 2026-09-13
-                              # (sandman-shop-test): edited prices of 1 were what the shop
-                              # charged. Minor must roll >= 2 items or opening the shop
-                              # divides by zero (enforced by shops._check_rollable).
     "melody": "guess",        # all 12 retail melodydefs round-trip byte-for-byte and every
                               # mined exclusion string is an exact GameModifier stem, but
                               # neither lever (effect repoint, exclusion list) has been
@@ -438,7 +439,7 @@ _KIND_MODULES = {
 }
 
 def _load_kind(kind: str):
-    """Lazy-import to keep startup cheap and let plugins override kinds."""
+    """Lazy-import to keep startup cheap."""
     mod_name = _KIND_MODULES.get(kind, f"{kind}s")
     target = f"rsmm.sdk.kinds.{mod_name}"
     try:

@@ -8,8 +8,10 @@ writes the cooked record into the mod's ``assets/`` tree. ``apply_mods.py``
 registers the new stem in ``UsedRscList`` so the engine loads it additively —
 the same path proven for custom items / enemies.
 
-Confidence: ``guess``. The def cooks and loads, but a NET-NEW modifier *appearing
-in the selection UI* is unproven — the challenge-UI slot count looks data-driven
+Confidence: ``experimental``. A cloned def reaches the challenge screen (in game
+2026-09-18, after the text-bank fix); its effect in a run is unproven. The
+history below predates that proof: a NET-NEW modifier *appearing in the
+selection UI* was then unproven — the challenge-UI slot count looks data-driven
 and may be pre-sized to the vanilla set (see docs/_re/kinds/game-modifiers.md,
 "#16 cap"). Ghidra 2026-07-05: the challenge UI rows are SPAWNED, not fixed
 entities — ``Dt Challenge Ui Controller`` registers ``m_oGameModifierUiSpawner``

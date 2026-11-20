@@ -65,9 +65,9 @@ introduces no new resource name, which is also what makes it the way to test a
 custom mesh in isolation: if a `prop` misbehaves, pointing a `mesh` at the same
 model says whether the geometry cook or the entity cook is at fault.
 
-Confidence: ``experimental`` — the cook is the same one ``prop`` uses and the
-override path is the ordinary asset-replacement mechanism, but a mod-supplied
-mesh has not yet been confirmed rendering in-game.
+Confidence: ``confirmed`` — a mod-supplied mesh written over a shipped mesh's
+cooked path rendered in game (2026-09-13), and the same cook drew a `poi` prop
+(2026-09-17). See ``KIND_CONFIDENCE`` in ``rsmm.sdk.content``.
 """
 
 from __future__ import annotations

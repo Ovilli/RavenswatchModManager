@@ -141,10 +141,6 @@ ENEMY_CAMP_TIER_DEF_LIBRARY: Final[int] = 0x141411560
 EMPTY_STRING_SENTINEL: Final[int] = C.EMPTY_STRING_SENTINEL
 UNRESOLVED_NAME_HASH: Final[int] = C.UNRESOLVED_NAME_HASH
 
-#: Schema version of the JSON intermediate written by :func:`emit`. Bump
-#: whenever any field below moves or its semantics change so the migrations
-#: pipeline (`src/rsmm/sdk/migrations.py`) can rewrite older mods.
-ENEMY_MANIFEST_SCHEMA_VERSION: Final[int] = 1
 
 
 # --------------------------------------------------------------------------- #
