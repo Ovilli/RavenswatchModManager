@@ -30,7 +30,13 @@ import sys
 from pathlib import Path
 
 from rsmm.cli import _term
-from rsmm.cli._lua_scope import LuaSyntaxError, late_locals, missing_sdk_binding, walk
+from rsmm.cli._lua_scope import (
+    LuaSyntaxError,
+    late_locals,
+    missing_sdk_binding,
+    tokenize,
+    walk,
+)
 from rsmm.cli.apply_mods import resolve_special
 from rsmm.cli.merge import _toml_load
 from rsmm.engine.asset_map import decoded_to_encoded
@@ -1008,6 +1014,102 @@ def _lint_hero_capture(mod_s: str, entry: Path, flags: list) -> int:
     return 0
 
 
+#: SDK namespaces a mod may not touch at all: the raw hook installer and the
+#: pointer-safety library are what the SDK builds its own R.* on (#202).
+_SDK_ONLY = {"hook": "R.hook installs a raw engine detour",
+             "unhook": "R.unhook removes a raw engine detour",
+             "ptr": "R.ptr is the SDK's pointer-validation toolkit"}
+#: Manifest tags that mark a mod as a debugging or test tool (R.debug allowed).
+DEBUG_TAGS = frozenset({"debug", "test"})
+
+
+def _require_arg(toks, i: int):
+    """The string token `require` at ``i`` loads (``require "x"`` or
+    ``require("x")``), or None."""
+    j = i + 1 + int(i + 1 < len(toks) and toks[i + 1].text == "(")
+    return toks[j] if j < len(toks) and toks[j].kind == "str" else None
+
+
+def _sdk_aliases(toks) -> set[str]:
+    """Names the SDK is bound to: `R` (the global the docs use) and any
+    `X = require "rsmm"` / `local X = require("rsmm")`."""
+    out = {"R"}
+    for i, t in enumerate(toks):
+        if t.kind == "name" and t.text == "require" and i >= 2:
+            arg = _require_arg(toks, i)
+            if arg is not None and arg.text == "rsmm" and toks[i - 1].text == "=" \
+                    and toks[i - 2].kind == "name":
+                out.add(toks[i - 2].text)
+    return out
+
+
+def sdk_surface_findings(text: str) -> list[tuple[str, int, str]]:
+    """``(severity, line, message)`` for SDK surface a mod's Lua must not use:
+    errors for the raw hook / pointer namespaces, a `require` of an SDK
+    submodule and writing into the SDK table (monkey-patching it); a warning
+    for R.debug (the caller drops it for a debug/test mod)."""
+    try:
+        toks = tokenize(text)
+    except LuaSyntaxError:
+        return []
+    names = _sdk_aliases(toks)
+    out: list[tuple[str, int, str]] = []
+    n = len(toks)
+    for i, t in enumerate(toks):
+        # require "rsmm.engine" / require("rsmm.config"): an SDK internal.
+        if t.kind == "name" and t.text == "require":
+            arg = _require_arg(toks, i)
+            if arg is not None and arg.text.startswith("rsmm."):
+                out.append(("error", t.line, f'require "{arg.text}" loads an SDK '
+                            "internal; use the R.* it exposes"))
+            continue
+        if t.kind != "name" or t.text not in names:
+            continue
+        if i > 0 and toks[i - 1].text in (".", ":"):
+            continue                                    # a field named R, not the SDK
+        if i > 0 and toks[i - 1].text == "function":
+            out.append(("error", t.line, f"function {t.text}... defines a function on the "
+                        "SDK table (monkey-patching R)"))
+            continue
+        # The access path after the alias: .a.b / [x], up to what follows it.
+        j, path = i + 1, []
+        while j < n:
+            if toks[j].text in (".", ":") and j + 1 < n and toks[j + 1].kind == "name":
+                path.append(toks[j + 1].text)
+                j += 2
+            elif toks[j].text == "[":
+                depth, j = 1, j + 1
+                while j < n and depth:
+                    depth += {"[": 1, "]": -1}.get(toks[j].text, 0)
+                    j += 1
+                path.append("[]")
+            else:
+                break
+        if not path:
+            continue
+        if path[0] in _SDK_ONLY:
+            out.append(("error", t.line, f"{t.text}.{path[0]}: {_SDK_ONLY[path[0]]}; "
+                        "only the SDK may use it"))
+        if j < n and toks[j].kind == "op" and toks[j].text == "=":
+            out.append(("error", t.line, f"{t.text}.{'.'.join(path)} = ... writes into the "
+                        "SDK table (monkey-patching R); keep your own table instead"))
+        if path[0] == "debug":
+            out.append(("warn", t.line, f"{t.text}.debug.{path[1] if len(path) > 1 else ''}"
+                        " is a debugging tool (R.debug.with_u32 writes memory); tag the "
+                        "mod `debug` or `test` if it is one"))
+    return out
+
+
+def _mod_tags(entry: Path) -> set[str]:
+    import tomllib
+    try:
+        tags = tomllib.loads((entry / "manifest.toml").read_text(encoding="utf-8")) \
+            .get("mod", {}).get("tags") or []
+    except (OSError, ValueError, AttributeError):
+        return set()
+    return {str(x).strip().lower() for x in tags} if isinstance(tags, list) else set()
+
+
 def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:
     """Warn on R.on()/R.engine.* calls that reference unknown names — a typo
     here fails silently at runtime (the handler just never fires), exactly the
@@ -1033,7 +1135,16 @@ def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:
     # any of them (init.lua, usually) binds R for the modules it loads too.
     r_assigned = any(not isinstance(s, LuaSyntaxError) and "R" in s.global_writes
                      for _, _, s in files)
+    debug_ok = bool(_mod_tags(entry) & DEBUG_TAGS)
     for rel, text, scope in files:
+        for sev, ln, msg in sdk_surface_findings(text):
+            if sev == "error":
+                print(f"  {_T_ERR}  {_ST.bold(modname)}: {_ST.accent(f'{rel}:{ln}')}: {msg}")
+                errs += 1
+            elif not debug_ok:
+                print(f"  {_T_WARN} {_ST.bold(modname)}: {_ST.accent(f'{rel}:{ln}')}: "
+                      f"{_ST.dim(msg)}")
+                warns += 1
         if isinstance(scope, LuaSyntaxError):
             print(f"  {_T_WARN} {_ST.bold(modname)}: {_ST.accent(rel)}: "
                   f"{_ST.dim(f'scope not checked: {scope}')}")
@@ -1065,8 +1176,8 @@ def _lint_lua_api(modname: str, entry: Path) -> tuple[int, int]:
                       f"raw game address {_ST.dim(hint)}")
                 errs += 1
             if _RE_LOWLEVEL.search(code):
-                hint = ("(_internal/peek/poke/read_*/write_*/module_base/scratch/"
-                        "call_raw/resolve) — wrap the capability in the SDK and "
+                hint = ("(_internal/peek/poke/read_*/read_block/write_*/module_base/"
+                        "scratch/call_raw/resolve) — wrap the capability in the SDK and "
                         "expose a high-level R.* API; mods consume only that")
                 print(f"  {_T_ERR}  {_ST.bold(modname)}: {_ST.accent(f'{rel}:{ln}')}: "
                       f"low-level primitive {_ST.dim(hint)}")

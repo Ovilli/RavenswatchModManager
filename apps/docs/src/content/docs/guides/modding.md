@@ -1416,8 +1416,12 @@ R.on("ready", function() R.log("game is up") end)
 `rsmm lint` fails a mod whose Lua reads `R` without that `local R = require "rsmm"`
 line, because the mod would die at load with `R` nil. It also fails raw game
 addresses and the low-level primitives (`_internal`, `peek`/`poke`, `read_*`/`write_*`,
-`module_base`, `scratch`, `call_raw`, `engine.resolve`); those stay inside the SDK,
-and a mod uses the high-level `R.*` calls built on them.
+`read_block`, `module_base`, `scratch`, `call_raw`, `engine.resolve`); those stay inside
+the SDK, and a mod uses the high-level `R.*` calls built on them. The same goes for
+`R.hook` / `R.unhook` and `R.ptr.*` (what the SDK itself is built on), for a
+`require "rsmm.<sub>"` of an SDK internal, and for writing into the SDK table
+(`R.x = ...`, `function R.x() end`): keep a table of your own instead. `R.debug.*`
+is a warning unless the mod's `tags` include `debug` or `test`.
 
 Under the SDK, the loader's native `rsmm` table carries the runtime calls:
 
