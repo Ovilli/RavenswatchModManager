@@ -97,7 +97,7 @@ def test_a_hit_in_the_hero_file_switches_on_the_owned_state(mel):
 
 def test_a_status_without_a_donor_or_a_wrong_record_is_refused(mel):
     with pytest.raises(TS.StatusError, match="unknown status"):
-        TS.apply_status(mel, mel, damage="Skill Defense Block Attack Damage", status="Marked",
+        TS.apply_status(mel, mel, damage="Skill Defense Block Attack Damage", status="Frozen",
                         switch="Skill Attack Speed", talent="Attack Speed")
     with pytest.raises(TS.StatusError, match="not a damage"):
         TS.apply_status(mel, corpus.read(TS.DONORS["Ignite"].rel), damage="Skill Attack Speed",
@@ -129,3 +129,49 @@ def test_the_talent_kind_applies_on_hit(tmp_path):
     cast = EG.parse(paths["Hero_Melusine_Power_Caster_Model"])
     readers = [c for c in cast.components if c.name == "Owner Skill Attack Speed Owned"]
     assert len(readers) == 1 and [r.guid for r in readers[0].refs] == [flag.guid]
+
+
+def _state(mel):
+    g = EG.parse(mel)
+    ctl = next(c for c in g.components if c.name == "Skill Controller Attack Speed")
+    return TA.owned_state(g, ctl, "Attack Speed").name
+
+
+@pytest.mark.parametrize("duration", [4.0, "Skill Attack Speed Marked Time"])
+def test_marked_takes_a_duration_of_its_own(mel, duration):
+    """#202 A2: every shipped Marked modifier reads its duration from its
+    talent's rarity selector, so the copy gets the mod's duration instead and
+    links nowhere outside the file."""
+    from rsmm.engine import entity_fields as EF
+    from rsmm.engine import entity_graph_edit as GE
+    from rsmm.engine import entity_parts as P
+    from rsmm.engine import talent_writer as TW
+    donor = corpus.read(TS.DONORS["Marked"].rel)
+    if donor is None:
+        pytest.skip("no Juliet")
+    raw = mel
+    if isinstance(duration, str):
+        ef = GE.EntityFile(mel, "Hero_Melusine")
+        TW.TalentWriter(ef, "t", "Skill Attack Speed").add(
+            TW._VALUE, duration, {"value": P.Num.f32(4.0), "flag": 0}, flags=0x101)
+        raw = ef.to_bytes()
+    dmg = "Skill Defense Block Attack Damage"
+    out = TS.apply_status(raw, donor, damage=dmg, status="Marked", switch=_state(mel),
+                          talent="Attack Speed", duration=duration)
+    assert EC.check(out, raw, name="Hero_Melusine") == []
+    mod = next(c for c in EG.parse(out).components
+               if c.name == f"Skill Attack Speed Marked On {dmg}")
+    dur = next(f.text for f in EF.fields(mod) if f.name == "duration")
+    assert "Hero_Juliet" not in dur
+    assert ("f32 4" == dur) if not isinstance(duration, str) else duration in dur
+
+
+def test_marked_needs_a_duration_and_the_others_take_none(mel):
+    dmg = "Skill Defense Block Attack Damage"
+    with pytest.raises(TS.StatusError, match="needs a duration"):
+        TS.apply_status(mel, corpus.read(TS.DONORS["Marked"].rel), damage=dmg, status="Marked",
+                        switch=_state(mel), talent="Attack Speed")
+    with pytest.raises(TS.StatusError, match="takes none"):
+        TS.apply_status(mel, corpus.read(TS.DONORS["Bleed"].rel), damage=dmg, status="Bleed",
+                        switch=_state(mel), talent="Attack Speed", duration=3)
+    assert "Marked" not in TS.STATUSES and "Marked" in TS.DONORS

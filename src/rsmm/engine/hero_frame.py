@@ -578,7 +578,7 @@ def set_starts_active(ef: EntityFile, name: str, on: bool = True) -> None:
 
 def add_talent(ef: EntityFile, hero_common: EntityFile, talent: str, *, bank: str,
                name_key: str, desc_key: str, icon: str, seed: str = "",
-               pool: int = POOL_LEVEL_UP) -> str:
+               pool: int = POOL_LEVEL_UP, show_counter: bool = False) -> str:
     """One talent card of the hero's own: its owned state (``Skill <T>``, what
     the talent's effect hangs off; ``talent_add_stat`` builds on it), its
     controller (``Skill Controller <T>``: the row the herodef lists, by GUID)
@@ -605,9 +605,22 @@ def add_talent(ef: EntityFile, hero_common: EntityFile, talent: str, *, bank: st
             raise FrameError("the base talent card has no icon to replace")
         old_icon = found.group(0).decode()
         replace_in_slot(ef, ctl, old_icon, icon)
+        if show_counter:
+            _show_counter(ef, ctl, icon)
     except EntityEditError as e:
         raise FrameError(f"talent {talent!r}: {e}") from e
     return ctl
+
+
+def _show_counter(ef: EntityFile, ctl: str, icon: str) -> None:
+    """Set the card's counter flag: the byte right after its icon string. Of
+    420 shipped skill controllers the 29 with it set are the quest and stack
+    talents (Quest, Combo Chain, Pets Heal, ...) and every other one is 0."""
+    p = ef.objects[ef.component(ctl).index - 1]
+    at = bytes(p).find(icon.encode()) if icon else -1
+    if at < 0 or at + len(icon) >= len(p) or p[at + len(icon)] not in (0, 1):
+        raise FrameError(f"{ctl!r}: no counter flag after its icon")
+    p[at + len(icon)] = 1
 
 
 #: The ultimate cards every hero overrides on Hero_Common's own controllers

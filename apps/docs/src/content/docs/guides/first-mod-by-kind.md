@@ -1474,7 +1474,8 @@ steps = [ { fire = "own:Bean", angles = [0, 90, 180, 270], speed = 14, root = 2 
 
 A talent card is dealt at level-up; give 4 or 5 of them `starter = true` for
 the pick at the start of a run (a hero with none shows "available in an
-upcoming update" on every starting card). A hit's `fx` sets the burst's look
+upcoming update" on every starting card). `show_counter = true` puts the number
+badge quest and stack talents use on the card. A hit's `fx` sets the burst's look
 (any shipped `.vfx.ot`; the default is the shared explosion, a fire burst).
 
 A talent's `actions` take the same: `{ on = "special", hits = [...], steps =

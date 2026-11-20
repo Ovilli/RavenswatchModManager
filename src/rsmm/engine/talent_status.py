@@ -42,6 +42,10 @@ class Donor:
     rel: str                 # corpus path of the entity holding the debuff
     modifier: str            # the status modifier it puts on whoever is hit
     numbers: tuple = ()      # value nodes the modifier reads, copied with it
+    #: The modifier's duration reads something outside it (a talent's rarity
+    #: selector), so the copy needs a duration of its own: ``add_status``
+    #: requires one and it replaces that read.
+    own_duration: bool = False
 
 
 _ENT = ".entity.ot.EntitySettingsResource.gen"
@@ -50,7 +54,12 @@ _ENT = ".entity.ot.EntitySettingsResource.gen"
 #: status. Each was picked (survey 2026-10-09, every debuff in the game) so its
 #: modifier reads nothing outside itself and the ``numbers`` copied with it: no
 #: talent rarity, no state, no other entity. Most hero debuffs fail that (Carmilla's
-#: Bleed amount is an operation over her own values); Marked has no such donor.
+#: Bleed amount is an operation over her own values).
+#:
+#: Marked is the one ``own_duration`` donor (docs/_re/kinds/stats.md, "Marked as
+#: a status donor"): all three shipped Marked modifiers (Juliet, Carmilla, Red)
+#: take their duration from their talent's rarity selector, and that is their
+#: only outside read, so a copy works once it is given a duration of its own.
 DONORS: dict[str, Donor] = {
     "Chilled": Donor(f"EntitySettings/Heroes/Hero_Juliet/Hero_Juliet_Rose_Explosion{_ENT}",
                      "Skill Romeo Power Chilled Modifier"),
@@ -65,8 +74,12 @@ DONORS: dict[str, Donor] = {
                   "Attack Soul Drain Weak Modifier"),
     "Rooted": Donor(f"EntitySettings/Enemies/Treant/Projectile_Treant_Root{_ENT}",
                     "Root Trap Attack Root Modifier"),
+    "Marked": Donor(f"EntitySettings/Heroes/Hero_Juliet/Hero_Juliet{_ENT}",
+                    "Skill Ultimate 2 Marked Modifier", own_duration=True),
 }
-STATUSES = tuple(DONORS)
+#: The statuses that need nothing but a switch: what the editors and a kit hit's
+#: ``status`` offer. ``add_status`` takes every donor (Marked with a duration).
+STATUSES = tuple(k for k, d in DONORS.items() if not d.own_duration)
 
 _DEBUFFS = "bytes_36"
 
@@ -142,13 +155,20 @@ def reader(raw: bytes, *, flag_guid: bytes, flag_label: str, owner_resource: str
 
 
 def add_status(ef: GE.EntityFile, donor: GE.EntityFile, donor_raw: bytes, *, damage: str,
-               status: str, switch: str, talent: str, seed: str = "") -> None:
+               status: str, switch: str, talent: str, seed: str = "",
+               duration: float | str | None = None) -> None:
     """``ef``'s damage record ``damage`` also puts ``status`` on whoever it hits
     while ``switch`` (a state or true/false value of this file) is on (step 3),
-    in place."""
+    in place. ``duration`` (seconds, or a value part of ``ef``) is required for
+    an ``own_duration`` donor (Marked) and refused for the others, whose
+    duration is the donor's own."""
     if status not in DONORS:
-        raise StatusError(f"unknown status {status!r}; one of {', '.join(STATUSES)}")
+        raise StatusError(f"unknown status {status!r}; one of {', '.join(DONORS)}")
     d = DONORS[status]
+    if d.own_duration and duration in (None, ""):
+        raise StatusError(f"{status} needs a duration (seconds, or a value part)")
+    if not d.own_duration and duration not in (None, ""):
+        raise StatusError(f"{status} keeps its donor's duration; it takes none")
     c = ef.component(damage)
     if not c.cls.endswith("CpntDamageSettings"):
         raise StatusError(f"{damage!r} is not a damage record")
@@ -163,6 +183,11 @@ def add_status(ef: GE.EntityFile, donor: GE.EntityFile, donor_raw: bytes, *, dam
                  seed=f"{seed}:{talent}:{status}:{damage}")
         ef.add_subobject(damage, _DEBUFFS, donor, obj,
                          refs={donor.component(d.modifier).guid: mod}, switch=switch)
+        if d.own_duration:
+            if isinstance(duration, str):
+                ef.set_ref(mod, "duration", duration)
+            else:
+                ef.set_value(mod, "duration", float(duration))
     except GE.EntityEditError as e:
         raise StatusError(f"{damage!r}: {e}") from e
 
@@ -171,13 +196,16 @@ def donor_of(status: str) -> tuple[GE.EntityFile, bytes]:
     """The shipped entity holding ``status``'s donor debuff (game install or mirror)."""
     from . import corpus
     if status not in DONORS:
-        raise StatusError(f"unknown status {status!r}; one of {', '.join(STATUSES)}")
+        raise StatusError(f"unknown status {status!r}; one of {', '.join(DONORS)}")
     raw = corpus.read(DONORS[status].rel)
+    if raw is None:
+        raise StatusError(f"{status}'s donor {DONORS[status].rel} is not in the game files")
     return GE.EntityFile(raw), raw
 
 
 def apply_status(raw: bytes, donor_raw: bytes, *, damage: str, status: str, switch: str,
-                 talent: str, seed: str = "", scope: str = "") -> bytes:
+                 talent: str, seed: str = "", scope: str = "",
+                 duration: float | str | None = None) -> bytes:
     """Return ``raw`` with damage record ``damage`` also putting ``status`` on
     whoever it hits while ``switch`` (a state or true/false value of this file)
     is on (step 3)."""
@@ -185,7 +213,7 @@ def apply_status(raw: bytes, donor_raw: bytes, *, damage: str, status: str, swit
         raise StatusError(f"unknown status {status!r}; one of {', '.join(STATUSES)}")
     ef = GE.EntityFile(raw, scope)
     add_status(ef, GE.EntityFile(donor_raw), donor_raw, damage=damage, status=status,
-               switch=switch, talent=talent, seed=seed)
+               switch=switch, talent=talent, seed=seed, duration=duration)
     return ef.to_bytes()
 
 

@@ -217,6 +217,14 @@ def _scale_hit_radii(ef: GE.EntityFile, node: str, factor: str, seed: str) -> No
             struct.pack_into("<f", p, at + len(ef._picker(scaled)) + 6 + 16, 0.0)
 
 
+def _activate_at_startup(ef, names: list[str]) -> None:
+    """Add ``names`` to the entity's start-up state's ``activates``."""
+    startup = TA._startup_state(ef)
+    if startup is not None:
+        for name in names:
+            ef.add_ref(startup, "activates", name)
+
+
 def scale_node(raw: bytes, *, node: str, factor: str, seed: str = "",
                activate: tuple[str, ...] = (), scope: str = "") -> bytes:
     """Return ``raw`` with ``node`` multiplied by ``factor``, a node of the same
@@ -229,7 +237,8 @@ def scale_node(raw: bytes, *, node: str, factor: str, seed: str = "",
     try:
         if kind == "multiply":
             ef.append_operand(node, factor)
-            _activate_before(ef, node, [], first=activate)
+            if not _activate_before(ef, node, [], first=activate):
+                _activate_at_startup(ef, [*activate, node])
             _scale_hit_radii(ef, node, factor, seed)
             return ef.to_bytes()
         c = ef.component(node)
@@ -245,7 +254,12 @@ def scale_node(raw: bytes, *, node: str, factor: str, seed: str = "",
             scaled, TW.link_to(ef, base), ef.F32_ACCESSOR[c.cls],
             TW.link_to(ef, factor), ef.F32_ACCESSOR[f.cls], group=c.group)
         ef.source_value(node, 0, scaled)
-        _activate_before(ef, node, [base, scaled], first=activate)
+        if not _activate_before(ef, node, [base, scaled], first=activate):
+            # No state switches the node on: a modifier's own number, which only
+            # the modifier reads (a seed's fuse, 2026-11-17). Without an owner
+            # the engine never reads the chain and the picker keeps its inline
+            # number, so switch it on at start-up as `scale_hero_bleeds` does.
+            _activate_at_startup(ef, [*activate, base, scaled, node])
         _scale_hit_radii(ef, node, factor, seed)
         return ef.to_bytes()
     except (GE.EntityEditError, P.PartError) as e:

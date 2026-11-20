@@ -903,6 +903,14 @@ def _drop_ref(ef: EntityFile, comp: str, field: str, target: str) -> None:
     raise AbilityError(f"{comp}.{field}: no link to {target!r}")
 
 
+def _as_event(ef: EntityFile, part: str) -> None:
+    """Make ``part`` a one-frame event. A sound a state's ``activates`` list
+    switches on (a moving or looping ability) otherwise stays on after the
+    first cast, so it never plays again (#192)."""
+    from .entity_graph import EVENT_FLAG
+    ef.set_flags(part, ef.component(part).flags | EVENT_FLAG)
+
+
 def _unlink_value_reads(ef: EntityFile, part: str) -> int:
     """Every number slot of ``part`` (and its sub-objects) that READS another
     part (``01 00 <picker> <accessor> <number>``) goes back to holding its own
@@ -1533,8 +1541,10 @@ def build(ef: EntityFile, hero_common: EntityFile, ab: Ability, *, seed: str,
             ef.set_external_ref(f"{tag} Anim", "ref_2", top.guid,
                                 f"[{HF.kind_label(top.cls)}] {hero_common.name}\\{top.path}")
             if snd:
+                _as_event(ef, snd)
                 ef.add_ref(state, "activates", snd)
         elif ab.loop and snd:
+            _as_event(ef, snd)
             ef.add_ref(state, "activates", snd)
         for t in [*timers, f"{tag} End Timer"]:
             ef.add_ref(state, "activates", t)

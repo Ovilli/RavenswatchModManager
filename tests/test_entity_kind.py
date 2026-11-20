@@ -89,7 +89,8 @@ def test_an_out_of_range_link_names_the_list(tmp_path):
 @pytest.mark.parametrize("fields,msg", [
     ({"steps": [{"remove_link": "A.b[0]"}]}, "needs 'entity'"),
     ({"entity": _ENTITY, "steps": "oops"}, "needs 'steps'"),
-    ({"entity": _ENTITY, "steps": [{"clone": "X", "as": "Y"}]}, "clone steps"),
+    ({"entity": _ENTITY, "steps": [{"clone": "X", "as": "Y", "from": "Juliet"}]},
+     "cross-file clone steps"),
     ({"entity": "Objects/Nope/Nothing_Here", "steps": [{"remove_link": "A.b[0]"}]},
      "no shipped entity"),
 ])
