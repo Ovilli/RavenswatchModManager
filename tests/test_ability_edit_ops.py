@@ -95,6 +95,34 @@ def test_retarget_updates_owned_fx_subobjects():
     ]
 
 
+@needs_corpus
+def test_retarget_moves_the_parts_own_link_and_its_subobjects_together():
+    """Carmilla's camera operation links Self Entity Listener directly AND in a
+    sub-object it owns; a direct match must not hide the sub-object's."""
+    from rsmm.engine import corpus
+    from rsmm.engine.entity_graph_edit import EntityFile
+    rel = "EntitySettings/Heroes/Hero_Carmilla/Hero_Carmilla.entity.ot.EntitySettingsResource.gen"
+    raw = corpus.read(rel)
+    if raw is None:
+        pytest.skip("no Carmilla")
+    part = "Primary Ability Camera Target Operation"
+    ef0 = EntityFile(raw, "Hero_Carmilla")
+    old = next(r.guid for r in ef0.component(part).refs if "Self Entity Listener" in r.path)
+    cls = [c.name for c in ef0.cf.classes].index("oCEntityCpntPicker")
+
+    def guids(ef):
+        c = ef.component(part)
+        return [r.guid for o in [c.index - 1, *sorted(ef.subtree({c.index - 1}))]
+                for _, r in EG._pickers(bytes(ef.objects[o]), cls)]
+
+    assert guids(ef0).count(old) >= 2, "needs a direct and an owned link"
+    node = "Hero_Common|Hero To Give Magical Object Entity Listener"
+    out = AE.apply({"Hero_Carmilla": raw},
+                   [{"retarget": part, "node": node}],
+                   main="Hero_Carmilla", seed="t").files["Hero_Carmilla"]
+    assert old not in guids(EntityFile(out, "Hero_Carmilla"))
+
+
 # --- graph editing ops (#202, from #192) --------------------------------------
 
 _OP = "Ability Ultimate 1 Final Damage Multiplier Operation"
@@ -122,6 +150,37 @@ def test_swap_ref_repoints_a_link_across_kinds():
     out = _apply([{"swap_ref": _OP, "node": node, "to": _VAL}])
     guids = {r.guid for r in _part(out, _OP).refs}
     assert old.guid not in guids and _part(_raw(), _VAL).guid in guids
+
+
+def _accessors(raw, comp, target):
+    """The u32 accessor after each picker in ``comp`` (and its sub-objects) naming
+    ``target``."""
+    from rsmm.engine.entity_graph_edit import _B, EntityFile
+    ef = EntityFile(raw, "Hero_Red")
+    c, guid = ef.component(comp), ef.component(target).guid
+    head = _B + struct.pack("<I", [x.name for x in ef.cf.classes].index("oCEntityCpntPicker"))
+    found = []
+    for o in [c.index - 1, *sorted(ef.subtree({c.index - 1}))]:
+        p = ef.objects[o]
+        i = p.find(head + guid)
+        while i >= 0:
+            end = i + 28 + struct.unpack_from("<I", p, i + 24)[0] + 4
+            found.append(struct.unpack_from("<I", p, end)[0])
+            i = p.find(head + guid, end)
+    return found
+
+
+@needs_corpus
+def test_swap_ref_across_kinds_rewrites_the_accessor_after_the_link():
+    """A read moved from a value selector to a value operation is read with the
+    OPERATION's accessor; the selector's returns the wrong number in game."""
+    reader, selector = "Albedo Mask Shader Param", "Albedo Mask Value Selector"
+    op = "Skill Basic Wide Attacks Range Multiplier Operation"
+    wanted = _accessors(_raw(), "Human Basic Wide Attacks Length Operation", op)
+    assert len(set(wanted)) == 1
+    assert _accessors(_raw(), reader, selector) != wanted
+    out = _apply([{"swap_ref": reader, "node": selector, "to": op}])
+    assert _accessors(out, reader, op) == wanted
 
 
 @needs_corpus

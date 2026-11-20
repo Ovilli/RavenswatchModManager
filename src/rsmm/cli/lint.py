@@ -32,6 +32,7 @@ from pathlib import Path
 from rsmm.cli import _term
 from rsmm.cli._lua_scope import (
     LuaSyntaxError,
+    _Walk,
     late_locals,
     missing_sdk_binding,
     tokenize,
@@ -1044,6 +1045,22 @@ def _sdk_aliases(toks) -> set[str]:
     return out
 
 
+class _BindWalk(_Walk):
+    """The scope walk, also noting which declaration each name read resolves to
+    (token index of the declaring name, or the `do` of a `for`; absent = global)."""
+
+    def __init__(self, toks):
+        super().__init__(toks)
+        self.bound: dict[int, int] = {}
+
+    def name(self, tok, k):
+        for s in reversed(self.scopes):
+            if tok.text in s:
+                self.bound[k] = s[tok.text]
+                break
+        super().name(tok, k)
+
+
 def sdk_surface_findings(text: str) -> list[tuple[str, int, str]]:
     """``(severity, line, message)`` for SDK surface a mod's Lua must not use:
     errors for the raw hook / pointer namespaces, a `require` of an SDK
@@ -1054,6 +1071,18 @@ def sdk_surface_findings(text: str) -> list[tuple[str, int, str]]:
     except LuaSyntaxError:
         return []
     names = _sdk_aliases(toks)
+    # A name is the SDK only where Lua binds it to `X = require "rsmm"` (or to
+    # the global): a parameter, inner `local` or loop variable shadows it.
+    sdk_decls = {i - 2 for i, t in enumerate(toks)
+                 if t.kind == "name" and t.text == "require" and i >= 2
+                 and toks[i - 1].text == "=" and toks[i - 2].kind == "name"
+                 and (a := _require_arg(toks, i)) is not None and a.text == "rsmm"}
+    walker = _BindWalk(toks)
+    try:
+        walker.run()
+        bound = walker.bound
+    except LuaSyntaxError:
+        bound = {}                                      # unwalkable: no shadowing
     out: list[tuple[str, int, str]] = []
     n = len(toks)
     for i, t in enumerate(toks):
@@ -1068,6 +1097,8 @@ def sdk_surface_findings(text: str) -> list[tuple[str, int, str]]:
             continue
         if i > 0 and toks[i - 1].text in (".", ":"):
             continue                                    # a field named R, not the SDK
+        if bound.get(i) not in sdk_decls | {None}:
+            continue                                    # shadowed by another local
         if i > 0 and toks[i - 1].text == "function":
             out.append(("error", t.line, f"function {t.text}... defines a function on the "
                         "SDK table (monkey-patching R)"))

@@ -362,9 +362,15 @@ PLACEHOLDER_TEXT = "Nothing left to offer: every item here is banned."
 def _placeholder_scope(mod_id: str) -> str:
     """The id a mod's placeholders are hashed under: its own, except the
     picker's managed mod, which keeps its old id's so the "Sold out" items a
-    saved run may hold keep loading after the rename (#202 B3)."""
+    saved run may hold keep loading after the rename (#202 B3). The public mod
+    that now holds the old id gets a namespace of its own, or its first
+    placeholders would share ids and cooked paths with the picker's."""
     from ...engine import item_bans
-    return item_bans.LEGACY_MOD_ID if mod_id == item_bans.DEFAULT_MOD_ID else mod_id
+    if mod_id == item_bans.DEFAULT_MOD_ID:
+        return item_bans.LEGACY_MOD_ID
+    if mod_id == item_bans.LEGACY_MOD_ID:
+        return f"store:{mod_id}"
+    return mod_id
 
 
 def placeholder_id(mod_id: str, block_id: str, n: int) -> str:

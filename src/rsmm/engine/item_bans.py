@@ -19,7 +19,8 @@ import re
 from pathlib import Path
 from typing import Any, Final
 
-__all__ = ["DEFAULT_MOD_ID", "read_bans", "write_bans", "manifest_path"]
+__all__ = ["DEFAULT_MOD_ID", "read_bans", "write_bans", "manifest_path",
+           "migrate_legacy", "is_legacy_picker"]
 
 #: The managed mod's id: reserved, so the store refuses to publish a mod under
 #: it (packages/schemas `RESERVED_MOD_SLUGS`) and an install can never land in
@@ -78,28 +79,96 @@ def mod_dir(mod_id: str = DEFAULT_MOD_ID, mods_dir: Path | None = None) -> Path:
 
 
 def _migrate(mods_dir: Path) -> None:
-    """Move a picker-written ``banned-items`` to the reserved id, once.
+    migrate_legacy(mods_dir)
 
-    Only when the reserved folder does not exist yet and the old one is the
-    picker's own (written by :func:`write_bans`: author ``RSMM`` and the picker
-    schema). A mod someone made under that name is left alone.
-    """
-    new, old = mods_dir / DEFAULT_MOD_ID, mods_dir / LEGACY_MOD_ID
-    if new.exists() or not (old / "manifest.toml").is_file():
-        return
+
+def _is_picker_mod(d: Path) -> bool:
+    """Is ``d`` the picker's own mod (author ``RSMM`` and the picker schema)?"""
+    if not (d / "manifest.toml").is_file():
+        return False
     try:
-        doc = _load(old / "manifest.toml")
+        doc = _load(d / "manifest.toml")
     except ValueError:
-        return
-    if (doc.get("mod") or {}).get("author") != _DEFAULTS["author"] or not _has_picker_at(old):
-        return
+        return False
+    return (doc.get("mod") or {}).get("author") == _DEFAULTS["author"] and _has_picker_at(d)
+
+
+def is_legacy_picker(mods_dir: Path | None = None) -> bool:
+    """Is the picker's mod still sitting at the legacy ``banned-items`` path?"""
+    if mods_dir is None:
+        from rsmm.engine import paths
+        mods_dir = paths.MODS_DIR
+    return _is_picker_mod(Path(mods_dir) / LEGACY_MOD_ID)
+
+
+_ID_LINE_RE: Final = re.compile(
+    r"""^(\s*(?:id|"id"|'id')\s*=\s*)(?:"(?:[^"\\]|\\.)*"|'[^']*')(\s*(?:#.*)?)$""")
+_TABLE_RE: Final = re.compile(r"^\s*\[")
+
+
+def _set_mod_id(manifest: Path, new_id: str) -> bool:
+    """Set ``[mod].id`` whatever the quoting or spacing; True once it reads ``new_id``."""
+    import tomllib
     try:
-        os.replace(old, new)
-    except OSError:
-        return
-    text = (new / "manifest.toml").read_text(encoding="utf-8")
-    (new / "manifest.toml").write_text(
-        text.replace(f'id = "{LEGACY_MOD_ID}"', f'id = "{DEFAULT_MOD_ID}"', 1), encoding="utf-8")
+        text = manifest.read_text(encoding="utf-8")
+        doc = tomllib.loads(text)
+    except (OSError, ValueError):
+        return False
+    if (doc.get("mod") or {}).get("id") == new_id:
+        return True
+    out: list[str] = []
+    in_mod = done = False
+    for line in text.splitlines(keepends=True):
+        body = line.rstrip("\r\n")
+        if _TABLE_RE.match(body):
+            in_mod = re.match(r"^\s*\[\s*mod\s*\]\s*(#.*)?$", body) is not None
+        elif in_mod and not done:
+            m = _ID_LINE_RE.match(body)
+            if m:
+                line = f'{m.group(1)}"{new_id}"{m.group(2)}{line[len(body):]}'
+                done = True
+        out.append(line)
+    new_text = "".join(out)
+    try:
+        if not done or (tomllib.loads(new_text).get("mod") or {}).get("id") != new_id:
+            # An unusual layout (dotted keys, inline table): regenerate instead.
+            mod = dict(doc.get("mod") or {})
+            mod["id"] = new_id
+            blocks = [c for c in (doc.get("content") or []) if isinstance(c, dict)]
+            new_text = _render(mod, blocks)
+        tmp = manifest.with_name(f"{manifest.name}.rsmm-new.{os.getpid()}")
+        tmp.write_text(new_text, encoding="utf-8")
+        tmp.replace(manifest)
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def migrate_legacy(mods_dir: Path | None = None) -> bool:
+    """Move a picker-written ``banned-items`` to the reserved id.
+
+    Only the picker's own mod is touched (written by :func:`write_bans`: author
+    ``RSMM`` and the picker schema); a mod someone made under that name is left
+    alone. Also repairs a reserved folder that still declares the old id (a
+    crash between the move and the manifest rewrite), so a failed rewrite
+    heals on the next call. Returns True when no picker is left at the legacy
+    path, False when one is (migration failed and the folder was not touched).
+    """
+    if mods_dir is None:
+        from rsmm.engine import paths
+        mods_dir = paths.MODS_DIR
+    mods_dir = Path(mods_dir)
+    new, old = mods_dir / DEFAULT_MOD_ID, mods_dir / LEGACY_MOD_ID
+    if not new.exists():
+        if not _is_picker_mod(old):
+            return True
+        try:
+            os.replace(old, new)
+        except OSError:
+            return False
+    if _is_picker_mod(new):
+        _set_mod_id(new / "manifest.toml", DEFAULT_MOD_ID)
+    return not _is_picker_mod(old)
 
 
 def manifest_path(mod_id: str = DEFAULT_MOD_ID, mods_dir: Path | None = None) -> Path:

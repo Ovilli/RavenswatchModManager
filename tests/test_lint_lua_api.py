@@ -211,6 +211,27 @@ def test_the_rules_follow_any_name_the_sdk_is_bound_to(tmp_path):
     assert lint._lint_lua_api("LuaMod", d)[0] == 2
 
 
+@pytest.mark.parametrize("body", [
+    "local function fill(R) R.x = 1 end",
+    "local function fill(t) local R = {} R.x = 1 end",
+    "do local R = {}; R.x = 1 end",
+    "for _, R in ipairs(list) do R.x = 1 end",
+])
+def test_shadowed_sdk_name_is_not_the_sdk(body):
+    assert lint.sdk_surface_findings(_SDK + body + "\n") == []
+
+
+@pytest.mark.parametrize("body", [
+    "R.x = 1",
+    "local function fill(t) R.x = 1 end",
+    "do local R = {} end\nR.x = 1",
+    "for _, v in ipairs(list) do R.x = 1 end",
+])
+def test_unshadowed_sdk_write_still_errors(body):
+    found = lint.sdk_surface_findings(_SDK + body + "\n")
+    assert len(found) == 1 and "monkey-patching" in found[0][2]
+
+
 def test_lookalikes_are_not_flagged():
     src = (_SDK + 'local ok = R.stat.get("x") == 1\n'
            'local t = { R = 1 }; t.R.hook = 2\n'

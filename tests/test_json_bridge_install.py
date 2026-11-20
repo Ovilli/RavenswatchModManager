@@ -187,3 +187,33 @@ def test_an_archive_whose_lua_uses_internal_is_refused(env, capsys):
     assert out["ok"] is False and "low-level primitives" in out["error"]
     assert not (env["mods"] / "coolmod").exists()
     assert list(env["tmp"].iterdir()) == []
+
+
+def test_installing_banned_items_migrates_the_pickers_folder_first(env, capsys):
+    from rsmm.engine import item_bans
+    item_bans.write_bans(["Armor_Per_Object"], item_bans.LEGACY_MOD_ID, mods_dir=env["mods"])
+    good = _zip({"manifest.toml": b'[mod]\nid = "banned-items"\nauthor = "someone"\n'})
+    env["routes"]["/api/mods/banned-items"] = {
+        "versions": [{"version": "1.0.0", "sha256": hashlib.sha256(good).hexdigest(),
+                      "createdAt": "2026-01-01"}]}
+    env["routes"]["/api/mods/banned-items/1.0.0/download"] = good
+    json_bridge.cmd_install_mod("banned-items")
+    assert _out(capsys)["ok"] is True
+    assert item_bans.read_bans(mods_dir=env["mods"]) == ["Armor_Per_Object"]
+    assert 'someone' in (env["mods"] / "banned-items" / "manifest.toml").read_text()
+
+
+def test_installing_banned_items_leaves_the_picker_when_migration_fails(env, capsys, monkeypatch):
+    from rsmm.engine import item_bans
+    item_bans.write_bans(["Armor_Per_Object"], item_bans.LEGACY_MOD_ID, mods_dir=env["mods"])
+    monkeypatch.setattr(item_bans, "migrate_legacy", lambda mods_dir=None: False)
+    good = _zip({"manifest.toml": b'[mod]\nid = "banned-items"\n'})
+    env["routes"]["/api/mods/banned-items"] = {
+        "versions": [{"version": "1.0.0", "sha256": hashlib.sha256(good).hexdigest(),
+                      "createdAt": "2026-01-01"}]}
+    env["routes"]["/api/mods/banned-items/1.0.0/download"] = good
+    json_bridge.cmd_install_mod("banned-items")
+    out = _out(capsys)
+    assert out["ok"] is False
+    assert (env["mods"] / "banned-items" / "config.toml").is_file()
+    assert 'author = "RSMM"' in (env["mods"] / "banned-items" / "manifest.toml").read_text()

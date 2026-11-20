@@ -142,6 +142,25 @@ def test_when_gates_any_step_on_a_bool_field(tmp_path):
 
 
 @needs_corpus
+def test_an_add_selector_step_keeps_its_condition_beside_the_config_guard(tmp_path, monkeypatch):
+    """`when` is the config guard on every step; add_selector's in-game test is
+    `condition`, so one step can carry both."""
+    from rsmm.engine.entity_graph_edit import EntityFile
+    seen = []
+    monkeypatch.setattr(EntityFile, "prepend_selector_entry",
+                        lambda self, comp, target, condition:
+                        seen.append((comp, target, condition)))
+    out = _cfg_root(tmp_path) / "assets"
+    out.mkdir()
+    entities.emit("m", ContentDef(kind="entity", id="Tint", fields={
+        "entity": _ENTITY,
+        "steps": [{"add_selector": "Some Selector", "to": "Some Branch",
+                   "when": "on", "condition": "State Empowered"},
+                  {"remove_link": "State FX PreOvertime.while_active[1]"}]}), out)
+    assert seen == [("Some Selector", "Some Branch", "State Empowered")]
+
+
+@needs_corpus
 def test_ui_layouter_fields_edit_cleanly(tmp_path):
     written = _emit(
         tmp_path,

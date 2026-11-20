@@ -1863,3 +1863,67 @@ def test_a_form_lock_builds_the_same_steps_under_either_spelling():
                  if r.endswith("/Hero_Piper.entity.ot.EntitySettingsResource.gen"))
     with pytest.raises(HK.KitError, match="ALT_FORMS"):
         HK.expand({"form": {"lock": "alt"}}, corpus.read(other), "Hero_Piper")
+
+
+@needs_corpus
+@needs_install
+def test_a_projectile_reading_another_owned_entity_links_its_final_component_guid(tmp_path):
+    """A child projectile's `owner_read` with `from` naming another projectile
+    records that projectile's component GUID; every projectile is restamped when
+    written, so the link must carry the owner's FINAL GUID."""
+    from rsmm.engine import entity_graph as EG
+    from rsmm.engine.entity_graph_edit import EntityFile
+    wisp = "Heroes/Hero_Melusine/Hero_Melusine_Wisp"
+    if corpus.read(f"EntitySettings/{wisp}.entity.ot.EntitySettingsResource.gen") is None:
+        pytest.skip("no Melusine wisp")
+    mod = tmp_path / "mod"
+
+    def build(edits):
+        return heros.emit("m", ContentDef(kind="hero", id="Solo", fields={"frame": {
+            "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+            "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+            "entities": {"Parent": {"from": wisp}, "Child": {"from": wisp}},
+            "abilities": {"special": {
+                "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+                "duration": 0.9, "steps": [{"fire": "own:Parent"}, {"fire": "own:Child"}]}},
+            "edits": edits}}), mod / "assets")
+
+    def entity(files, stem):
+        return next(p for p in files if p.name == f"{stem}.entity.ot.EntitySettingsResource.gen"
+                    ).read_bytes()
+
+    probe = entity(build([]), "Hero_Solo_Parent")
+    owner_part = EG.parse(probe, "Hero_Solo_Parent").components[0].name
+    files = build([{"owner_read": "Parent Read", "entity": "Child", "from": "Parent",
+                    "node": owner_part}])
+    parent = EntityFile(entity(files, "Hero_Solo_Parent"), "Hero_Solo_Parent")
+    child = EntityFile(entity(files, "Hero_Solo_Child"), "Hero_Solo_Child")
+    final = parent.component(owner_part).guid
+    assert [r.guid for r in child.component("Parent Read").refs] == [final]
+
+
+@needs_corpus
+@needs_install
+def test_components_added_by_edits_stay_distinct_across_entities_of_one_donor(tmp_path):
+    """Entities built from one donor share their own GUIDs until restamped, and
+    the edits then add components to each; no GUID may repeat across the files."""
+    from rsmm.engine import entity_graph as EG
+    wisp = "Heroes/Hero_Melusine/Hero_Melusine_Wisp"
+    if corpus.read(f"EntitySettings/{wisp}.entity.ot.EntitySettingsResource.gen") is None:
+        pytest.skip("no Melusine wisp")
+    stems = ("Parent", "A", "B")
+    files = heros.emit("m", ContentDef(kind="hero", id="Solo", fields={"frame": {
+        "rig": "Hero_Kintaro", "mesh": "Characters\\Heroes\\Kintaro\\Kintaro_GEO.fbx",
+        "material": "Characters\\Heroes\\Kintaro\\Textures\\M_Kintaro.mat.ot",
+        "entities": {s: {"from": wisp} for s in stems},
+        "abilities": {"special": {
+            "clip": "Characters\\Heroes\\Kintaro\\Animations\\Kintaro_Power_Out.fbx",
+            "duration": 0.9, "steps": [{"fire": f"own:{s}"} for s in stems]}},
+        "edits": [{"owner_read": f"{s} Read", "entity": s, "from": "Parent",
+                   "node": "Event Initialize"} for s in ("A", "B")]}}), tmp_path / "assets")
+    seen: dict[bytes, str] = {}
+    for s in stems:
+        name = f"Hero_Solo_{s}.entity.ot.EntitySettingsResource.gen"
+        raw = next(p for p in files if p.name == name).read_bytes()
+        for c in EG.parse(raw, s).components:
+            assert seen.setdefault(c.guid, f"{s}:{c.name}") == f"{s}:{c.name}", c.name

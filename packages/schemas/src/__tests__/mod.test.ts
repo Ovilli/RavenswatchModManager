@@ -217,4 +217,20 @@ describe('reserved mod ids', () => {
         .success,
     ).toBe(false);
   });
+
+  it("refuses RSMM's own mod id in the packed manifest of a new version", () => {
+    const version = {
+      version: '1.0.0',
+      sha256: 'a'.repeat(64),
+      sizeBytes: 10,
+      manifest,
+    };
+    expect(modVersionCreateSchema.safeParse(version).success).toBe(true);
+    const res = modVersionCreateSchema.safeParse({
+      ...version,
+      manifest: { ...manifest, id: 'rsmm-item-bans' },
+    });
+    expect(res.success).toBe(false);
+    if (!res.success) expect(res.error.issues[0]?.message).toMatch(/reserved/);
+  });
 });

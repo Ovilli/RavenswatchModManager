@@ -42,13 +42,14 @@ def clear_options(game_dir: Path, names) -> int:
     ini = settings_ini(game_dir)
     if not names or not ini.is_file():
         return 0
-    key = re.compile(r"^\s*(?:" + "|".join(re.escape(n).replace(r"\ ", r"\s+") for n in names)
-                     + r")\s*=", re.IGNORECASE)
-    text = ini.read_text(encoding="utf-8", errors="replace")
-    lines = text.splitlines(keepends=True)
+    # Bytes, not text: the file is the player's, and decoding it would change
+    # non-UTF-8 bytes and line endings in lines this never meant to touch.
+    alts = [re.escape(n.encode("ascii")).replace(rb"\ ", rb"\s+") for n in names]
+    key = re.compile(rb"^\s*(?:" + b"|".join(alts) + rb")\s*=", re.IGNORECASE)
+    lines = ini.read_bytes().splitlines(keepends=True)
     kept = [ln for ln in lines if not key.match(ln)]
     if len(kept) == len(lines):
         return 0
-    from .safeio import atomic_write_text
-    atomic_write_text(ini, "".join(kept))
+    from .safeio import atomic_write_bytes
+    atomic_write_bytes(ini, b"".join(kept))
     return len(lines) - len(kept)

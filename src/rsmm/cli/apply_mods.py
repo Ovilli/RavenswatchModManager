@@ -356,6 +356,12 @@ class State:
     def enabled_mods(self) -> list[str]:
         return self.data.setdefault("enabled_mods", [])
 
+    @property
+    def pending_option_restores(self) -> dict:
+        """``{mod id: [option names]}`` whose GameSettings.ini cleanup failed
+        and is retried by the next apply. Absent in older state files."""
+        return self.data.setdefault("pending_option_restores", {})
+
     def set_enabled_mods(self, ids: list[str]) -> None:
         self.data["enabled_mods"] = sorted(set(ids))
 
@@ -1952,15 +1958,40 @@ def restore_mod_options(mod_root: Path, mod_id: str, game_dir: Path, state: Stat
     return n
 
 
+def _restore_or_defer(mod_id: str, names: list[str], game_dir: Path, state: State) -> bool:
+    """Clear `names` from GameSettings.ini; on an OSError warn and record them
+    in the state so the next apply retries. True when the cleanup went through."""
+    from rsmm.engine import game_settings as GS
+    try:
+        GS.clear_options(game_dir, names)
+    except OSError as e:
+        print(f"  [warn] {mod_id}: could not clear {', '.join(names)} from "
+              f"{GS.settings_ini(game_dir)}: {e}; will retry on the next apply",
+              file=sys.stderr)
+        pending = state.pending_option_restores
+        pending[mod_id] = sorted(set(pending.get(mod_id, [])) | set(names))
+        return False
+    state.pending_option_restores.pop(mod_id, None)
+    return True
+
+
 def restore_flipped_options(mods: list[Mod], state: State, game_dir: Path,
                             dry_run: bool = False) -> list[str]:
     """``restore_options`` for every mod that flipped enabled -> disabled since
-    the last apply, with or without an ``on_disable.py``. Returns their ids."""
+    the last apply, with or without an ``on_disable.py``. Returns their ids.
+    Cleanups an earlier apply could not finish are retried first; a failure
+    here warns and the batch goes on."""
+    if not dry_run:
+        for mod_id, names in list(state.pending_option_restores.items()):
+            _restore_or_defer(mod_id, list(names), game_dir, state)
     was = set(state.enabled_mods)
     done = []
     for m in mods:
         if m.id in was and not m.enabled and m.restore_options:
-            restore_mod_options(m.root, m.id, game_dir, state, dry_run)
+            if dry_run:
+                restore_mod_options(m.root, m.id, game_dir, state, dry_run)
+            elif not _restore_or_defer(m.id, list(m.restore_options), game_dir, state):
+                continue
             done.append(m.id)
     return done
 

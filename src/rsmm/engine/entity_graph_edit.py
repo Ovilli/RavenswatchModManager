@@ -1072,6 +1072,10 @@ class EntityFile:
         new = self._picker(target)
         new_kind = _label_kind(_picker_path(new))
         objs = [obj, *sorted(self.subtree({obj}))] if subobjects else [obj]
+        # The accessor after a value picker depends on the target's kind (see
+        # `_repoint`): learn them BEFORE any swap, or a swapped picker's stale
+        # accessor counts as the file's own evidence.
+        acc = None
         moved = 0
         for o in objs:
             p = self.objects[o]
@@ -1079,10 +1083,27 @@ class EntityFile:
             while i >= 0:
                 n = struct.unpack_from("<I", p, i + 24)[0]
                 end = i + 28 + n + 4
-                if not cross_kind and _label_kind(_picker_path(bytes(p[i:end]))) != new_kind:
-                    raise EntityEditError(f"{c.name!r}: {_picker_path(bytes(p[i:end]))!r} is not "
+                old_path = _picker_path(bytes(p[i:end]))
+                if not cross_kind and _label_kind(old_path) != new_kind:
+                    raise EntityEditError(f"{c.name!r}: {old_path!r} is not "
                                           f"the same kind of node as {target!r}")
+                crossed = _label_kind(old_path) != new_kind
+                if crossed and acc is None:
+                    try:
+                        acc = _Accessors(cooked.parse(self._emit()))
+                    except (EntityAppendError, EntityEditError) as e:
+                        raise EntityEditError(
+                            f"cannot point {c.name!r} at {target!r}: {e}") from e
+                old_picker = bytes(p[i:end])
                 p[i:end] = new
+                if crossed:
+                    try:
+                        p[:] = fix_accessor(bytes(p), i + len(new) - 4, old, new[8:24], acc,
+                                            old_path, _picker_path(new))
+                    except (EntityAppendError, EntityEditError) as e:
+                        p[i:i + len(new)] = old_picker
+                        raise EntityEditError(
+                            f"cannot point {c.name!r} at {target!r}: {e}") from e
                 moved += 1
                 i = p.find(head + old, i + len(new))
         return moved

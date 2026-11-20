@@ -63,8 +63,8 @@ One step per table::
     to = "Bonus Damage Value"             (an f32 node of this entity)
 
     add_selector = "Attack Selector"      a first branch on a component
-    to = "Empowered Attack"               selector: pick ``to`` while ``when``
-    when = "State Empowered"              (a state, value or get-value) holds
+    to = "Empowered Attack"               selector: pick ``to`` while ``condition``
+    condition = "State Empowered"         (a state, value or get-value) holds
 
     unlink_reads = "Attack Cooldown"      every number slot of the part (and
                                           its sub-objects) that reads another
@@ -126,7 +126,7 @@ _OPS = ("clone", "set", "link", "add_link", "remove_link", "percent", "add_subob
 #: ignored silently (a `rename` the old clone did not read left its copies
 #: under the default suffix, and the next step found nothing).
 _KEYS = {*_OPS, "value", "to", "entity", "as", "suffix", "from", "rename",
-         "donor_index", "donor", "replace_ref", "node", "from_kind", "when", "talent",
+         "donor_index", "donor", "replace_ref", "node", "from_kind", "condition", "talent",
          "values", "tag", "flag", "factor", "base", "status", "switch", "duration"}
 
 
@@ -234,10 +234,11 @@ def apply(files: dict[str, bytes], steps: list[dict], *, main: str, seed: str,
                     raise AbilityEditError(f"{c.name!r} is a {c.cls}, not a sound (FMod event)")
                 ef.set_value(c.name, "volume", float(step["value"]))
             elif op == "add_selector":
-                if not step.get("to") or not step.get("when"):
-                    raise AbilityEditError("add_selector needs to = <part> and when = <condition>")
+                if not step.get("to") or not step.get("condition"):
+                    raise AbilityEditError(
+                        "add_selector needs to = <part> and condition = <state or value>")
                 ef.prepend_selector_entry(
-                    str(step["add_selector"]), str(step["to"]), str(step["when"]))
+                    str(step["add_selector"]), str(step["to"]), str(step["condition"]))
             elif op == "unlink_reads":
                 from . import hero_ability as HA
                 HA._unlink_value_reads(ef, str(step["unlink_reads"]))
@@ -750,17 +751,19 @@ def _retarget(ef: EntityFile, step: dict, read) -> None:
     mine = {c.guid for c in ef.graph().components}
     prefix = f"[{src_kind}] "
     old = [r.guid for r in part.refs if r.guid not in mine and r.path.startswith(prefix)]
+    # The link can also sit in a sub-object the part owns (an FX's emitter):
+    # gather from both places, since a direct match must not hide the emitter's.
+    from . import entity_graph as EG
+    classes = [c.name for c in ef.cf.classes]
     subobjects = False
-    if not old:
-        # The link can sit in a sub-object the part owns (an FX's emitter).
-        from . import entity_graph as EG
-        classes = [c.name for c in ef.cf.classes]
-        if "oCEntityCpntPicker" in classes:
-            picker_cls = classes.index("oCEntityCpntPicker")
-            for o in sorted(ef.subtree({part.index - 1})):
-                old.extend(r.guid for _, r in EG._pickers(bytes(ef.objects[o]), picker_cls)
-                           if r.guid not in mine and r.path.startswith(prefix))
-        subobjects = bool(old)
+    if "oCEntityCpntPicker" in classes:
+        picker_cls = classes.index("oCEntityCpntPicker")
+        for o in sorted(ef.subtree({part.index - 1})):
+            found = [r.guid for _, r in EG._pickers(bytes(ef.objects[o]), picker_cls)
+                     if r.guid not in mine and r.path.startswith(prefix)]
+            old.extend(found)
+            subobjects = subobjects or bool(found)
+    old = list(dict.fromkeys(old))
     if not old:
         raise AbilityEditError(f"retarget: {part.name!r} has no outside {src_kind} link to move")
     acc = ef.VEC3_ACCESSOR.get(node.cls) if src_kind != kind else None

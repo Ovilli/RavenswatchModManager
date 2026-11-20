@@ -105,3 +105,56 @@ def test_the_seed_pin_example_declares_its_options_instead_of_a_hook(capsys):
     assert apply_mods.Mod(ex).restore_options == ["Forced seed", "Dev"]
     lint.lint_one(ex)
     assert "restore_options" not in capsys.readouterr().out
+
+
+def test_clear_options_leaves_every_other_byte_alone(tmp_path):
+    """CRLF endings and a non-UTF-8 byte in an unrelated line survive."""
+    game, _c, _m = _install(tmp_path)
+    before = (b"[Debug]\r\nForced seed=12345\r\nName=Caf\xe9\r\nDev=1\r\nTest=0\r\n"
+              b"[Display]\r\nScreen shake=0")
+    GS.settings_ini(game).write_bytes(before)
+    assert GS.clear_options(game, ["Forced seed", "Dev"]) == 2
+    assert GS.settings_ini(game).read_bytes() == (
+        b"[Debug]\r\nName=Caf\xe9\r\nTest=0\r\n[Display]\r\nScreen shake=0")
+
+
+def _boom(*_a, **_k):
+    raise PermissionError(13, "locked")
+
+
+def test_apply_cleanup_failure_warns_continues_and_retries(tmp_path, monkeypatch, capsys):
+    game, cooking, mod = _install(tmp_path, enabled="false")
+    state = apply_mods.State(cooking)
+    state.set_enabled_mods(["seedy"])
+    with monkeypatch.context() as mp:
+        mp.setattr(GS, "clear_options", _boom)
+        assert apply_mods.restore_flipped_options([apply_mods.Mod(mod)], state, game) == []
+    err = capsys.readouterr().err
+    assert "seedy" in err and "GameSettings.ini" in err
+    assert "Forced seed=12345" in _ini(game)
+    state.save()
+    # a fresh State (next apply) still knows what to retry; the mod is no longer flipped
+    state2 = apply_mods.State(cooking)
+    state2.set_enabled_mods([])
+    apply_mods.restore_flipped_options([apply_mods.Mod(mod)], state2, game)
+    assert "Forced seed" not in _ini(game) and "Dev=" not in _ini(game)
+    state2.save()
+    assert not apply_mods.State(cooking).pending_option_restores
+
+
+def test_uninstall_reports_a_failed_cleanup_and_keeps_the_mod(tmp_path, monkeypatch, capsys):
+    import json
+
+    from rsmm.cli import json_bridge
+    game, cooking, mod = _install(tmp_path)
+    state = apply_mods.State(cooking)
+    state.set_enabled_mods(["seedy"])
+    state.save()
+    monkeypatch.setattr(json_bridge, "MODS_DIR", mod.parent)
+    monkeypatch.setattr(json_bridge, "find_game_dir", lambda: game)
+    monkeypatch.setattr(GS, "clear_options", _boom)
+    json_bridge.cmd_uninstall_mod("seedy")
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] is False and out["modId"] == "seedy"
+    assert "seedy" in out["error"] and "GameSettings.ini" in out["error"]
+    assert mod.exists()
