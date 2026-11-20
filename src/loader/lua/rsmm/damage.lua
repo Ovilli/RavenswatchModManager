@@ -1060,11 +1060,12 @@ function F._dmg_row_for_entity(e)
     return row
 end
 
-function F._dmg_publish(row, amount, target, source, kind)
+function F._dmg_publish(row, amount, target, source, kind, damage_kind, killed, is_enemy)
     if #_dmg.subs == 0 then return end
     local hit = { label = row.label, slot = row.slot, is_local = row.is_local,
                   amount = amount, target = target, source = source,
-                  kind = kind or "dealt" }
+                  kind = kind or "dealt", damage_kind = damage_kind,
+                  killed = killed, is_enemy = is_enemy }
     for _, cb in ipairs(_dmg.subs) do pcall(cb, hit) end
 end
 
@@ -1104,7 +1105,7 @@ function F._dmg_echo_of_local(amount, now)
     return false
 end
 
-function F._dmg_credit(row, amount, target, source, kind)
+function F._dmg_credit(row, amount, target, source, kind, killed, is_enemy)
     local now = F._dmg_now()
     row.dealt = row.dealt + amount
     row.hits  = row.hits + 1
@@ -1127,7 +1128,7 @@ function F._dmg_credit(row, amount, target, source, kind)
         r[#r + 1] = { t = now, a = amount }
         if #r > 32 then table.remove(r, 1) end
     end
-    F._dmg_publish(row, amount, target, source, "dealt")
+    F._dmg_publish(row, amount, target, source, "dealt", kind, killed, is_enemy)
 end
 
 -- One resolved hit from the attack resolver. `attacker` may be nil (an enemy
@@ -1152,9 +1153,11 @@ function F._dmg_record(attacker, target, amount, source)
     -- Same scenery filter as the bookkeeping path — this branch is the SOLO
     -- fallback on a build where the stat hook is unresolved, and it would
     -- otherwise keep counting fences on exactly the builds that need it most.
+    -- Classified for the filter, and for subscribers' `is_enemy` with the
+    -- filter off.
     local cls
-    if _dmg.ignore_scenery and target then cls = F._dmg_is_enemy(target) end
-    if cls == false then
+    if target and (_dmg.ignore_scenery or #_dmg.subs > 0) then cls = F._dmg_is_enemy(target) end
+    if _dmg.ignore_scenery and cls == false then
         attacker.scenery = attacker.scenery + amount
         attacker.scenery_hits = attacker.scenery_hits + 1
         _dmg.scenery = _dmg.scenery + amount
@@ -1164,7 +1167,7 @@ function F._dmg_record(attacker, target, amount, source)
         attacker.unknown = attacker.unknown + amount
         attacker.unknown_hits = attacker.unknown_hits + 1
     end
-    F._dmg_credit(attacker, amount, target, source)
+    F._dmg_credit(attacker, amount, target, source, nil, nil, cls)
 end
 
 -- Source 1: the engine's per-hero bookkeeping. Observation only.
@@ -1230,7 +1233,8 @@ function F._dmg_observe_stats(hero, target, pd)
         row.discarded_amount = (row.discarded_amount or 0) + amount
         return
     end
-    if F._dmg_killed(valobj) then row.kills = (row.kills or 0) + 1 end
+    local killed = F._dmg_killed(valobj)
+    if killed then row.kills = (row.kills or 0) + 1 end
     if I.read_u8(valobj + DMG.VALUE_CRIT_OFF) == 1 then row.crits = (row.crits or 0) + 1 end
     -- What did they hit? The probe reports the first few distinct victims so
     -- the classification can be confirmed from a log rather than trusted.
@@ -1241,9 +1245,11 @@ function F._dmg_observe_stats(hero, target, pd)
     -- NOT `_dmg.ignore_scenery and F._dmg_is_enemy(target) or nil`: in Lua that
     -- idiom turns a classified `false` (the scenery answer this filter exists
     -- for) into `nil`, which is the fail-open branch.
+    -- Also classified with the filter off whenever someone subscribes, so
+    -- every published hit carries `is_enemy`.
     local cls
-    if _dmg.ignore_scenery then cls = F._dmg_is_enemy(target) end
-    if cls == false then
+    if _dmg.ignore_scenery or #_dmg.subs > 0 then cls = F._dmg_is_enemy(target) end
+    if _dmg.ignore_scenery and cls == false then
         row.scenery = row.scenery + amount
         row.scenery_hits = row.scenery_hits + 1
         _dmg.scenery = _dmg.scenery + amount
@@ -1265,7 +1271,7 @@ function F._dmg_observe_stats(hero, target, pd)
         local t = I.read_u16(src + DMG.SOURCE_TYPE_OFF)
         if type(t) == "number" and DMG.TYPES[t] then kind = DMG.TYPES[t] end
     end
-    F._dmg_credit(row, amount, target, "hero-stats", kind)
+    F._dmg_credit(row, amount, target, "hero-stats", kind, killed, cls)
 end
 
 -- Source 1b: the engine's per-hero damage-RECEIVED bookkeeping.
@@ -1730,10 +1736,15 @@ function R.damage.scenery_total() return _dmg.scenery end
 --- mission object, nil = could not tell (and therefore never filtered).
 function R.damage.is_enemy(entity) return F._dmg_is_enemy(entity) end
 
---- Per-hit callback: cb{ label, slot, is_local, amount, target, source, kind }.
+--- Per-hit callback: cb{ label, slot, is_local, amount, target, source, kind,
+--- damage_kind, killed, is_enemy }.
 --- `kind` is "dealt" (they damaged something that is not a hero) or "taken"
 --- (they were damaged) — the reliable "I just got hit" signal, since the local
 --- resolver sees enemy attacks on heroes too.
+--- On a dealt hit from the engine's bookkeeping, `damage_kind` names the
+--- ability that landed it (a `by_type` key, "other" when unreadable) and
+--- `killed` is true when the hit killed the target. `is_enemy` is true for a
+--- gameplay enemy, false for scenery, nil when unreadable or on a taken hit.
 function R.damage.on(cb)
     assert(type(cb) == "function", "R.damage.on: cb must be function")
     _dmg.subs[#_dmg.subs + 1] = cb

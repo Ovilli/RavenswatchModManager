@@ -1532,6 +1532,9 @@ R.damage.enable{ window = 10 }          -- opt-in: it installs engine hooks
 R.damage.on(function(hit)
     -- hit.label / hit.slot / hit.is_local / hit.amount / hit.source
     -- hit.kind == "dealt" (they hurt something) or "taken" (they got hurt)
+    -- dealt hits also carry hit.damage_kind ("attack", "ultimate", ... or
+    -- "other"), hit.killed (this hit killed the target) and hit.is_enemy
+    -- (true = enemy, false = scenery, nil = could not tell)
 end)
 
 for _, row in ipairs(R.damage.board()) do   -- already sorted, row.rank set
