@@ -78,7 +78,7 @@ from ...engine import rsc_cache as RC
 from ...engine import terrain as TR
 from ...engine import tile_cook as TC
 from ...engine import tilegen as TG
-from ..content import ContentDef, ContentError, SchemaNotMined
+from ..content import ContentDef, ContentError, SchemaNotMined, written_this_run
 
 _ID_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*$")
 
@@ -493,19 +493,23 @@ def emit(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
 
     # 3. Point a chapter at it, overriding All_Chapters in place.
     if chapter is not None:
-        mode = _read(_MODE_REL, "the All_Chapters game mode")
+        # Build on an earlier map def's All_Chapters from this emit: rebuilding
+        # from vanilla each time kept only the last def's chapter.
+        mdest = out_dir / Path(*_MODE_REL.split("/"))
+        mcache = out_dir / Path(*RC.cache_path_for(_MODE_REL).split("/"))
+        mode = (mdest.read_bytes() if written_this_run(mdest)
+                else _read(_MODE_REL, "the All_Chapters game mode"))
         try:
             new_mode = MC.set_chapter_map(mode, chapter, defn.id)
         except MC.MapCookError as e:
             raise ContentError(f"map {defn.id}: {e}") from e
-        mdest = out_dir / Path(*_MODE_REL.split("/"))
         mdest.parent.mkdir(parents=True, exist_ok=True)
         mdest.write_bytes(new_mode)
         written.append(mdest)
-        mode_cache = set(RC.parse(_read(RC.cache_path_for(_MODE_REL),
-                                        "All_Chapters' resource cache")))
+        mode_cache = set(RC.parse(
+            mcache.read_bytes() if written_this_run(mcache)
+            else _read(RC.cache_path_for(_MODE_REL), "All_Chapters' resource cache")))
         mode_cache.add(_map_line(defn.id))
-        mcache = out_dir / Path(*RC.cache_path_for(_MODE_REL).split("/"))
         mcache.write_bytes(RC.render(sorted(mode_cache)))
         written.append(mcache)
 

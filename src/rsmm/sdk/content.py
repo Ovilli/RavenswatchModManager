@@ -287,6 +287,28 @@ def _files_under(root: Path) -> set[Path]:
     return {p.resolve() for p in root.rglob("*") if p.is_file()} if root.is_dir() else set()
 
 
+def _output_target(kind: str, fields: dict) -> tuple | None:
+    """The retail file a def rewrites in place, for the kinds where that file
+    is rebuilt from vanilla on every def (so two defs on it are last-wins), or
+    None. A target clashes with another when either is a prefix of the other:
+    a ``game_mode`` rewriting All_Chapters clashes with a ``map`` pointing one
+    of its chapters."""
+    f = fields.get
+    if kind == "shop":
+        return ("shop",)
+    if kind == "melody" and f("base"):
+        return ("melody", f("base"))
+    if kind == "tilegen" and f("chapter") is not None:
+        return ("tilegen", f("chapter"))
+    if kind == "scenery" and f("chapter") and f("level"):
+        return ("scenery", f("chapter"), f("level"))
+    if kind == "map" and f("chapter") is not None:
+        return ("game_mode", "All_Chapters", f("chapter"))
+    if kind == "game_mode":
+        return ("game_mode", f("base") or "All_Chapters")
+    return None
+
+
 @dataclass
 class ContentRegistry:
     """Mod-scoped registry. One per mod-build pass."""
@@ -327,6 +349,14 @@ class ContentRegistry:
             raise ContentError(f"{kind}: id must be a non-empty string")
         if any(d.kind == kind and d.id == id for d in self.defs):
             raise ContentError(f"{kind}: duplicate id {id!r}")
+        target = _output_target(kind, fields)
+        for d in self.defs if target else ():
+            other = _output_target(d.kind, d.fields)
+            if other and (target[:len(other)] == other or other[:len(target)] == target):
+                raise ContentError(
+                    f"{kind} {id}: {d.kind} {d.id} already rewrites the same retail "
+                    f"file ({' '.join(map(str, other))}), and the second def would "
+                    f"silently replace the first. Merge them into one def.")
         # A field the kind does not read is a typo, and a typo here used to be
         # a mod that installs and silently does nothing.
         from .manifest_spec import content_fields, describe_unknown, unknown_keys

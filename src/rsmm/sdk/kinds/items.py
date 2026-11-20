@@ -554,6 +554,11 @@ def _emit_clone(mod_id: str, defn: ContentDef, out_dir: Path, *,
         raise _base_not_found(defn.id, base)
 
     base_cooked, base_rarity = found
+    if not replace and defn.id in _vanilla_item_ids():
+        raise ContentError(
+            f"item {defn.id}: a shipped item is already called {defn.id!r}, and a "
+            f"clone under that name would silently replace it. Pick another id "
+            f"(mode = 'replace' edits the shipped item).")
     if replace:
         for key in ("rarity", "unique_identity"):
             if defn.fields.get(key):

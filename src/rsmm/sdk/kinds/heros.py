@@ -1332,6 +1332,8 @@ def _emit_scratch(mod_id: str, defn: ContentDef, out_dir: Path) -> list[Path]:
     hid, f = defn.id, defn.fields
     if hid in _RESERVED_IDS or not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", hid):
         raise ContentError(f"hero {hid}: a hero id is letters and digits, not a reserved name")
+    if hid in shipped_heroes() or HD.stem(hid):     # the clone path checks this too
+        raise ContentError(f"hero {hid}: the id collides with a shipped hero")
     frame = f.get("frame")
     if not isinstance(frame, dict) or set(frame) - _SCRATCH_FIELDS:
         raise ContentError(f"hero {hid}: frame is a table of {', '.join(sorted(_SCRATCH_FIELDS))}")
