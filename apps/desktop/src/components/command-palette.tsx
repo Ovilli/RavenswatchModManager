@@ -191,19 +191,20 @@ export function CommandPalette() {
 
   const actions = useMemo<PaletteAction[]>(() => {
     const go = (
-      to: '/' | '/browse' | '/conflicts' | '/commands' | '/settings',
+      to: '/' | '/browse' | '/conflicts' | '/settings',
       label: string,
       keywords: string,
       // Settings groups its panels into tabs and `?tab=` opens one directly, so
       // "About" can stay its own palette entry now that it is no longer a page.
       search?: { tab: string },
+      hash?: string,
     ): PaletteAction => ({
       // `to` alone is no longer unique — two entries land on /settings.
-      id: `go:${to}${search?.tab ? `?tab=${search.tab}` : ''}`,
+      id: `go:${to}${search?.tab ? `?tab=${search.tab}` : ''}${hash ? `#${hash}` : ''}`,
       label,
       keywords,
       hint: t('go'),
-      run: () => navigate(search ? { to, search } : { to }),
+      run: () => navigate({ to, search, hash }),
     });
     return [
       {
@@ -262,7 +263,20 @@ export function CommandPalette() {
       go('/', t('Library'), 'mods installed home profiles loadout preset switch'),
       go('/browse', t('Browse mods'), 'search index download store'),
       go('/conflicts', t('Conflicts'), 'clash overlap same file'),
-      go('/commands', t('Commands'), 'apply build doctor terminal'),
+      go(
+        '/settings',
+        t('Game log'),
+        'logs loader game diagnostics',
+        { tab: 'diagnostics' },
+        'game-log',
+      ),
+      go(
+        '/settings',
+        t('Commands'),
+        'apply build doctor terminal',
+        { tab: 'diagnostics' },
+        'commands',
+      ),
       go('/settings', t('Settings'), 'paths font size density options preferences'),
       go('/settings', t('About'), 'version credits release notes', { tab: 'about' }),
     ];

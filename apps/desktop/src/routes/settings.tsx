@@ -4,6 +4,8 @@ import { Activity, ChevronDown, EyeOff, Github, ShieldAlert, Sparkles, Trash2 } 
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { AboutPanels } from '../components/about-panels';
 import { Button, Fleuron, MonoTag, Panel, SectionHeader } from '../components/chrome';
+import { CommandsPanel } from '../components/commands-panel';
+import { GameLogPanel } from '../components/game-log-panel';
 import { DiscordIcon } from '../components/icons/DiscordIcon';
 import { useLaunch } from '../components/launch';
 import { useToast } from '../components/toast';
@@ -77,7 +79,11 @@ const TABS = [
     hint: msg('Language, typeface, density, motion, content'),
   },
   { id: 'game', label: msg('Game'), hint: msg('Online server, loader features, graphics') },
-  { id: 'diagnostics', label: msg('Diagnostics'), hint: msg('Launcher log, crash reports') },
+  {
+    id: 'diagnostics',
+    label: msg('Diagnostics'),
+    hint: msg('Game log, launcher log, commands, privacy'),
+  },
   { id: 'about', label: msg('About'), hint: msg('Version, release notes, credits') },
 ] as const;
 
@@ -91,12 +97,14 @@ function isTab(value: unknown): value is SettingsTab {
 
 function SettingsPage() {
   const t = useT();
-  // Seeded from `?tab=`, so a link can land on a specific group — the command
-  // palette's "About" entry is the reason this exists. Kept in local state
-  // afterwards rather than driven by the URL: switching tabs is not navigation
-  // and should not stack up history entries to back out of.
-  const initial = Route.useSearch().tab;
-  const [tab, setTab] = useState<SettingsTab>(isTab(initial) ? initial : 'general');
+  const requestedTab = Route.useSearch().tab;
+  const tab: SettingsTab = isTab(requestedTab) ? requestedTab : 'general';
+  const navigate = Route.useNavigate();
+  // Keep links and the command palette in sync even when Settings is already
+  // open. Replacing the URL avoids a history entry for every tab selection.
+  const setTab = (next: SettingsTab) => {
+    void navigate({ search: { tab: next }, hash: '', replace: true });
+  };
 
   return (
     <div className="space-y-6">
@@ -152,7 +160,9 @@ function SettingsPage() {
         ) : null}
         {tab === 'diagnostics' ? (
           <>
+            <GameLogPanel />
             <LauncherLogPanel />
+            <CommandsPanel />
             <PrivacyPanel />
           </>
         ) : null}
@@ -425,7 +435,7 @@ function LauncherLogPanel() {
     <Panel>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="font-fraktur text-xl text-parchment">{t('Launcher Log')}</h3>
+          <h3 className="font-fraktur text-xl text-parchment">{t('Launcher log')}</h3>
           <p className="font-serif-italic text-ash mt-1">
             {t('Current run only. Cleared whenever you launch Vanilla or Modded.')}
           </p>
