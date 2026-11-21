@@ -1090,6 +1090,29 @@ def check_channel_drift() -> list[Result]:
     return out
 
 
+def check_tls_trust() -> list[Result]:
+    """Which certificate store downloads verify against.
+
+    The frozen CLI must use the OS store (see `net.use_system_trust`); falling
+    back to OpenSSL's is what made mod downloads fail with "certificate has
+    expired" on a PC whose browsers were fine. A source checkout without
+    truststore is expected and only noted."""
+    from rsmm.engine.net import use_system_trust
+
+    if use_system_trust() == "system":
+        return [Result("OK", "Downloads verify certificates with the system store",
+                       code="tls.system")]
+    if getattr(sys, "frozen", False):
+        return [Result(
+            "WARN", "Downloads verify certificates with Python's own store",
+            "This build is missing truststore; downloads may fail with "
+            "CERTIFICATE_VERIFY_FAILED where a browser succeeds",
+            code="tls.python")]
+    return [Result("OK", "Downloads verify certificates with Python's own store",
+                   "pip install truststore to use the system store like the "
+                   "desktop app's CLI", code="tls.python")]
+
+
 #: The report, in order. Each entry is one section; `main` walks this list
 #: instead of hand-sequencing calls, so adding a check is one line here and
 #: `--only` / `--json` / `--fix` pick it up for free.
@@ -1114,6 +1137,8 @@ def _checks() -> list[Check]:
         Check("mod-health", "mod crash history", check_mod_health),
         Check("channel-drift", "build vs published channels",
               lambda _g: check_channel_drift(), needs_game=False),
+        Check("tls", "download certificates", lambda _g: check_tls_trust(),
+              needs_game=False),
     ]
 
 

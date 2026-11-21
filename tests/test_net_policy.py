@@ -122,3 +122,30 @@ def test_install_and_update_share_the_policy():
     cmd_install._check_url("file:///tmp/m.zip")
     with pytest.raises(RepoError, match="refusing to fetch"):
         update_cmd._fetch("file:///tmp/repo.json")
+
+
+# --- certificate store -----------------------------------------------------
+
+
+def test_system_trust_injects_truststore(monkeypatch):
+    """With truststore importable, every SSLContext the CLI makes is the OS one."""
+    import sys
+    import types
+
+    calls: list[str] = []
+    fake = types.ModuleType("truststore")
+    fake.inject_into_ssl = lambda: calls.append("inject")
+    monkeypatch.setitem(sys.modules, "truststore", fake)
+    monkeypatch.setattr(net, "_TRUST", None)
+    assert net.use_system_trust() == "system"
+    assert net.use_system_trust() == "system"
+    assert calls == ["inject"]  # idempotent: injected once
+
+
+def test_system_trust_falls_back_without_truststore(monkeypatch):
+    """A stdlib-only checkout keeps working on OpenSSL's default store."""
+    import sys
+
+    monkeypatch.setitem(sys.modules, "truststore", None)  # import raises
+    monkeypatch.setattr(net, "_TRUST", None)
+    assert net.use_system_trust() == "python"
