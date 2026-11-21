@@ -16,7 +16,8 @@ After building, the binary is checked twice:
 * runs: started from an empty directory with a throwaway home, game and mods
   folder, every routed subcommand starts, the read-only `json` calls the
   desktop makes return JSON, `doctor` finds the bundled asset map and
-  `changelog` falls back to the bundled release notes.
+  `changelog` falls back to the bundled release notes, and downloads verify
+  certificates with the system store (truststore).
 
 Usage:
     python3 scripts/build-sidecar.py                   # build for this platform, then check it
@@ -48,6 +49,9 @@ TARGET_TRIPLES = {
     "linux": "x86_64-unknown-linux-gnu",
     "windows": "x86_64-pc-windows-msvc",
 }
+
+#: Bundled so the frozen CLI verifies HTTPS with the OS certificate store.
+TRUSTSTORE = "truststore==0.10.4"
 
 EXTENSIONS = {
     "linux": "",
@@ -169,6 +173,11 @@ def build_sidecar(target: str, require_loader: bool, onedir: bool = False) -> Pa
         import PyInstaller
     except ImportError:
         subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"], check=True)
+    # Not optional for the shipped CLI: without it downloads verify against
+    # OpenSSL's view of the Windows store, which failed a player's mod install
+    # with "certificate has expired" (rsmm.engine.net.use_system_trust).
+    # `check_runs` fails the build if the frozen binary lacks it.
+    subprocess.run([sys.executable, "-m", "pip", "install", TRUSTSTORE], check=True)
 
     # Subcommands are loaded dynamically via importlib (rsmm/cli/_dispatch.py)
     # and mod authors import the rsmm.sdk surface at runtime; PyInstaller's
@@ -177,6 +186,8 @@ def build_sidecar(target: str, require_loader: bool, onedir: bool = False) -> Pa
         "--collect-submodules=rsmm.cli",
         "--collect-submodules=rsmm.engine",
         "--collect-submodules=rsmm.sdk",
+        # Imported lazily inside use_system_trust, so analysis misses it too.
+        "--collect-submodules=truststore",
     ]
     add_data_args: list[str] = []
     for src, dest in present:
@@ -329,6 +340,12 @@ def check_runs(binary: Path) -> list[str]:
             if not asset or any(r.get("kind") != "OK" for r in asset):
                 problems.append(f"{label}: the bundled asset map was not found\n"
                                 f"{out.strip()[-2000:]}")
+            tls = [r.get("code") for s in (report or {}).get("sections", [])
+                   if s.get("section") == "download certificates"
+                   for r in s.get("results", [])]
+            if tls != ["tls.system"]:
+                problems.append(f"{label}: downloads do not use the system certificate "
+                                f"store (truststore not bundled?): {tls}")
         elif argv[0] == "changelog":
             feed = _json_or_none(proc.stdout) or {}
             if feed.get("status") != "bundled" or not feed.get("entries"):

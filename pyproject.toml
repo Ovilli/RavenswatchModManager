@@ -27,6 +27,9 @@ classifiers = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7", "pytest-xdist>=3", "ruff>=0.4"]
+# Optional: verify HTTPS with the OS certificate store (rsmm.engine.net.
+# use_system_trust). scripts/build-sidecar.py always bundles it.
+tls = ["truststore>=0.10"]
 
 [project.urls]
 Homepage = "https://github.com/Ravenswatch-Modding/RavenswatchModManager"

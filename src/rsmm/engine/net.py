@@ -19,7 +19,9 @@ Two rules, both about mod archives specifically:
   its digest can be checked, so a hostile or compromised index that streams
   forever exhausts memory or fills the disk before anything gets to reject it.
 
-Stdlib only: the CLI ships frozen with no runtime dependencies.
+Stdlib only: the CLI ships frozen with no runtime dependencies. The one
+exception is optional — `use_system_trust` uses `truststore` when present
+(the sidecar always bundles it) and is a no-op otherwise.
 """
 
 from __future__ import annotations
@@ -51,6 +53,40 @@ class TooLarge(ValueError):
 
 class _Reader(Protocol):
     def read(self, n: int, /) -> bytes: ...
+
+
+#: Which certificate store TLS verification uses, once `use_system_trust` ran:
+#: "system" (the OS store, via truststore) or "python" (OpenSSL's default).
+_TRUST: str | None = None
+
+
+def use_system_trust() -> str:
+    """Verify HTTPS certificates with the operating system, not OpenSSL.
+
+    Measured on a player's Windows PC 2026-11: a mod download from the S3 host
+    (Cloudflare, Let's Encrypt chain via ISRG Root X2) failed with
+    ``CERTIFICATE_VERIFY_FAILED ... certificate has expired`` while every
+    browser accepted the same URL. On Windows, Python's default context loads
+    the system ROOT *and* intermediate CA stores as trusted anchors and lets
+    OpenSSL build the chain itself, so a stale cached intermediate (the
+    X2-by-X1 cross-sign that expired 2025-09) wins over the valid one the
+    server sends. ``truststore`` hands verification to the OS verifier
+    (CryptoAPI / Security.framework / the distro bundle) — what browsers do.
+
+    Optional so the source checkout stays stdlib-only: the sidecar build
+    bundles it, and without it this is a no-op that reports "python".
+    Idempotent; returns the store in use.
+    """
+    global _TRUST
+    if _TRUST is None:
+        try:
+            import truststore
+
+            truststore.inject_into_ssl()
+            _TRUST = "system"
+        except Exception:  # noqa: BLE001 — not installed, or an OS it cannot drive
+            _TRUST = "python"
+    return _TRUST
 
 
 def is_loopback(host: str | None) -> bool:
