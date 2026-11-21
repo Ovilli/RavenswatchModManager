@@ -15,10 +15,12 @@ R.health.checkpoint("per_mod:ExampleEngineCall")
 R.on("ready", function()
     R.log("[EngineCall] callable symbols: " .. table.concat(R.engine.names(), ", "))
 
-    -- Look up a cooked resource by its decoded path. Two equivalent forms:
+    -- Look up a cooked resource by its decoded path. R.engine.call_safe takes
+    -- the indices of arguments that must be live pointers and refuses the
+    -- call (returns nil) when one isn't. This call passes none, so `{}`;
+    -- list them whenever you pass a pointer you read from the game.
     local path = "EntitySettings/Objects/Magical_Objects/Common/Armor_Per_Object"
-    local res  = R.engine.fn.Resource_LookupByPath(path, 0, 0, 0)
-    -- local res = R.engine.call("Resource_LookupByPath", path, 0, 0, 0)
+    local res  = R.engine.call_safe("Resource_LookupByPath", {}, path, 0, 0, 0)
 
     if res and res ~= 0 then
         R.log(("[EngineCall] resolved '%s' -> 0x%x"):format(path, res))
