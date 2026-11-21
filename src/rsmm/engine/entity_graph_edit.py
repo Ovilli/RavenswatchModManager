@@ -239,6 +239,24 @@ class EntityFile:
             if len(fit) == 1 and not (vfit and fit[0] not in vfit):
                 owned[x] = fit[0]
                 del ambiguous[x]
+        # The same offset rule counted from the END of the field run: an owner
+        # whose name string comes first puts its id list at a varying offset
+        # from the start but a fixed distance before the next marker. Measured
+        # on a scratch hero's "Ability Trait" Fx: bytes `01000000 00 01000000
+        # 00010000` hold a field 1 and then count 1 / #256, so #256 reads at
+        # +117, +122 and +127 in its own owner (and as data in 400+ others);
+        # only +127, 4 bytes before the marker, matches every real Fx setup.
+        def tail(p: Pointer) -> int | None:
+            return next((b - p.offset for a, b in self._spans(p.owner, special, node_cls)
+                         if a <= p.offset < b), None)
+        tails = {(self._owner_class(p.owner), self._class(x), tail(p))
+                 for x, p in owned.items()} if ambiguous else set()
+        for x, cands in list(ambiguous.items()):
+            fit = [p for p in cands
+                   if (self._owner_class(p.owner), self._class(x), tail(p)) in tails]
+            if len(fit) == 1:
+                owned[x] = fit[0]
+                del ambiguous[x]
         # Last, the neighbours: an owner's id list is consecutive ids in
         # consecutive u32 slots, so a candidate whose owner also owns x-1 in the
         # slot before it or x+1 in the slot after sits INSIDE that list.
