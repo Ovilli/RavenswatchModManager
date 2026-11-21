@@ -533,6 +533,22 @@ export function createApiClient(options: ApiClientOptions) {
     updatedAt: z.string(),
   });
   const takedownsResponseSchema = z.object({ items: z.array(takedownItemSchema) });
+  const moderationThreadItemSchema = z.object({
+    id: z.string(),
+    kind: z.enum(['message', 'status']),
+    body: z.string().nullable(),
+    fromStatus: z.string().nullable(),
+    toStatus: z.string().nullable(),
+    fromModerator: z.boolean(),
+    createdAt: z.string(),
+    authorId: z.string().nullable(),
+    authorName: z.string().nullable(),
+    authorImage: z.string().nullable(),
+  });
+  const moderationThreadSchema = z.object({
+    viewerIsModerator: z.boolean(),
+    items: z.array(moderationThreadItemSchema),
+  });
 
   return {
     mods: {
@@ -659,6 +675,19 @@ export function createApiClient(options: ApiClientOptions) {
           `/api/mods/${encodeURIComponent(slug)}/reviews/${encodeURIComponent(reviewId)}/reply`,
           { method: 'DELETE' },
           okSchema,
+        ),
+      /** Private moderation thread: the mod's team and moderators only. */
+      moderationThread: (slug: string) =>
+        request(
+          `/api/mods/${encodeURIComponent(slug)}/moderation`,
+          { method: 'GET' },
+          moderationThreadSchema,
+        ),
+      sendModerationMessage: (slug: string, body: string) =>
+        request(
+          `/api/mods/${encodeURIComponent(slug)}/moderation`,
+          { method: 'POST', body: JSON.stringify({ body }) },
+          z.object({ ok: z.literal(true), id: z.string().nullable() }),
         ),
       report: (slug: string, body: { reason: string; detail?: string | null }) =>
         request(

@@ -18,6 +18,7 @@ import { guidesRouter } from './routes/guides.js';
 import { legalRouter } from './routes/legal.js';
 import { logsRouter } from './routes/logs.js';
 import { meRouter } from './routes/me.js';
+import { modModerationRouter } from './routes/mod-moderation.js';
 import { moderationRouter } from './routes/moderation.js';
 import { modsRouter } from './routes/mods.js';
 import { telemetryRouter } from './routes/telemetry.js';
@@ -288,6 +289,7 @@ app.on(['GET', 'POST'], '/api/unsubscribe', async (c) => {
 });
 
 app.route('/api/mods', modsRouter);
+app.route('/api/mods', modModerationRouter);
 app.route('/api/moderation', moderationRouter);
 app.route('/api/me', meRouter);
 app.route('/api/users', usersRouter);

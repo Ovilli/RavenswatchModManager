@@ -8,6 +8,7 @@ import { sendMail } from './mailer.js';
 export type NotificationType =
   | 'mod_flagged'
   | 'mod_takedown'
+  | 'mod_moderation_message'
   | 'report_resolved'
   | 'mod_review'
   | 'collection_review'

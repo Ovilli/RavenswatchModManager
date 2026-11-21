@@ -38,6 +38,7 @@ import {
 import { MDPreview } from '../../components/md-editor';
 import { ReportModal } from '../../components/report-modal';
 import { ModActions } from './mod-actions';
+import { ModModeration } from './mod-moderation';
 import { ModPrivateOnlyControls } from './mod-private-only-controls';
 import { ModPrivateOnlyTag } from './mod-private-only-tag';
 
@@ -65,11 +66,11 @@ function TakedownNotice({
           can’t be downloaded.{reason ? ` Reason: ${reason}` : ''}{' '}
           {isAuthor ? (
             <>
-              If you believe this was a mistake,{' '}
-              <Link href="/contact" className="underline underline-offset-2">
-                contact the moderators
-              </Link>
-              .
+              Fix the issue or reply to the moderators in the{' '}
+              <a href="#moderation" className="underline underline-offset-2">
+                Moderation
+              </a>{' '}
+              section.
             </>
           ) : (
             <>
@@ -154,6 +155,9 @@ export function ModDetailView({
   const coAuthors = mod.coAuthors ?? [];
   const privateOnly = hasPrivateOnlyTag(mod.tags);
   const tags = mod.tags.filter((tag) => !isPrivateOnlyTag(tag));
+  // The private moderation thread is for the mod's team and admins — exactly
+  // the viewers the API marks canEdit. Signed-out/anonymous data never has it.
+  const showModeration = hydrated && !!session && mod.canEdit === true;
 
   return (
     <ListingDetailView
@@ -220,6 +224,7 @@ export function ModDetailView({
         <>
           <a href="#about">About this mod</a>
           <a href="#reviews">Reviews</a>
+          {showModeration ? <a href="#moderation">Moderation</a> : null}
           {/* biome-ignore lint/a11y/useValidAnchor: navigates to the history section and expands its destination. */}
           <a
             href="#version-history"
@@ -385,6 +390,9 @@ export function ModDetailView({
           <p className="mod-history-empty">No releases have been published yet.</p>
         )}
       </details>
+      {showModeration ? (
+        <ModModeration slug={slug} takedownStatus={mod.takedownStatus ?? 'active'} />
+      ) : null}
     </ListingDetailView>
   );
 }
