@@ -34,6 +34,13 @@ export function useAdminStats(enabled = true, days: Days = 30) {
     // and keeps a page refresh from re-running eighteen aggregates.
     staleTime: 60_000,
     retry: false,
+    // A failed load stays failed until Refresh. Without this, a stats error
+    // looped forever: the page shows the Stats pane, mounting it refetched
+    // the errored query, the refetch put it back to loading, the page swapped
+    // the pane for its spinner (unmounting it), the fetch failed again and
+    // the pane remounted — thousands of requests a minute against a failing
+    // endpoint.
+    retryOnMount: false,
     // Switching the period keeps the old charts up (faded) until the new
     // numbers arrive, instead of flashing a spinner.
     placeholderData: keepPreviousData,

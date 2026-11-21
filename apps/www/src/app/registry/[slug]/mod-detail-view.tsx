@@ -4,6 +4,7 @@ import { type ModVersion, hasPrivateOnlyTag, isPrivateOnlyTag } from '@rsmm/sche
 import { Spinner, buttonVariants } from '@rsmm/ui';
 import { useQuery } from '@tanstack/react-query';
 import {
+  AlertTriangle,
   ArrowDownToLine,
   ArrowLeft,
   ChevronDown,
@@ -39,6 +40,51 @@ import { ReportModal } from '../../components/report-modal';
 import { ModActions } from './mod-actions';
 import { ModPrivateOnlyControls } from './mod-private-only-controls';
 import { ModPrivateOnlyTag } from './mod-private-only-tag';
+
+/**
+ * The API only returns a hidden/removed mod to its owner, co-authors and
+ * admins, so anyone who sees this is one of them. Without it the page looked
+ * live even though the public got a 404 and downloads were refused.
+ */
+function TakedownNotice({
+  status,
+  reason,
+  isAuthor,
+}: {
+  status: 'hidden' | 'removed';
+  reason?: string | null;
+  isAuthor: boolean;
+}) {
+  return (
+    <div className="mb-4 flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/10 p-4 text-left">
+      <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" aria-hidden />
+      <div className="text-sm">
+        <p className="font-semibold text-destructive">This mod has been {status} by a moderator.</p>
+        <p className="mt-1 text-muted-foreground">
+          Only its authors and moderators can see this page. It is not in the public registry and
+          can’t be downloaded.{reason ? ` Reason: ${reason}` : ''}{' '}
+          {isAuthor ? (
+            <>
+              If you believe this was a mistake,{' '}
+              <Link href="/contact" className="underline underline-offset-2">
+                contact the moderators
+              </Link>
+              .
+            </>
+          ) : (
+            <>
+              Restore it from the{' '}
+              <Link href="/admin" className="underline underline-offset-2">
+                admin page
+              </Link>
+              .
+            </>
+          )}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function registryHref(param: 'category' | 'tags', value: string): Route {
   return `/registry?${new URLSearchParams({ [param]: value })}` as Route;
@@ -132,23 +178,32 @@ export function ModDetailView({
         </>
       }
       labels={
-        mod.tags.length > 0 || mod.nsfw ? (
-          <div className="mod-labels">
-            {privateOnly ? <ModPrivateOnlyTag slug={slug} /> : null}
-            {tags.length > 0 ? (
-              <ul className="mod-tags" aria-label="Mod tags">
-                {tags.map((tag) => (
-                  <li key={tag}>
-                    <Link href={registryHref('tags', tag)} title={`More mods tagged ${tag}`}>
-                      {tag}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {mod.nsfw ? <span className="mod-mature-label">Mature content</span> : null}
-          </div>
-        ) : null
+        <>
+          {mod.takedownStatus && mod.takedownStatus !== 'active' ? (
+            <TakedownNotice
+              status={mod.takedownStatus}
+              reason={mod.takedownReason}
+              isAuthor={mod.isAuthor === true}
+            />
+          ) : null}
+          {mod.tags.length > 0 || mod.nsfw ? (
+            <div className="mod-labels">
+              {privateOnly ? <ModPrivateOnlyTag slug={slug} /> : null}
+              {tags.length > 0 ? (
+                <ul className="mod-tags" aria-label="Mod tags">
+                  {tags.map((tag) => (
+                    <li key={tag}>
+                      <Link href={registryHref('tags', tag)} title={`More mods tagged ${tag}`}>
+                        {tag}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {mod.nsfw ? <span className="mod-mature-label">Mature content</span> : null}
+            </div>
+          ) : null}
+        </>
       }
       stats={
         <>
