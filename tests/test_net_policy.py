@@ -168,3 +168,30 @@ def test_certificate_failure_says_what_to_check():
 
 def test_other_errors_are_unchanged():
     assert net.describe_error(OSError("connection refused")) == "connection refused"
+
+
+def test_user_agent_replaces_pythons_default(monkeypatch):
+    """The CDN in front of mod storage 403s "Python-urllib/3.x" and nothing else."""
+    import urllib.request
+
+    monkeypatch.setattr(urllib.request, "_opener", None)  # restored after the test
+    net.install_user_agent()
+    opener = urllib.request._opener
+    assert ("User-Agent", net.USER_AGENT) in opener.addheaders
+    assert "Python-urllib" not in net.USER_AGENT
+    # A request that names its own agent keeps it: addheaders only fills gaps.
+    seen = {}
+
+    class Capture(urllib.request.BaseHandler):
+        handler_order = 100  # before the real HTTPHandler (500)
+
+        def http_open(self, req):
+            seen["ua"] = req.get_header("User-agent")
+            raise urllib.error.URLError("stop")
+
+    opener.add_handler(Capture())
+    import urllib.error
+    for headers, want in (({}, net.USER_AGENT), ({"User-Agent": "own"}, "own")):
+        with pytest.raises(urllib.error.URLError):
+            urllib.request.urlopen(urllib.request.Request("http://example.test/", headers=headers))
+        assert seen["ua"] == want

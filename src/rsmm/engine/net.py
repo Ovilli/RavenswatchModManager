@@ -89,6 +89,28 @@ def use_system_trust() -> str:
     return _TRUST
 
 
+#: Sent on every request that does not set its own. Python's default,
+#: "Python-urllib/3.x", is refused outright by the CDN in front of mod storage
+#: (measured 2026-11-21: 403 for exactly that string, 2xx for anything else),
+#: so `rsmm install`, `rsmm update` and collection installs failed on any
+#: archive served from there — only the desktop's Browse install, which set its
+#: own header, worked.
+USER_AGENT = "rsmm-cli (+https://rsmm.me)"
+
+
+def install_user_agent() -> None:
+    """Make every bare `urlopen` in the process send `USER_AGENT`.
+
+    `OpenerDirector` adds `addheaders` only where the request has no such
+    header, so callers that set their own User-Agent keep it. Idempotent.
+    """
+    import urllib.request
+
+    opener = urllib.request.build_opener()
+    opener.addheaders = [("User-Agent", USER_AGENT)]
+    urllib.request.install_opener(opener)
+
+
 #: Appended to a certificate failure. The certificate itself is almost never
 #: the problem (the servers' chains are checked): browsers accept the same URL,
 #: so it is the PC's clock or something intercepting HTTPS on it.

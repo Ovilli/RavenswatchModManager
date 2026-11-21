@@ -285,9 +285,10 @@ def main(argv: list[str] | None = None) -> int:
         argv = sys.argv[1:]
     # Before any subcommand opens a connection: every urlopen in the CLI then
     # verifies certificates the way the OS and browsers do (see net.py).
-    from rsmm.engine.net import use_system_trust
+    from rsmm.engine.net import install_user_agent, use_system_trust
 
     use_system_trust()
+    install_user_agent()
     if not argv:
         # Bare `rsmm` at an interactive terminal opens the home screen. Both
         # streams must be TTYs: piping or redirecting has to keep printing the
