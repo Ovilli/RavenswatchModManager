@@ -596,3 +596,26 @@ def test_plan_apply_restores_a_refused_file_an_older_release_applied(tmp_path, c
     adds, rms, _regs, _syn = _plan_root(tmp_path, "_root/" + rel.replace("\\", "/"), state)
     assert adds == []
     assert rms == [enc]
+
+
+# --- what the start-up self-heal reads (rsmm.cli.self_heal) ------------------
+
+
+def test_apply_records_whether_it_was_for_a_launch(install, capsys):
+    """Only a LAUNCH's apply may be undone unattended; "Apply mods" is the
+    player's choice. Restore clears the record so the self-heal never repeats."""
+    state = _state_path(install.cooking)
+    args = SimpleNamespace(dry_run=False)
+    assert apply_mods.cmd_apply(args, install.repo, install.cooking, install.game_dir) == 0
+    assert json.loads(state.read_text())["applied_for"] == "manual"
+
+    args = SimpleNamespace(dry_run=False, for_launch=True)
+    assert apply_mods.cmd_apply(args, install.repo, install.cooking, install.game_dir) == 0
+    data = json.loads(state.read_text())
+    assert data["applied_for"] == "launch" and "steam_buildid" in data
+
+    rc = apply_mods.cmd_restore_all(SimpleNamespace(dry_run=False), install.repo,
+                                    install.cooking, install.game_dir)
+    assert rc == 0
+    data = json.loads(state.read_text())
+    assert "applied_for" not in data and "steam_buildid" not in data

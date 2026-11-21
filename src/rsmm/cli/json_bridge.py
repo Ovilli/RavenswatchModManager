@@ -1780,6 +1780,22 @@ def cmd_game_status() -> int:
     return _emit({"ok": True, "running": is_game_running()})
 
 
+def cmd_self_heal() -> int:
+    """Restore an install a modded session left behind, if every safeguard
+    holds (see rsmm.cli.self_heal). The desktop runs this once at start-up."""
+    game_dir = find_game_dir()
+    if game_dir is None:
+        return _emit({"ok": True, "action": "skipped", "reason": "no-game",
+                      "detail": "game directory not found"})
+    try:
+        from rsmm.cli.self_heal import heal
+
+        return _emit(heal(game_dir))
+    except Exception as e:  # noqa: BLE001 — bridge must always emit JSON
+        return _emit({"ok": False, "action": "skipped", "reason": "error",
+                      "detail": str(e)})
+
+
 def cmd_restart_game() -> int:
     """Close Ravenswatch if it is up, then launch it again.
 
@@ -2112,11 +2128,15 @@ def main(argv: list[str] | None = None) -> int:
     p_apply.add_argument("--dry-run", action="store_true")
     p_apply.add_argument("--force", action="store_true")
     p_apply.add_argument("--no-merge", action="store_true")
+    p_apply.add_argument("--for-launch", action="store_true",
+                         help="this apply is the first half of a modded launch")
     p_apply.add_argument("--enabled-json", default=None,
                          help="JSON list of the profile's enabled mod ids; manifests "
                               "are made to match it before applying")
     sub.add_parser("active-overrides", help="check whether any active overrides exist")
     sub.add_parser("restore-all", help="restore every active override")
+    sub.add_parser("self-heal", help="restore what a modded session left behind, "
+                                     "only when every safeguard holds")
     sub.add_parser("build", help="build asset map + loader + merge + apply")
     sub.add_parser("conflicts", help="detect all conflicts among enabled mods")
     sub.add_parser("overlays", help="read every mod-declared overlay + its live rows")
@@ -2229,11 +2249,15 @@ def main(argv: list[str] | None = None) -> int:
             rest.append("--force")
         if args.no_merge:
             rest.append("--no-merge")
+        if args.for_launch:
+            rest.append("--for-launch")
         return cmd_apply(rest, args.enabled_json)
     if args.cmd == "overlays":
         return cmd_overlays()
     if args.cmd == "active-overrides":
         return cmd_active_overrides()
+    if args.cmd == "self-heal":
+        return cmd_self_heal()
     if args.cmd == "restore-all":
         return cmd_restore_all()
     if args.cmd == "build":

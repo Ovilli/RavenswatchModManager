@@ -263,11 +263,11 @@ def test_failed_apply_restores_before_aborting(monkeypatch):
     monkeypatch.setattr(run_mod.sys, "argv", ["rsmm run"])
     monkeypatch.setattr(run_mod, "find_game_dir", lambda: None)
     monkeypatch.setattr(run_mod, "_rsmm_subcommand",
-                        lambda a: calls.append(a) or a != ["apply"])
+                        lambda a: calls.append(a) or a[0] != "apply")
     monkeypatch.setattr(run_mod, "_open_steam_url", lambda _u: 0)
     monkeypatch.setattr(run_mod, "_spawn_restore_watcher", lambda: None)
     assert run_mod.main() == 1
-    assert calls == [["apply"], ["restore"]]
+    assert calls == [["apply", "--for-launch"], ["restore"]]
 
 
 def test_watcher_runs_from_a_copy_outside_the_appimage(monkeypatch, tmp_path):

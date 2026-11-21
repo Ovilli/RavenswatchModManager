@@ -444,6 +444,10 @@ export const zhCN: Record<string, string> = {
   'no answer after {seconds} s - launching with the current build':
     '{seconds} 秒内无响应 - 使用当前版本启动',
   'dev · active': '开发版 · 启用中',
+  'Mods from your last session were still in the game, because it or your PC closed before RSMM could remove them. The original files are back.':
+    '上次会话的模组仍留在游戏中，因为游戏或电脑在 RSMM 移除它们之前就关闭了。原始文件已恢复。',
+  'Mods from your last session were still in the game, because it or your PC closed before RSMM could remove them. Most original files are back; run Doctor to check the rest.':
+    '上次会话的模组仍留在游戏中，因为游戏或电脑在 RSMM 移除它们之前就关闭了。大部分原始文件已恢复；请运行“体检”检查其余文件。',
   'Loader v{version} downloaded — it is installed with your next modded launch.':
     '加载器 v{version} 已下载 — 将在下次启动模组版时安装。',
   'The loader in your game folder is not a published build and could not be reinstalled: {reason}':

@@ -112,6 +112,8 @@ DESKTOP_JSON_CALLS = [
     ["json", "game-status"],
     ["json", "conflicts"],
     ["json", "overlays"],
+    # Runs at every app start; on the empty throwaway game it answers "clean".
+    ["json", "self-heal"],
 ]
 
 

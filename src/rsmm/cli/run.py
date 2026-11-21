@@ -692,7 +692,7 @@ def main() -> int:
                     return 1
                 print("Loader installed.", flush=True)
 
-        if not _rsmm_subcommand(["apply"]):
+        if not _rsmm_subcommand(["apply", "--for-launch"]):
             print("Failed to apply mods; aborting launch.", file=sys.stderr)
             # Apply writes UsedRscList.ot / the versiondef before its file
             # transaction, and its rollback only covers the cooked files: put

@@ -54,10 +54,17 @@ def is_game_running() -> bool:
     tool, timeout, permission denied). See the module docstring: this
     fails open on purpose.
     """
+    return probe_game() is True
+
+
+def probe_game() -> bool | None:
+    """True / False when the game is / is not running, None when the probe
+    itself failed. For callers that must NOT read "could not tell" as "not
+    running" — an unattended restore would pull files from under the game."""
     if os.name == "nt":
         proc = _run(["tasklist", "/FI", f"IMAGENAME eq {PROCESS_NAME}", "/NH"])
-        if proc is None:
-            return False
+        if proc is None or proc.returncode != 0:
+            return None
         # tasklist prints an "INFO: No tasks..." banner rather than exiting
         # non-zero when nothing matches, so match the name, not the code.
         return PROCESS_NAME.lower() in (proc.stdout or "").lower()
@@ -80,7 +87,7 @@ def is_game_running() -> bool:
     try:
         entries = os.listdir("/proc")
     except OSError:
-        return False
+        return None
     want = PROCESS_NAME.lower()
     for entry in entries:
         if not entry.isdigit():

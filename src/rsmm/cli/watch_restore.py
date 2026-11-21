@@ -128,6 +128,23 @@ def bump_launch_generation() -> None:
         p.write_text(f"{time.time_ns()}-{os.getpid()}", encoding="utf-8")
 
 
+def watcher_alive() -> bool:
+    """True when a restore watcher holds the lock (it will restore itself)."""
+    try:
+        pid = int((user_data_dir() / LOCK_NAME).read_text(encoding="utf-8").strip() or 0)
+    except (OSError, ValueError):
+        return False
+    return pid != os.getpid() and _pid_alive(pid)
+
+
+def launch_generation_age() -> float | None:
+    """Seconds since the last modded launch was recorded, None if never."""
+    try:
+        return max(0.0, time.time() - (user_data_dir() / GEN_NAME).stat().st_mtime)
+    except OSError:
+        return None
+
+
 def read_launch_generation() -> str:
     try:
         return (user_data_dir() / GEN_NAME).read_text(encoding="utf-8").strip()
