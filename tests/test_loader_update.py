@@ -901,3 +901,15 @@ def test_repair_respects_keep_loader(tmp_path, channel, monkeypatch):
     monkeypatch.setenv("RSMM_KEEP_LOADER", "1")
     assert lu.repair_plant(game, lu.check(game)) is None
     assert (game / "winhttp.dll").read_bytes() == b"MZ replaced by something else"
+
+
+def test_repair_falls_back_to_the_channel_when_the_cache_is_corrupt(
+        tmp_path, channel, monkeypatch):
+    game = _foreign_plant(tmp_path, channel, monkeypatch)
+    lu.apply_update(game, lu.check(game))                   # plants + caches v1
+    cached_dll = lu.cache_dir(game) / "payload" / "winhttp.dll"
+    cached_dll.write_bytes(b"MZ tampered cache")
+    (game / "winhttp.dll").write_bytes(b"MZ replaced again")
+    out = lu.repair_plant(game, lu.check(game))
+    assert out["repaired"] is True
+    assert (game / "winhttp.dll").read_bytes() == PAYLOAD["winhttp.dll"]

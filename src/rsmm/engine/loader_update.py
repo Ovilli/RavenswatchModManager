@@ -786,6 +786,9 @@ def repair_plant(game_dir: Path, state: dict,
                          "reinstalled on the next check"}
     try:
         done = replant_cached(game_dir)
+    except LoaderUpdateError:
+        done = None  # a corrupt or unsigned cache: the channel can still supply it
+    try:
         if done is None and int(state.get("remote_version") or 0) >= bundled_version():
             done = apply_update(game_dir, state, on_progress=on_progress)
             done = {"loader_version": done["installed_version"]}
