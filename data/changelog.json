@@ -4,6 +4,15 @@
     {
       "version": "",
       "date": "2026-11-21",
+      "summary": "Hardening batch (#202): signer pins, safer apply commit and rollback, archive and device-name checks, SDK lint, min_loader check, new ability-edit steps.",
+      "highlights": [
+        "Hardening batch (#202): signer pins, safer apply commit and rollback, archive and device-name checks, SDK lint, min_loader check, new ability-edit steps."
+      ],
+      "cli_version": 40
+    },
+    {
+      "version": "",
+      "date": "2026-11-21",
       "summary": "Mod Lua loads as text only, precompiled bytecode is refused, and require stays inside the mod's root. R.damage hits carry killed, damage_kind and is_enemy.",
       "highlights": [
         "Mod Lua loads as text only, precompiled bytecode is refused, and require stays inside the mod's root. R.damage hits carry killed, damage_kind and is_enemy."
@@ -490,19 +499,6 @@
         "Talents can give +1 TRAIT charge, the same way Merlin's quest and Snow Queen's Trait Charge do (TRAIT charges were refused before)"
       ],
       "cli_version": 11
-    },
-    {
-      "version": "",
-      "date": "2026-10-23",
-      "summary": "Talents built from scratch reliably, game-event triggers, and a simpler talent editor",
-      "highlights": [
-        "Talent changes no longer copy parts from other heroes: every part is written, so talent mods are more reliable across game updates",
-        "Talent bonuses can start from game events: taking damage, your ultimate, day or night, picking a talent or item, dream shards, Sandman purchases, rerolls",
-        "Every option the talent editor offers now builds, for every hero (several failed before, e.g. on Kintaro and Snow Queen)",
-        "The talent editor has one place to change what a talent does: the builder, which can add to a talent or replace it",
-        "Charges that the game never grants (TRAIT charges) are refused, and charges show as whole numbers"
-      ],
-      "cli_version": 10
     }
   ]
 }
