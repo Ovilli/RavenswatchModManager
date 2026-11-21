@@ -7,6 +7,7 @@ import {
   describeCliSource,
   describeLoaderInstall,
   getLaunchActive,
+  loaderMismatchNote,
   subscribeChannelPhases,
   trackCliUpdate,
   trackLoaderUpdate,
@@ -753,6 +754,8 @@ function VersionRow({
 /** Human-readable one-liner for a loader-channel result. */
 function loaderSummary(r: UpdateLoaderResult | null): string | null {
   if (!r) return null;
+  const mismatch = loaderMismatchNote(r);
+  if (mismatch) return mismatch;
   switch (r.status) {
     case 'updated':
       return tr('Updated to v{version} — restart Ravenswatch to pick it up.', {
@@ -895,6 +898,14 @@ export function UpdaterSettings() {
         toast.push(
           t('Game loader updated to v{version} — restart Ravenswatch to pick it up.', {
             version: r.installedVersion ?? '',
+          }),
+          'success',
+        );
+      } else if (r?.repaired) {
+        setNeedsGameRestart(true);
+        toast.push(
+          t('Game loader reinstalled (v{version}) — restart Ravenswatch to pick it up.', {
+            version: r.plantedVersion ?? r.installedVersion ?? '',
           }),
           'success',
         );

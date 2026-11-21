@@ -89,6 +89,67 @@ def use_system_trust() -> str:
     return _TRUST
 
 
+#: Sent on every request that does not set its own. Python's default,
+#: "Python-urllib/3.x", is refused outright by the CDN in front of mod storage
+#: (measured 2026-11-21: 403 for exactly that string, 2xx for anything else),
+#: so `rsmm install`, `rsmm update` and collection installs failed on any
+#: archive served from there — only the desktop's Browse install, which set its
+#: own header, worked.
+USER_AGENT = "rsmm-cli (+https://rsmm.me)"
+
+
+def install_user_agent() -> None:
+    """Make every bare `urlopen` in the process send `USER_AGENT`.
+
+    `OpenerDirector` adds `addheaders` only where the request has no such
+    header, so callers that set their own User-Agent keep it. Idempotent.
+    """
+    import urllib.request
+
+    opener = urllib.request.build_opener()
+    opener.addheaders = [("User-Agent", USER_AGENT)]
+    urllib.request.install_opener(opener)
+
+
+#: Appended to a certificate failure. The certificate itself is almost never
+#: the problem (the servers' chains are checked): browsers accept the same URL,
+#: so it is the PC's clock or something intercepting HTTPS on it.
+CERT_HINT = (
+    "This PC rejected the server's security certificate, which browsers "
+    "accept. Check that the Windows date and time are correct, then turn off "
+    "HTTPS/SSL scanning in your antivirus (or a VPN/proxy that inspects "
+    "traffic) and try again."
+)
+
+
+def _is_cert_failure(exc: BaseException | None) -> bool:
+    """A TLS certificate rejection, however deep urllib wrapped it."""
+    import ssl
+
+    for _ in range(5):  # URLError.reason / __cause__ chains are short
+        if exc is None:
+            return False
+        if isinstance(exc, ssl.SSLCertVerificationError):
+            return True
+        reason = getattr(exc, "reason", None)
+        exc = reason if isinstance(reason, BaseException) else exc.__cause__
+    return False
+
+
+def describe_error(exc: BaseException) -> str:
+    """`str(exc)`, plus what the player can do when it is a certificate failure.
+
+    The raw text — "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate
+    verify failed: certificate has expired>" — is what a player pasted into
+    Discord 2026-11-21, and it reads as "the server is broken" when the cause
+    was on their PC. Kept verbatim in front so a bug report still carries it.
+    """
+    text = str(exc)
+    if _is_cert_failure(exc) or "CERTIFICATE_VERIFY_FAILED" in text:
+        return f"{text} - {CERT_HINT}"
+    return text
+
+
 def is_loopback(host: str | None) -> bool:
     """True for hosts that cannot be reached from off-machine."""
     if not host:

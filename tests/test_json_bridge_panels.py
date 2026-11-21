@@ -285,3 +285,39 @@ def test_loader_state_dev_when_dll_differs_from_manifest(tmp_path, bundled):
     _planted(tmp_path, b"hand built", b"dll", version=9)
     assert json_bridge.loader_install_state(tmp_path) == {
         "plantedVersion": 9, "loaderState": "dev", "nextVersion": 5}
+
+
+def _bridge_update_loader(tmp_path, monkeypatch, capsys, *, check_only, repair):
+    from rsmm.engine import loader_update
+    calls = []
+    monkeypatch.setattr(json_bridge, "find_game_dir", lambda: tmp_path)
+    monkeypatch.setattr(loader_update, "check", lambda g: {
+        "status": "up_to_date", "plant_stale": True, "installed_version": 5,
+        "remote_version": 5})
+    monkeypatch.setattr(loader_update, "repair_plant",
+                        lambda g, s, on_progress=None: calls.append(g) or repair)
+    json_bridge.cmd_update_loader(check_only)
+    return json.loads(capsys.readouterr().out), calls
+
+
+def test_update_loader_repairs_a_stale_plant(tmp_path, bundled, monkeypatch, capsys):
+    """The app's start / pre-launch update heals "dev · active" by itself."""
+    out, calls = _bridge_update_loader(
+        tmp_path, monkeypatch, capsys, check_only=False,
+        repair={"repaired": True, "version": 5, "error": None})
+    assert calls == [tmp_path]
+    assert out["repaired"] is True and out["repairError"] is None
+
+
+def test_update_loader_reports_why_a_repair_failed(tmp_path, bundled, monkeypatch, capsys):
+    out, _ = _bridge_update_loader(
+        tmp_path, monkeypatch, capsys, check_only=False,
+        repair={"repaired": False, "version": None, "error": "Ravenswatch is running"})
+    assert out["repaired"] is False and out["repairError"] == "Ravenswatch is running"
+
+
+def test_update_loader_check_never_repairs(tmp_path, bundled, monkeypatch, capsys):
+    """--check is read-only: screens run it on mount."""
+    out, calls = _bridge_update_loader(
+        tmp_path, monkeypatch, capsys, check_only=True, repair=None)
+    assert calls == [] and out["repaired"] is False and out["repairError"] is None

@@ -607,6 +607,38 @@ def test_plant_not_stale_when_the_planted_dll_is_the_bundled_one(tmp_path, chann
     assert lu.check(game)["plant_stale"] is False
 
 
+def test_plant_stale_when_a_current_manifest_does_not_match_the_dll(
+        tmp_path, channel, monkeypatch):
+    """The "dev · active" beside "Up to date with the loader channel" a player hit.
+
+    The manifest says v4 = the bundled stamp, so version numbers call it
+    current — but the DLL on disk is neither the one that manifest names nor
+    this build's own (another program replaced it, or another rsmm build's
+    install-loader planted its own compile of the same version).
+    """
+    import hashlib
+
+    game, use = channel
+    use(_publish(tmp_path, version=1))
+    bundled = tmp_path / "dist" / "winhttp.dll"
+    bundled.parent.mkdir(parents=True, exist_ok=True)
+    bundled.write_bytes(b"MZ this build's own compile")
+    monkeypatch.setattr(lu, "bundled_loader_dll", lambda: bundled)
+    monkeypatch.setattr(lu, "bundled_version", lambda: 4)
+    lu.planted_manifest_path(game).parent.mkdir(parents=True, exist_ok=True)
+    lu.planted_manifest_path(game).write_text(json.dumps({
+        "loader_version": 4,
+        "files": [{"path": "winhttp.dll",
+                   "sha256": hashlib.sha256(b"MZ the channel's compile").hexdigest()}],
+    }), encoding="utf-8")
+    (game / "winhttp.dll").write_bytes(b"MZ something else entirely")
+
+    assert lu.check(game)["plant_stale"] is True
+    # ...and the same manifest over the DLL it names is a healthy plant.
+    (game / "winhttp.dll").write_bytes(b"MZ the channel's compile")
+    assert lu.check(game)["plant_stale"] is False
+
+
 def test_plant_stale_is_false_when_it_cannot_be_told(tmp_path, channel, monkeypatch):
     """A source checkout that has never built a DLL must not nag."""
     game, use = channel
@@ -790,3 +822,94 @@ def test_check_reports_a_game_dir_with_no_loader_at_all(tmp_path, channel):
     (game / "winhttp.dll").unlink()
 
     assert lu.check(game)["not_planted"] is True
+
+
+# --- repair_plant: heal a plant that is current by version but not published --
+
+
+def _foreign_plant(tmp_path, channel, monkeypatch, *, release=True, running=False):
+    """A game dir whose winhttp.dll is neither this build's nor the channel's."""
+    from rsmm.engine import game_proc
+
+    game, use = channel
+    use(_publish(tmp_path, version=1))
+    bundled = tmp_path / "dist" / "winhttp.dll"
+    bundled.parent.mkdir(parents=True, exist_ok=True)
+    bundled.write_bytes(b"MZ this build's own compile")
+    monkeypatch.setattr(lu, "bundled_loader_dll", lambda: bundled)
+    monkeypatch.setattr(lu, "_release_build", lambda: release)
+    monkeypatch.setattr(game_proc, "is_game_running", lambda: running)
+    (game / "winhttp.dll").write_bytes(b"MZ replaced by something else")
+    return game
+
+
+def test_repair_replants_a_foreign_dll_from_the_channel(tmp_path, channel, monkeypatch):
+    """The player's "dev · active" beside "up to date": the app's own check heals it."""
+    from rsmm.engine.mod_requires import loader_install
+
+    game = _foreign_plant(tmp_path, channel, monkeypatch)
+    state = lu.check(game)
+    assert state["status"] == "up_to_date" and state["plant_stale"] is True
+
+    out = lu.repair_plant(game, state)
+    assert out == {"repaired": True, "version": 1, "error": None}
+    assert (game / "winhttp.dll").read_bytes() == PAYLOAD["winhttp.dll"]
+    assert loader_install(game) == {"state": "release", "version": 1}
+    assert lu.check(game)["plant_stale"] is False
+
+
+def test_repair_prefers_the_cached_bundle(tmp_path, channel, monkeypatch):
+    """No network needed when the channel bundle is already cached."""
+    game = _foreign_plant(tmp_path, channel, monkeypatch)
+    lu.apply_update(game, lu.check(game))           # plants + caches v1
+    (game / "winhttp.dll").write_bytes(b"MZ replaced again")
+    # The channel is gone now: only the cache can supply the bytes.
+    monkeypatch.setenv("RSMM_LOADER_UPDATE_BASE", (tmp_path / "nowhere").as_uri())
+    state = {"plant_stale": True, "remote_version": None}
+    assert lu.repair_plant(game, state)["repaired"] is True
+    assert (game / "winhttp.dll").read_bytes() == PAYLOAD["winhttp.dll"]
+
+
+def test_repair_never_touches_a_source_checkout(tmp_path, channel, monkeypatch):
+    """A developer's own DLL looks foreign too and is planted on purpose."""
+    game = _foreign_plant(tmp_path, channel, monkeypatch, release=False)
+    assert lu.repair_plant(game, lu.check(game)) is None
+    assert (game / "winhttp.dll").read_bytes() == b"MZ replaced by something else"
+
+
+def test_repair_waits_while_the_game_runs(tmp_path, channel, monkeypatch):
+    game = _foreign_plant(tmp_path, channel, monkeypatch, running=True)
+    out = lu.repair_plant(game, lu.check(game))
+    assert out["repaired"] is False and "running" in out["error"]
+    assert (game / "winhttp.dll").read_bytes() == b"MZ replaced by something else"
+
+
+def test_repair_never_installs_a_loader_that_was_not_there(tmp_path, channel, monkeypatch):
+    game = _foreign_plant(tmp_path, channel, monkeypatch)
+    (game / "winhttp.dll").unlink()
+    assert lu.repair_plant(game, {"plant_stale": True, "remote_version": 1}) is None
+
+
+def test_repair_is_a_no_op_for_a_healthy_plant(tmp_path, channel, monkeypatch):
+    game = _foreign_plant(tmp_path, channel, monkeypatch)
+    lu.apply_update(game, lu.check(game))
+    assert lu.repair_plant(game, lu.check(game)) is None
+
+
+def test_repair_respects_keep_loader(tmp_path, channel, monkeypatch):
+    game = _foreign_plant(tmp_path, channel, monkeypatch)
+    monkeypatch.setenv("RSMM_KEEP_LOADER", "1")
+    assert lu.repair_plant(game, lu.check(game)) is None
+    assert (game / "winhttp.dll").read_bytes() == b"MZ replaced by something else"
+
+
+def test_repair_falls_back_to_the_channel_when_the_cache_is_corrupt(
+        tmp_path, channel, monkeypatch):
+    game = _foreign_plant(tmp_path, channel, monkeypatch)
+    lu.apply_update(game, lu.check(game))                   # plants + caches v1
+    cached_dll = lu.cache_dir(game) / "payload" / "winhttp.dll"
+    cached_dll.write_bytes(b"MZ tampered cache")
+    (game / "winhttp.dll").write_bytes(b"MZ replaced again")
+    out = lu.repair_plant(game, lu.check(game))
+    assert out["repaired"] is True
+    assert (game / "winhttp.dll").read_bytes() == PAYLOAD["winhttp.dll"]

@@ -149,3 +149,49 @@ def test_system_trust_falls_back_without_truststore(monkeypatch):
     monkeypatch.setitem(sys.modules, "truststore", None)  # import raises
     monkeypatch.setattr(net, "_TRUST", None)
     assert net.use_system_trust() == "python"
+
+
+def test_certificate_failure_says_what_to_check():
+    """The raw SSL text a player pasted read as "server broken"; say what to do."""
+    import ssl
+    import urllib.error
+
+    err = urllib.error.URLError(ssl.SSLCertVerificationError(
+        1, "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: "
+           "certificate has expired (_ssl.c:1010)"))
+    text = net.describe_error(err)
+    assert text.startswith(str(err))          # original kept for bug reports
+    assert "date and time" in text and "antivirus" in text
+    # Also when only the text survived (re-raised as a plain OSError).
+    assert net.CERT_HINT in net.describe_error(OSError(str(err)))
+
+
+def test_other_errors_are_unchanged():
+    assert net.describe_error(OSError("connection refused")) == "connection refused"
+
+
+def test_user_agent_replaces_pythons_default(monkeypatch):
+    """The CDN in front of mod storage 403s "Python-urllib/3.x" and nothing else."""
+    import urllib.request
+
+    monkeypatch.setattr(urllib.request, "_opener", None)  # restored after the test
+    net.install_user_agent()
+    opener = urllib.request._opener
+    assert ("User-Agent", net.USER_AGENT) in opener.addheaders
+    assert "Python-urllib" not in net.USER_AGENT
+    # A request that names its own agent keeps it: addheaders only fills gaps.
+    seen = {}
+
+    class Capture(urllib.request.BaseHandler):
+        handler_order = 100  # before the real HTTPHandler (500)
+
+        def http_open(self, req):
+            seen["ua"] = req.get_header("User-agent")
+            raise urllib.error.URLError("stop")
+
+    opener.add_handler(Capture())
+    import urllib.error
+    for headers, want in (({}, net.USER_AGENT), ({"User-Agent": "own"}, "own")):
+        with pytest.raises(urllib.error.URLError):
+            urllib.request.urlopen(urllib.request.Request("http://example.test/", headers=headers))
+        assert seen["ua"] == want

@@ -294,7 +294,9 @@ def _fetch(url: str, limit: int | None = None,
             ) from e
         raise LoaderUpdateError(f"fetch failed: {url}: {e}") from e
     except (urllib.error.URLError, OSError, TimeoutError) as e:
-        raise LoaderUpdateError(f"fetch failed: {url}: {e}") from e
+        from rsmm.engine.net import describe_error
+
+        raise LoaderUpdateError(f"fetch failed: {url}: {describe_error(e)}") from e
     if limit and len(data) > limit:
         raise LoaderUpdateError(f"payload exceeds {limit} bytes: {url}")
     return data
@@ -409,11 +411,25 @@ def loader_missing(game_dir: Path) -> bool:
 
 
 def _plant_stale(game_dir: Path) -> bool:
-    """Shared by `check`'s early returns; see the comment in `check`."""
+    """Is the game dir's loader one `update-loader` cannot fix? See `check`.
+
+    Three ways, all fixed only by re-planting (`install-loader`):
+      * a manifest older than this build's bundled stamp;
+      * NO manifest and a DLL that is not this build's;
+      * a manifest at or above the stamp whose winhttp.dll entry the DLL on
+        disk does not match either — the "dev · active" next to "up to date"
+        a player hit: another program replaced the DLL, or `install-loader`
+        from a different rsmm build planted its own compile of the same
+        version beside an old manifest. Version numbers cannot see it.
+    """
     planted = planted_manifest_version(game_dir)
-    if planted is not None:
-        return planted < bundled_version()
-    return plant_matches_bundle(game_dir) is False
+    if planted is None:
+        return plant_matches_bundle(game_dir) is False
+    if planted < bundled_version():
+        return True
+    from rsmm.engine.mod_requires import loader_install
+
+    return loader_install(game_dir)["state"] == "dev"
 
 
 def check(game_dir: Path) -> dict:
@@ -458,11 +474,9 @@ def check(game_dir: Path) -> dict:
     #     the bytes on disk are not the ones this build ships. Version
     #     comparison is blind to that (planted_version falls back to the
     #     bundled stamp), so `update-loader` said "up to date (v8)" over a game
-    #     dir running an SDK from an older desktop build.
-    if planted_now is not None:
-        plant_stale = planted_now < bundled_version()
-    else:
-        plant_stale = plant_matches_bundle(game_dir) is False
+    #     dir running an SDK from an older desktop build; or
+    #   * a current manifest whose DLL entry the bytes on disk do not match.
+    plant_stale = _plant_stale(game_dir)
     if remote_version > have:
         status = "update_available"
     elif remote_version == have:
@@ -728,6 +742,70 @@ def apply_update(game_dir: Path, state: dict | None = None,
     out["installed_version"] = int(manifest["loader_version"])
     out["planted"] = planted
     return out
+
+
+def repair_plant(game_dir: Path, state: dict,
+                 on_progress: Callable[[int, int], None] | None = None) -> dict | None:
+    """Re-plant a loader the channel check found stale (`state["plant_stale"]`).
+
+    The fix for the "dev · active" next to "up to date" a player hit
+    2026-11-21: the version numbers were current, the winhttp.dll on disk was
+    not a published build, and nothing the app did automatically could change
+    it — the player had to find Doctor + repair. `update-loader` (which the app
+    runs at start, on focus and before every modded launch) now heals it.
+
+    Release builds only: in a source checkout a "foreign" DLL is usually the
+    developer's own build, planted on purpose. ``RSMM_KEEP_LOADER=1`` opts a
+    release build out too (a tester running the installed app over a hand-built
+    DLL). Never plants into a game dir with no winhttp.dll (a vanilla player
+    who never installed the loader).
+
+    Signed sources only, in order: the cached channel bundle (no network), then
+    the channel's bundle when it is at least this build's version. A channel
+    behind this build cannot supply it; `install-loader` is the fix then, and
+    the returned ``error`` says so.
+
+    Returns None when there is nothing to repair, else
+    ``{"repaired": bool, "version": int | None, "error": str | None}``.
+    """
+    from rsmm.engine.mod_requires import loader_install
+
+    if not (state.get("plant_stale") and _release_build()):
+        return None
+    if os.environ.get("RSMM_KEEP_LOADER", "").strip() not in ("", "0"):
+        # A tester running the installed app over a hand-built DLL on purpose.
+        return None
+    if not (game_dir / "winhttp.dll").is_file():
+        return None
+    from rsmm.engine.game_proc import is_game_running
+
+    if is_game_running():
+        # Windows holds winhttp.dll open; trying would fail half-way.
+        return {"repaired": False, "version": None,
+                "error": "Ravenswatch is running - close it and the loader is "
+                         "reinstalled on the next check"}
+    try:
+        done = replant_cached(game_dir)
+    except LoaderUpdateError:
+        done = None  # a corrupt or unsigned cache: the channel can still supply it
+    try:
+        if done is None and int(state.get("remote_version") or 0) >= bundled_version():
+            done = apply_update(game_dir, state, on_progress=on_progress)
+            done = {"loader_version": done["installed_version"]}
+        if done is None:
+            return {"repaired": False, "version": None,
+                    "error": "the update channel has no build of this loader to "
+                             "reinstall from - run Doctor + repair"}
+    except (LoaderUpdateError, OSError) as e:
+        return {"repaired": False, "version": None, "error": str(e)}
+    inst = loader_install(game_dir)
+    if inst["state"] != "release":
+        # Planted, yet still not recognised: something rewrote it at once.
+        return {"repaired": False, "version": None,
+                "error": "reinstalled the loader but winhttp.dll still is not a "
+                         "published build - another program is replacing it"}
+    return {"repaired": True, "version": inst["version"] or done.get("loader_version"),
+            "error": None}
 
 
 def fetch_prebuilt_dll(dest: Path | None = None) -> dict:

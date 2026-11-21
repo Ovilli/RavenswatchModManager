@@ -194,8 +194,11 @@ async function runTrackedLoaderUpdate(opts: {
     });
     const failed = failureReason(r);
     if (failed) setChannelPhase('loader', { kind: 'failed', reason: failed });
-    else if (r?.status === 'updated') {
-      setChannelPhase('loader', { kind: 'installed', version: r.installedVersion ?? null });
+    else if (r?.status === 'updated' || r?.repaired) {
+      setChannelPhase('loader', {
+        kind: 'installed',
+        version: r.plantedVersion ?? r.installedVersion ?? null,
+      });
     } else setChannelPhase('loader', IDLE);
     return r;
   } catch (e) {
@@ -244,6 +247,34 @@ export function describeLoaderInstall(
   if (version == null) return null;
   if (state === 'release') return tr('v{version} · active', { version });
   return `v${version}`;
+}
+
+/**
+ * What to say instead of "up to date" when the planted DLL is not a published
+ * build. The channel check compares version NUMBERS, so a `winhttp.dll` that
+ * matches neither the planted manifest nor the DLL this CLI carries (another
+ * program replaced it, or an older launcher planted its own build) still read
+ * "Up to date with the loader channel" right beside "dev · active" — and
+ * checking again could never change that. Repair re-plants it; nothing else does.
+ */
+export function loaderMismatchNote(
+  r: Pick<UpdateLoaderResult, 'status' | 'loaderState' | 'repairError'> | null | undefined,
+): string | null {
+  if (r?.loaderState !== 'dev') return null;
+  if (r.status !== 'up_to_date' && r.status !== 'ahead') return null;
+  // The CLI already tried to reinstall it (it does on every non-check run);
+  // say why that did not work, which is the actionable part.
+  if (r.repairError) {
+    return tr(
+      'The loader in your game folder is not a published build and could not be reinstalled: {reason}',
+      {
+        reason: r.repairError,
+      },
+    );
+  }
+  return tr(
+    "The loader in your game folder is not a published build, so checking for updates can't fix it. Run Doctor + repair (Commands) to reinstall it; if this comes back after a game launch, another program is replacing winhttp.dll.",
+  );
 }
 
 /** "v12 - update channel" or "v12 - embedded". */

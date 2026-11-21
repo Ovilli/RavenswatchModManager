@@ -293,6 +293,42 @@ def test_loader_detects_replaced_dll_by_hash(tmp_path, monkeypatch):
     assert stale.fix is not None and stale.fix.argv == ["install-loader"]
 
 
+def test_loader_from_the_update_channel_is_not_a_stale_dll(tmp_path, monkeypatch):
+    """A DLL the planted signed manifest names is the channel build, not Steam's.
+
+    Every pipeline compiles its own DLL, so the channel's v63 never hashes like
+    the app's bundled v63. Flagging it sent repair in a circle: install-loader
+    plants the bundled copy, then replants the cached channel one.
+    """
+    import hashlib
+
+    from rsmm.cli import doctor as doc
+    from rsmm.engine import loader_update as lu
+
+    game = _fake_install(tmp_path)
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "winhttp.dll").write_bytes(b"app-compile")
+    (game / "winhttp.dll").write_bytes(b"channel-compile")
+    monkeypatch.setattr(doc, "DIST_DIR", dist)
+    monkeypatch.setattr(lu, "bundled_loader_dll", lambda: dist / "winhttp.dll")
+    manifest = lu.planted_manifest_path(game)
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(json.dumps({
+        "loader_version": 63,
+        "files": [{"path": "winhttp.dll",
+                   "sha256": hashlib.sha256(b"channel-compile").hexdigest()}],
+    }), encoding="utf-8")
+
+    results = doc.check_loader(game)
+    assert "loader.stale-dll" not in {r.code for r in results}
+    assert any("v63" in r.label and "update channel" in r.label for r in results)
+
+    # A DLL matching neither is still caught.
+    (game / "winhttp.dll").write_bytes(b"something-else")
+    assert "loader.stale-dll" in {r.code for r in doc.check_loader(game)}
+
+
 # ---------------------------------------------------------------- loader flags
 
 def test_dangerous_loader_flag_is_flagged(tmp_path, monkeypatch):

@@ -1074,7 +1074,7 @@ def put_bytes(path: str, url: str) -> dict[str, Any]:
             body = e.read().decode("utf-8", errors="replace")
         return {"ok": False, "status": e.code, "error": body or e.reason}
     except urllib.error.URLError as e:
-        return {"ok": False, "error": f"network error: {e.reason}"}
+        return {"ok": False, "error": f"network error: {net.describe_error(e)}"}
     except OSError as e:
         return {"ok": False, "error": str(e)}
 
@@ -1241,7 +1241,7 @@ def _download_mod_version(slug: str, version: str, expected_sha: str) -> dict[st
     except urllib.error.HTTPError as e:
         return {"ok": False, "error": f"download failed: HTTP {e.code} {e.reason}"}
     except (urllib.error.URLError, OSError, ValueError) as e:
-        return {"ok": False, "error": f"download failed: {e}"}
+        return {"ok": False, "error": f"download failed: {net.describe_error(e)}"}
     finally:
         with contextlib.suppress(Exception):
             tmp.close()
@@ -1268,7 +1268,7 @@ def cmd_install_mod(slug: str) -> int:
             return _emit({"ok": False, "error": f"mod {slug!r} not found in the index"})
         return _emit({"ok": False, "error": f"index lookup failed: HTTP {e.code} {e.reason}"})
     except (urllib.error.URLError, OSError, ValueError) as e:
-        return _emit({"ok": False, "error": f"index lookup failed: {e}"})
+        return _emit({"ok": False, "error": f"index lookup failed: {net.describe_error(e)}"})
 
     versions = detail.get("versions") or []
     if not versions:
@@ -1314,7 +1314,7 @@ def cmd_install_mod_version(slug: str, version: str) -> int:
             return _emit({"ok": False, "error": f"mod {slug!r} not found in the index"})
         return _emit({"ok": False, "error": f"index lookup failed: HTTP {e.code} {e.reason}"})
     except (urllib.error.URLError, OSError, ValueError) as e:
-        return _emit({"ok": False, "error": f"index lookup failed: {e}"})
+        return _emit({"ok": False, "error": f"index lookup failed: {net.describe_error(e)}"})
 
     versions = detail.get("versions") or []
     match = next((v for v in versions if str(v.get("version") or "") == version), None)
@@ -1871,11 +1871,17 @@ def cmd_update_loader(check_only: bool) -> int:
         return _emit({"ok": False, "status": "error",
                       "error": "game directory not found"})
     try:
-        from rsmm.engine.loader_update import apply_update, check
+        from rsmm.engine.loader_update import apply_update, check, repair_plant
 
         state = check(game_dir)
+        repair = None
         if not check_only and state["status"] == "update_available":
             state = apply_update(game_dir, state, on_progress=_progress_reporter("download"))
+        elif not check_only:
+            # Current by version, but the DLL on disk is not a published build:
+            # heal it here, since the app runs this at start and before launch.
+            repair = repair_plant(game_dir, state,
+                                  on_progress=_progress_reporter("download"))
         return _emit({
             # A future-abi bundle is a real answer, not a failure: the UI
             # should say "update the app", not show a transport error.
@@ -1890,6 +1896,9 @@ def cmd_update_loader(check_only: bool) -> int:
             "notes": state.get("notes"),
             "planted": state.get("planted"),
             "error": state.get("error"),
+            # Set only when a mismatched plant was found and a reinstall tried.
+            "repaired": bool(repair and repair["repaired"]),
+            "repairError": repair["error"] if repair else None,
             **loader_install_state(game_dir),
         })
     except Exception as e:  # noqa: BLE001 — bridge must always emit JSON
