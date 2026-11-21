@@ -1,6 +1,15 @@
 {
-  "generated": "2026-11-19",
+  "generated": "2026-11-21",
   "entries": [
+    {
+      "version": "",
+      "date": "2026-11-21",
+      "summary": "Mod Lua loads as text only, precompiled bytecode is refused, and require stays inside the mod's root. R.damage hits carry killed, damage_kind and is_enemy.",
+      "highlights": [
+        "Mod Lua loads as text only, precompiled bytecode is refused, and require stays inside the mod's root. R.damage hits carry killed, damage_kind and is_enemy."
+      ],
+      "loader_version": 64
+    },
     {
       "version": "6.0.0",
       "date": "2026-11-19",
@@ -494,19 +503,6 @@
         "Charges that the game never grants (TRAIT charges) are refused, and charges show as whole numbers"
       ],
       "cli_version": 10
-    },
-    {
-      "version": "",
-      "date": "2026-10-22",
-      "summary": "Items from scratch, safer item bans, and a warning for item stats the game never reads",
-      "highlights": [
-        "Item bans no longer wipe the save progress of banned items: apply and restore put back what the game dropped",
-        "You can ban every item: empty vendor pools get a harmless Sold Out item instead of crashing the game",
-        "Make magical objects from scratch: list always-on and after-a-trigger bonuses, no base item needed",
-        "The item editor gets Start from scratch, an effects list and ids of any length",
-        "Lint warns when an item's effect changes a stat the game never reads"
-      ],
-      "cli_version": 9
     }
   ]
 }
