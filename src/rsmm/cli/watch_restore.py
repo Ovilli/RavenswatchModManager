@@ -23,6 +23,10 @@ from rsmm.engine.paths import self_cmd, user_data_dir
 
 LOCK_NAME = "watch-restore.pid"
 LOG_NAME = "watch-restore.log"
+#: Bumped by every modded launch (`bump_launch_generation`). Only one watcher
+#: runs at a time, so a second launch's watcher exits and the FIRST one is left
+#: holding the second session — which it must not end with a restore.
+GEN_NAME = "watch-restore.gen"
 #: Past this size the log is truncated at the next start.
 LOG_MAX_BYTES = 256 * 1024
 
@@ -109,6 +113,28 @@ def _release_lock() -> None:
             path.unlink()
 
 
+def bump_launch_generation() -> None:
+    """Record that a modded launch is starting (called before it applies).
+
+    The running watcher compares this before restoring: a changed value means
+    the game it saw exit has been (or is being) relaunched modded, so restoring
+    would pull files from under the new session — Restart game hit exactly
+    that, because the old watcher restored once the relaunch took longer than
+    its three exit probes, and nothing then watched the new session at all.
+    """
+    p = user_data_dir() / GEN_NAME
+    with contextlib.suppress(OSError):
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(f"{time.time_ns()}-{os.getpid()}", encoding="utf-8")
+
+
+def read_launch_generation() -> str:
+    try:
+        return (user_data_dir() / GEN_NAME).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
 def _run_restore() -> tuple[bool, str]:
     """Run `rsmm restore` as a child; (ok, stderr tail)."""
     try:
@@ -123,9 +149,8 @@ def _run_restore() -> tuple[bool, str]:
     return proc.returncode == 0, tail
 
 
-def watch(*, interval: float, start_timeout: float, exit_probes: int,
-          restore_attempts: int, retry_delay: float) -> int:
-    """The watch loop. 0 once restored, 1 when every restore attempt failed."""
+def _wait_for_session(*, interval: float, start_timeout: float, exit_probes: int) -> None:
+    """Wait for the game to appear (up to `start_timeout`), then for it to exit."""
     deadline = time.monotonic() + start_timeout
     seen = False
     while True:
@@ -136,31 +161,50 @@ def watch(*, interval: float, start_timeout: float, exit_probes: int,
             break
         time.sleep(interval)
 
-    if seen:
-        _log("game seen; waiting for it to exit")
-        # is_game_running() fails open: a probe timeout reads as "not
-        # running". Only consecutive misses count as the game having exited.
-        misses = 0
-        while misses < exit_probes:
-            time.sleep(interval)
-            misses = 0 if game_proc.is_game_running() else misses + 1
-        _log("game exited")
-    else:
+    if not seen:
         _log(f"never saw the game within {start_timeout:g}s; restoring anyway")
-        if game_proc.is_game_running():
-            # It came up on the last probe: let it finish normally.
-            return watch(interval=interval, start_timeout=0, exit_probes=exit_probes,
-                         restore_attempts=restore_attempts, retry_delay=retry_delay)
+        if not game_proc.is_game_running():
+            return
+        # It came up on the last probe: let it finish normally.
+    _log("game seen; waiting for it to exit")
+    # is_game_running() fails open: a probe timeout reads as "not
+    # running". Only consecutive misses count as the game having exited.
+    misses = 0
+    while misses < exit_probes:
+        time.sleep(interval)
+        misses = 0 if game_proc.is_game_running() else misses + 1
+    _log("game exited")
 
-    for attempt in range(1, restore_attempts + 1):
-        ok, tail = _run_restore()
-        if ok:
-            _log("restore ok")
-            return 0
-        _log(f"restore failed (attempt {attempt}/{restore_attempts}): {tail}")
-        if attempt < restore_attempts:
-            time.sleep(retry_delay)
-    return 1
+
+def watch(*, interval: float, start_timeout: float, exit_probes: int,
+          restore_attempts: int, retry_delay: float) -> int:
+    """The watch loop. 0 once restored, 1 when every restore attempt failed."""
+    generation = read_launch_generation()
+    while True:
+        _wait_for_session(interval=interval, start_timeout=start_timeout,
+                          exit_probes=exit_probes)
+        attempt = 0
+        superseded = False
+        while attempt < restore_attempts:
+            # Checked before EVERY attempt: a relaunch can land during the
+            # retries as well as during the exit probes.
+            now = read_launch_generation()
+            if now != generation:
+                generation = now
+                superseded = True
+                _log("a newer modded launch started; watching its session "
+                     "instead of restoring")
+                break
+            attempt += 1
+            ok, tail = _run_restore()
+            if ok:
+                _log("restore ok")
+                return 0
+            _log(f"restore failed (attempt {attempt}/{restore_attempts}): {tail}")
+            if attempt < restore_attempts:
+                time.sleep(retry_delay)
+        if not superseded:
+            return 1
 
 
 def main() -> int:

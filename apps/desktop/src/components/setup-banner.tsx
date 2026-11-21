@@ -9,8 +9,8 @@ import {
   type DoctorCheck,
   type DoctorResult,
   type UpdateLoaderResult,
-  applyMods,
   doctor,
+  restoreAll,
   updatePatternDb,
 } from '../lib/rsmm';
 import { oncePerLaunch } from '../lib/session-cache';
@@ -58,7 +58,7 @@ export function SetupBanner() {
   const [result, setResult] = useState<DoctorResult | null>(null);
   const [running, setRunning] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Game-update repair (re-apply) state. Session-only dismissal: a Steam
+  // Game-update repair (restore) state. Session-only dismissal: a Steam
   // patch is a new event each time, so no persisted signature.
   const [repairing, setRepairing] = useState(false);
   const [repairError, setRepairError] = useState<string | null>(null);
@@ -129,20 +129,21 @@ export function SetupBanner() {
     void runChecks();
   }, [runChecks]);
 
-  // One-click recovery after a Steam patch: `apply` clears stale backups,
-  // rebuilds the asset map, and re-copies every override. Deliberately NOT
-  // doctor --fix — a game update need not produce a FAIL finding, and this
-  // banner promises a re-apply specifically.
+  // One-click recovery after a Steam patch: `restore` drops the old-version
+  // backups, refreshes the asset map and records the new game version.
+  // Deliberately NOT `apply`: that left every mod written into the install with
+  // no game running and nothing to restore it, so the next plain Steam launch
+  // ran modded. The next modded launch applies against the new files anyway.
   const repair = useCallback(async () => {
     setRepairing(true);
     setRepairError(null);
     try {
-      const r = await applyMods();
+      const r = await restoreAll();
       if (r && r.ok === false) {
         throw new Error(
           r.stderr.trim() ||
             r.stdout.trim() ||
-            t('apply exited with code {code}', { code: r.code }),
+            t('restore exited with code {code}', { code: r.code }),
         );
       }
       await runChecks();
@@ -192,7 +193,7 @@ export function SetupBanner() {
           </p>
           <p className="text-sm text-ash">
             {t(
-              "Repair re-applies every enabled mod against the new game files. Playing modded from the app's Play button also repairs automatically.",
+              'Repair clears the old mod files so the updated game runs clean. Your mods are applied again the next time you play modded from the app.',
             )}
           </p>
           {repairError ? (

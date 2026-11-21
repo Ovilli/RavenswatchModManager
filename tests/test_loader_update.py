@@ -913,3 +913,47 @@ def test_repair_falls_back_to_the_channel_when_the_cache_is_corrupt(
     out = lu.repair_plant(game, lu.check(game))
     assert out["repaired"] is True
     assert (game / "winhttp.dll").read_bytes() == PAYLOAD["winhttp.dll"]
+
+
+# --- a game dir with no loader is vanilla on purpose: cache, never plant -----
+
+
+def test_cache_update_downloads_without_planting(tmp_path, channel, monkeypatch):
+    """restore removes the loader so a plain Steam launch is vanilla; the app's
+    start/focus update used to plant it straight back."""
+    game, use = channel
+    use(_publish(tmp_path, version=2))
+    (game / "winhttp.dll").unlink()
+    state = lu.check(game)
+    assert state["status"] == "update_available" and state["not_planted"] is True
+
+    out = lu.cache_update(game, state)
+    assert out["status"] == "cached" and out["cached_version"] == 2
+    assert not (game / "winhttp.dll").exists()
+    assert not lu.planted_manifest_path(game).exists()
+    # ...and the next install-loader (every modded launch) replants it.
+    monkeypatch.setattr(lu, "_release_build", lambda: True)
+    replanted = lu.replant_cached(game)
+    assert replanted["loader_version"] == 2
+    assert (game / "winhttp.dll").read_bytes() == PAYLOAD["winhttp.dll"]
+
+
+def test_bridge_caches_instead_of_planting_into_a_vanilla_game(tmp_path, channel,
+                                                               monkeypatch, capsys):
+    from rsmm.cli import json_bridge
+
+    game, use = channel
+    use(_publish(tmp_path, version=2))
+    (game / "winhttp.dll").unlink()
+    monkeypatch.setattr(json_bridge, "find_game_dir", lambda: game)
+    json_bridge.cmd_update_loader(False)
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"] == "cached" and out["ok"] is True
+    assert out["loaderState"] == "none" and out["nextVersion"] == 2
+    assert not (game / "winhttp.dll").exists()
+
+    # A planted loader still updates in place.
+    (game / "winhttp.dll").write_bytes(b"MZ fake loader v1")
+    json_bridge.cmd_update_loader(False)
+    assert json.loads(capsys.readouterr().out)["status"] == "updated"
+    assert (game / "winhttp.dll").read_bytes() == PAYLOAD["winhttp.dll"]

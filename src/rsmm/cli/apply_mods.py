@@ -2897,8 +2897,12 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     # Before anything is dropped: with a stale map, "mod-added" includes game
     # files, and restore deletes those.
     if not _refresh_stale_asset_map(game_dir):
-        print("  Not restoring: it would delete game files. Rebuild the map, "
-              "then re-run restore.", file=sys.stderr)
+        print("  Not restoring cooked files: it would delete game files. Rebuild "
+              "the map, then re-run restore.", file=sys.stderr)
+        # The game-side mods/ dir and the loader are not game files, and leaving
+        # them is what makes a plain Steam launch run mods: clear them anyway.
+        clear_runtime_mods(game_dir, args.dry_run)
+        clear_loader_artifacts(game_dir, args.dry_run)
         return 1
     state = State(cooking)
     # A restore is the recovery path, so it must see writes an interrupted
@@ -2910,6 +2914,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     restored_stale = 0
     cleaned_residue = 0
     purged_known = 0
+    residue = False
 
     # Detect game update BEFORE touching any files.
     # If the game version changed, backups from the previous version MUST NOT
@@ -3123,7 +3128,11 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                 print(f"    - {enc}", file=sys.stderr)
             if len(show) > 20:
                 print(f"    ... and {len(show) - 20} more", file=sys.stderr)
-            return 2
+            # Still exit 2, but only AFTER the rest of the cleanup below. This
+            # used to return here, so exactly when restore was struggling it
+            # also skipped UsedRscList, the game-side mods/ dir and the loader:
+            # the next plain Steam launch loaded the loader AND every mod's Lua.
+            residue = True
     except (OSError, ValueError) as e:
         # ValueError covers a corrupt asset_map.json — restore must still
         # finish its filesystem cleanup even when the map can't be loaded.
@@ -3164,7 +3173,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     if purged_known:
         print(f"Purged {purged_known} known mod-mapped cooked file(s).")
     print("Runtime mods directory cleared.")
-    return 0
+    return 2 if residue else 0
 
 
 def cmd_list(args, repo: Path, cooking: Path) -> int:

@@ -760,3 +760,19 @@ def test_launch_options_trust_the_loader_log_over_a_stale_vdf(tmp_path, monkeypa
     logs.mkdir(parents=True)
     (logs / "2026-09-10_180228_0e9b.log").write_text("== SESSION 0e9b\n")
     assert doctor._loader_has_run(game), "an archived run is proof too"
+
+
+def test_no_doctor_repair_leaves_the_install_modded():
+    """Doctor + repair used to run `rsmm apply` for these findings — mods written
+    into the install with no game launched and no watcher to restore them, so
+    the next plain Steam launch ran modded. Their repair is now a restore."""
+    import inspect
+
+    from rsmm.cli import doctor as doc
+
+    src = inspect.getsource(doc)
+    assert '["apply"]' not in src
+    for code in ("game.version-changed", "state.missing-override", "state.drifted",
+                 "usedrsclist.shorter"):
+        i = src.index(f'code="{code}"')
+        assert 'Fix("rsmm restore", ["restore"])' in src[i:i + 200], code

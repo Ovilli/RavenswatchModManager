@@ -113,3 +113,66 @@ def test_patcher_leaves_a_mod_owned_versiondef_and_its_backup_alone(tmp_path, ca
                       gen_owner="backport")
     assert gen.read_bytes() == b"BACKPORT VERSIONDEF"
     assert "backport replaces the LiveOps versiondef" in capsys.readouterr().err
+
+
+# --- restore always leaves a plain Steam launch without mods or the loader ---
+
+
+def _runtime(g):
+    mods = g / "mods"
+    (mods / "some-mod").mkdir(parents=True)
+    (mods / "some-mod" / "init.lua").write_text("-- lua")
+    (mods / "_log.txt").write_text("loader log")     # loader-owned: survives
+    (g / "winhttp.dll").write_bytes(b"MZ loader")
+
+
+def _cleared(g):
+    return (not (g / "mods" / "some-mod").exists()
+            and (g / "mods" / "_log.txt").exists()
+            and not (g / "winhttp.dll").exists())
+
+
+def test_refused_restore_still_clears_game_mods_and_loader(game, monkeypatch):
+    """The cooked files are left alone (that is what the refusal protects), but
+    the Lua mods and the loader are not game files: a plain Steam launch after
+    this used to load the loader and run every mod's init.lua."""
+    g, _amap = game
+    import rsmm.engine.find_iyg as F
+    monkeypatch.setattr(F, "main", lambda *a, **k: 1)
+    _runtime(g)
+    rc = A.cmd_restore_all(SimpleNamespace(dry_run=False), g, g / COOKING_REL, g)
+    assert rc == 1
+    assert (g / COOKING_REL / "new" / "b").read_bytes() == b"VANILLA"
+    assert _cleared(g)
+
+
+def test_restore_with_residue_still_clears_game_mods_and_loader(game, monkeypatch, tmp_path):
+    """Residue (a mod's bytes still in a game file) exits 2 — but it used to exit
+    2 BEFORE clearing mods/ and the loader, i.e. exactly when restore struggled
+    it left the most behind."""
+    import os
+    g, amap = game
+    amap.write_text(json.dumps({"old\\a": "Old/a", "new\\b": "New/b"}), encoding="utf-8")
+    for f in (AM.encoded_to_decoded, AM.decoded_to_encoded, A._shipped_cache_paths):
+        f.cache_clear()
+    cooking = g / COOKING_REL
+    (cooking / "old").mkdir()
+    dest = cooking / "old" / "a"
+    dest.write_bytes(b"MOD BYTES")
+    bak = dest.with_name(dest.name + BACKUP_SUFFIX)
+    bak.write_bytes(b"VANILLA A")
+    src = tmp_path / "src-a"
+    src.write_bytes(b"MOD BYTES")
+    mod = SimpleNamespace(id="m", enabled=True, files=lambda: [(src, "Old/a")])
+    monkeypatch.setattr(A, "discover_mods", lambda _repo: [mod])
+    _runtime(g)
+    bak.chmod(0)                       # the backup cannot be read back
+    try:
+        if os.access(bak, os.R_OK):
+            pytest.skip("running as a user that ignores file modes")
+        rc = A.cmd_restore_all(SimpleNamespace(dry_run=False), g, cooking, g)
+    finally:
+        bak.chmod(0o644)
+    assert rc == 2
+    assert dest.read_bytes() == b"MOD BYTES"          # the residue it reported
+    assert _cleared(g)

@@ -1791,8 +1791,12 @@ def cmd_restart_game() -> int:
     A run in progress is lost, so nothing calls this on its own — the UI asks
     first, and stop_game shuts down politely before it insists.
     """
+    from rsmm.cli.watch_restore import bump_launch_generation
     from rsmm.engine.game_proc import is_game_running, stop_game
 
+    # Before the game stops: the watcher of the session being closed must not
+    # restore under the relaunch (`run` bumps it again, which is harmless).
+    bump_launch_generation()
     was_running = is_game_running()
     if was_running and not stop_game():
         return _emit({
@@ -1871,12 +1875,20 @@ def cmd_update_loader(check_only: bool) -> int:
         return _emit({"ok": False, "status": "error",
                       "error": "game directory not found"})
     try:
-        from rsmm.engine.loader_update import apply_update, check, repair_plant
+        from rsmm.engine.loader_update import (
+            apply_update,
+            cache_update,
+            check,
+            repair_plant,
+        )
 
         state = check(game_dir)
         repair = None
         if not check_only and state["status"] == "update_available":
-            state = apply_update(game_dir, state, on_progress=_progress_reporter("download"))
+            # A game dir with no loader is vanilla on purpose (restore removed
+            # it): cache the update for the next modded launch, don't plant it.
+            update = cache_update if state.get("not_planted") else apply_update
+            state = update(game_dir, state, on_progress=_progress_reporter("download"))
         elif not check_only:
             # Current by version, but the DLL on disk is not a published build:
             # heal it here, since the app runs this at start and before launch.

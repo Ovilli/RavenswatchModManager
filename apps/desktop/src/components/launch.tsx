@@ -141,6 +141,29 @@ export function LaunchProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
+  /** Mods may already be written when a modded launch fails: put the
+   *  install back, since no watcher was started to do it. The CLI refuses a
+   *  restore while the game runs, so this cannot pull files from under it. */
+  const rollbackModded = useCallback(async () => {
+    try {
+      await appendLauncherLog(
+        'info',
+        'Launch failed after applying mods; restoring original files',
+      );
+      const restore = await restoreAll();
+      if (!restore || !restore.ok) {
+        throw new Error(restore?.stderr?.trim() || restore?.stdout?.trim() || 'restore failed');
+      }
+      await appendLauncherLog('info', 'Rollback complete');
+    } catch (e) {
+      const rollbackMessage = t('Rollback after failed launch failed: {error}', {
+        error: String(e),
+      });
+      setLaunchError(rollbackMessage);
+      await appendLauncherLog('error', rollbackMessage);
+    }
+  }, []);
+
   const launch = useCallback(
     async (mode: LaunchMode): Promise<RunResult | null> => {
       if (launching || running) return null;
@@ -173,30 +196,7 @@ export function LaunchProvider({ children }: { children: ReactNode }) {
             stdout: result?.stdout ?? '',
             stderr: result?.stderr ?? '',
           });
-          if (mode === 'modded') {
-            // Mods were already written before the launch failed. Roll them
-            // back now — otherwise the install stays modded with no game
-            // running and nothing left to trigger a restore.
-            try {
-              await appendLauncherLog(
-                'info',
-                'Launch failed after applying mods; restoring original files',
-              );
-              const restore = await restoreAll();
-              if (!restore || !restore.ok) {
-                throw new Error(
-                  restore?.stderr?.trim() || restore?.stdout?.trim() || 'restore failed',
-                );
-              }
-              await appendLauncherLog('info', 'Rollback complete');
-            } catch (e) {
-              const rollbackMessage = t('Rollback after failed launch failed: {error}', {
-                error: String(e),
-              });
-              setLaunchError(rollbackMessage);
-              await appendLauncherLog('error', rollbackMessage);
-            }
-          }
+          if (mode === 'modded') await rollbackModded();
           return result;
         }
         setRunning(mode);
@@ -208,12 +208,18 @@ export function LaunchProvider({ children }: { children: ReactNode }) {
         const message = String(e);
         setLaunchError(message);
         await appendLauncherLog('error', message, { mode });
+        // A THROWN failure needs the rollback too. `runModded` turns a failed
+        // apply into an RsmmExitError, and a timeout throws as well — both used
+        // to skip the rollback below the non-zero-exit branch, leaving
+        // UsedRscList.ot and whatever apply had written in the install with no
+        // game running and no watcher, so a plain Steam launch ran modded.
+        if (mode === 'modded') await rollbackModded();
         throw e;
       } finally {
         setLaunching(null);
       }
     },
-    [launching, running, trackGameLifecycle],
+    [launching, running, trackGameLifecycle, rollbackModded],
   );
 
   const value = useMemo<LaunchState>(

@@ -108,3 +108,52 @@ def test_stale_lock_is_taken_over(monkeypatch):
     assert lock.read_text(encoding="utf-8") == str(os.getpid())
     wr._release_lock()
     assert not lock.exists()
+
+
+def _generations(monkeypatch, values):
+    """read_launch_generation() yields `values`, then the last one forever."""
+    it = iter(values)
+    last = {"v": values[-1]}
+
+    def read():
+        v = next(it, last["v"])
+        last["v"] = v
+        return v
+
+    monkeypatch.setattr(wr, "read_launch_generation", read)
+
+
+def test_newer_modded_launch_is_watched_not_restored(monkeypatch):
+    """Restart game: the old watcher must not restore under the relaunch.
+
+    Session 1 runs and exits; a newer modded launch bumped the generation, so
+    the watcher waits for session 2 and restores only after IT exits.
+    """
+    probes = [True, False, False, False,   # session 1 seen, then exits
+              True, False, False, False]   # session 2 (the relaunch)
+    _probe(monkeypatch, probes)
+    _generations(monkeypatch, ["g1", "g2", "g2"])   # start, after s1, after s2
+    calls = _restore(monkeypatch, [True])
+    assert _watch() == 0
+    assert len(calls) == 1
+    log = wr._log_path().read_text(encoding="utf-8")
+    assert "newer modded launch" in log
+    assert log.count("game exited") == 2
+
+
+def test_relaunch_during_restore_retries_stops_retrying(monkeypatch):
+    # Restore fails once (files still locked), then a relaunch is recorded
+    # before the second attempt: watch the new session instead.
+    _probe(monkeypatch, [True, False, False, False, True])
+    _generations(monkeypatch, ["g1", "g1", "g2", "g2"])
+    calls = _restore(monkeypatch, [False, True])
+    assert _watch() == 0
+    assert len(calls) == 2           # one failed try, then one after session 2
+
+
+def test_bump_changes_the_generation(tmp_path):
+    before = wr.read_launch_generation()
+    wr.bump_launch_generation()
+    first = wr.read_launch_generation()
+    wr.bump_launch_generation()
+    assert first and first != before and wr.read_launch_generation() != first

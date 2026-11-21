@@ -1180,6 +1180,9 @@ export interface UpdateLoaderResult {
     | 'up_to_date'
     | 'updated'
     | 'update_available'
+    // Downloaded into the cache but NOT planted: the game folder has no loader
+    // (vanilla on purpose), so the next modded launch installs it.
+    | 'cached'
     // The published bundle needs a newer rsmm to plant it — the app itself
     // must be updated. Distinct from 'error' so the UI can say so.
     | 'needs_app_update'
