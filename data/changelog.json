@@ -2,6 +2,18 @@
   "generated": "2026-11-21",
   "entries": [
     {
+      "version": "6.0.1",
+      "date": "2026-11-21",
+      "summary": "Downloads work on more PCs, and a loader replaced by another program is reinstalled automatically.",
+      "highlights": [
+        "The game loader reinstalls itself when another program replaces winhttp.dll, instead of showing 'dev' next to 'up to date'",
+        "Mod downloads check certificates the way your browser does, so antivirus or old Windows certificate caches no longer break installs",
+        "rsmm install and rsmm update no longer fail with HTTP 403 on mods from the registry",
+        "Certificate errors now say what to check (clock, antivirus HTTPS scanning, proxy)"
+      ],
+      "loader_version": 64
+    },
+    {
       "version": "",
       "date": "2026-11-21",
       "summary": "Hardening batch (#202): signer pins, safer apply commit and rollback, archive and device-name checks, SDK lint, min_loader check, new ability-edit steps.",
@@ -490,15 +502,6 @@
         "Supper Effect on Items and Always on Night/Day"
       ],
       "cli_version": 12
-    },
-    {
-      "version": "",
-      "date": "2026-10-23",
-      "summary": "Talents can give a TRAIT charge",
-      "highlights": [
-        "Talents can give +1 TRAIT charge, the same way Merlin's quest and Snow Queen's Trait Charge do (TRAIT charges were refused before)"
-      ],
-      "cli_version": 11
     }
   ]
 }
