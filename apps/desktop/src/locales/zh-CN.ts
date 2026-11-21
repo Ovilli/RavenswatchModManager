@@ -444,6 +444,8 @@ export const zhCN: Record<string, string> = {
   'no answer after {seconds} s - launching with the current build':
     '{seconds} 秒内无响应 - 使用当前版本启动',
   'dev · active': '开发版 · 启用中',
+  "The loader in your game folder is not a published build, so checking for updates can't fix it. Run Doctor + repair (Commands) to reinstall it; if this comes back after a game launch, another program is replacing winhttp.dll.":
+    '游戏文件夹中的加载器不是已发布的版本，检查更新无法修复。请运行“体检并修复”（命令）重新安装；如果启动游戏后再次出现，说明有其他程序在替换 winhttp.dll。',
   'v{version} · active': 'v{version} · 启用中',
   'Loader update failed.': '加载器更新失败。',
   'Loader update failed: {error}': '加载器更新失败：{error}',

@@ -94,14 +94,15 @@ def main(argv: list[str] | None = None) -> int:
                   f"`rsmm install-loader \"{game_dir}\"` to put it there.", file=sys.stderr)
         if state.get("plant_stale"):
             planted = state.get("planted_version")
-            if planted is None:
-                # No manifest: `install-loader` planted these files and wrote
-                # none, so there is no version to name — only the fact that the
-                # bytes are not the ones this build carries.
-                print("note: the loader planted in the game dir is not the build "
-                      "this one carries (its winhttp.dll differs), and the game "
-                      "loads the planted copy. Run `rsmm install-loader` to "
-                      "replace it.", file=sys.stderr)
+            if planted is None or planted >= state.get("bundled_version", 0):
+                # No version to blame: either no manifest (`install-loader`
+                # wrote none), or one at this version whose winhttp.dll entry
+                # the DLL on disk does not match. Only the bytes are wrong.
+                print("note: the winhttp.dll in the game dir is not a published "
+                      "loader build (it matches neither this build's DLL nor the "
+                      "planted manifest), and the game loads it. Run `rsmm "
+                      "install-loader` to replace it; if it comes back, another "
+                      "program is replacing winhttp.dll.", file=sys.stderr)
             else:
                 print(f"note: the game dir holds loader v{planted}, but this "
                       f"build bundles v{state['bundled_version']} — the game "

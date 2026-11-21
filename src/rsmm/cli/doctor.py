@@ -272,6 +272,8 @@ _LOADER_LIB_FILES = (
 
 
 def check_loader(game_dir: Path) -> list[Result]:
+    from rsmm.engine.mod_requires import loader_install
+
     out: list[Result] = []
     dll = DIST_DIR / "winhttp.dll"
     if not dll.exists():
@@ -300,11 +302,21 @@ def check_loader(game_dir: Path) -> list[Result]:
         # Hash, not size: a stale build of our own DLL can match on size while
         # being a different binary, and that reads as "installed" forever.
         out.append(Result("OK", f"loader installed in game dir ({sz:,} bytes)"))
+    elif (inst := loader_install(game_dir))["state"] == "release":
+        # Not this build's DLL, but the one the planted (signed) manifest names:
+        # `update-loader` put it there, or `install-loader` replanted the cached
+        # channel bundle over the bundled copy. Each pipeline compiles its own
+        # DLL, so the channel's v63 never hashes like the app's v63 — flagging
+        # it sent repair round in a circle (install-loader replants the cache).
+        v = f"v{inst['version']} " if inst["version"] is not None else ""
+        out.append(Result("OK", f"loader {v}installed in game dir from the update "
+                                f"channel ({sz:,} bytes)"))
     else:
         same_size = sz == dll.stat().st_size
-        detail = ("Bytes differ from the built DLL. This is what Steam leaves "
-                  "behind after an update or a file verify: the depot ships "
-                  "its own winhttp.dll, which silently replaces ours.")
+        detail = ("Bytes differ from the built DLL and from the planted loader "
+                  "manifest. Steam leaves this behind after an update or a file "
+                  "verify (the depot ships its own winhttp.dll), and another "
+                  "program or an older launcher's install can replace it too.")
         if same_size:
             detail = ("Same size as the built DLL but different bytes — a stale "
                       "loader build is installed.")

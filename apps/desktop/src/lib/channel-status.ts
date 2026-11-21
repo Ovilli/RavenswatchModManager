@@ -246,6 +246,24 @@ export function describeLoaderInstall(
   return `v${version}`;
 }
 
+/**
+ * What to say instead of "up to date" when the planted DLL is not a published
+ * build. The channel check compares version NUMBERS, so a `winhttp.dll` that
+ * matches neither the planted manifest nor the DLL this CLI carries (another
+ * program replaced it, or an older launcher planted its own build) still read
+ * "Up to date with the loader channel" right beside "dev · active" — and
+ * checking again could never change that. Repair re-plants it; nothing else does.
+ */
+export function loaderMismatchNote(
+  r: Pick<UpdateLoaderResult, 'status' | 'loaderState'> | null | undefined,
+): string | null {
+  if (r?.loaderState !== 'dev') return null;
+  if (r.status !== 'up_to_date' && r.status !== 'ahead') return null;
+  return tr(
+    "The loader in your game folder is not a published build, so checking for updates can't fix it. Run Doctor + repair (Commands) to reinstall it; if this comes back after a game launch, another program is replacing winhttp.dll.",
+  );
+}
+
 /** "v12 - update channel" or "v12 - embedded". */
 export function describeCliSource(cli: Pick<CliChannel, 'active' | 'version'>): string {
   return cli.active

@@ -7,6 +7,7 @@ import {
   describeCliSource,
   describeLoaderInstall,
   getLaunchActive,
+  loaderMismatchNote,
   subscribeChannelPhases,
   trackCliUpdate,
   trackLoaderUpdate,
@@ -753,6 +754,8 @@ function VersionRow({
 /** Human-readable one-liner for a loader-channel result. */
 function loaderSummary(r: UpdateLoaderResult | null): string | null {
   if (!r) return null;
+  const mismatch = loaderMismatchNote(r);
+  if (mismatch) return mismatch;
   switch (r.status) {
     case 'updated':
       return tr('Updated to v{version} — restart Ravenswatch to pick it up.', {

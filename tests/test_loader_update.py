@@ -607,6 +607,38 @@ def test_plant_not_stale_when_the_planted_dll_is_the_bundled_one(tmp_path, chann
     assert lu.check(game)["plant_stale"] is False
 
 
+def test_plant_stale_when_a_current_manifest_does_not_match_the_dll(
+        tmp_path, channel, monkeypatch):
+    """The "dev · active" beside "Up to date with the loader channel" a player hit.
+
+    The manifest says v4 = the bundled stamp, so version numbers call it
+    current — but the DLL on disk is neither the one that manifest names nor
+    this build's own (another program replaced it, or another rsmm build's
+    install-loader planted its own compile of the same version).
+    """
+    import hashlib
+
+    game, use = channel
+    use(_publish(tmp_path, version=1))
+    bundled = tmp_path / "dist" / "winhttp.dll"
+    bundled.parent.mkdir(parents=True, exist_ok=True)
+    bundled.write_bytes(b"MZ this build's own compile")
+    monkeypatch.setattr(lu, "bundled_loader_dll", lambda: bundled)
+    monkeypatch.setattr(lu, "bundled_version", lambda: 4)
+    lu.planted_manifest_path(game).parent.mkdir(parents=True, exist_ok=True)
+    lu.planted_manifest_path(game).write_text(json.dumps({
+        "loader_version": 4,
+        "files": [{"path": "winhttp.dll",
+                   "sha256": hashlib.sha256(b"MZ the channel's compile").hexdigest()}],
+    }), encoding="utf-8")
+    (game / "winhttp.dll").write_bytes(b"MZ something else entirely")
+
+    assert lu.check(game)["plant_stale"] is True
+    # ...and the same manifest over the DLL it names is a healthy plant.
+    (game / "winhttp.dll").write_bytes(b"MZ the channel's compile")
+    assert lu.check(game)["plant_stale"] is False
+
+
 def test_plant_stale_is_false_when_it_cannot_be_told(tmp_path, channel, monkeypatch):
     """A source checkout that has never built a DLL must not nag."""
     game, use = channel

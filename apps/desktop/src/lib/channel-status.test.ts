@@ -8,6 +8,7 @@ import {
   failureReason,
   getChannelPhases,
   getPendingCliUpdate,
+  loaderMismatchNote,
   resetChannelPhases,
   setChannelPhase,
   subscribeChannelPhases,
@@ -92,6 +93,22 @@ describe('describeLoaderInstall / describeCliSource', () => {
   it('says whether the CLI is embedded or from the channel', () => {
     expect(describeCliSource({ active: true, version: 12 })).toBe('v12 - update channel');
     expect(describeCliSource({ active: false, version: 11 })).toBe('v11 - embedded');
+  });
+});
+
+describe('loaderMismatchNote', () => {
+  it('replaces "up to date" when the planted DLL is not a published build', () => {
+    expect(loaderMismatchNote({ status: 'up_to_date', loaderState: 'dev' })).toMatch(
+      /Doctor \+ repair/,
+    );
+    expect(loaderMismatchNote({ status: 'ahead', loaderState: 'dev' })).not.toBeNull();
+  });
+  it('stays quiet for a release plant and for statuses with their own message', () => {
+    expect(loaderMismatchNote({ status: 'up_to_date', loaderState: 'release' })).toBeNull();
+    expect(loaderMismatchNote({ status: 'up_to_date', loaderState: 'none' })).toBeNull();
+    expect(loaderMismatchNote({ status: 'updated', loaderState: 'dev' })).toBeNull();
+    expect(loaderMismatchNote({ status: 'error', loaderState: 'dev' })).toBeNull();
+    expect(loaderMismatchNote(null)).toBeNull();
   });
 });
 

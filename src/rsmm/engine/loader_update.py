@@ -409,11 +409,25 @@ def loader_missing(game_dir: Path) -> bool:
 
 
 def _plant_stale(game_dir: Path) -> bool:
-    """Shared by `check`'s early returns; see the comment in `check`."""
+    """Is the game dir's loader one `update-loader` cannot fix? See `check`.
+
+    Three ways, all fixed only by re-planting (`install-loader`):
+      * a manifest older than this build's bundled stamp;
+      * NO manifest and a DLL that is not this build's;
+      * a manifest at or above the stamp whose winhttp.dll entry the DLL on
+        disk does not match either — the "dev · active" next to "up to date"
+        a player hit: another program replaced the DLL, or `install-loader`
+        from a different rsmm build planted its own compile of the same
+        version beside an old manifest. Version numbers cannot see it.
+    """
     planted = planted_manifest_version(game_dir)
-    if planted is not None:
-        return planted < bundled_version()
-    return plant_matches_bundle(game_dir) is False
+    if planted is None:
+        return plant_matches_bundle(game_dir) is False
+    if planted < bundled_version():
+        return True
+    from rsmm.engine.mod_requires import loader_install
+
+    return loader_install(game_dir)["state"] == "dev"
 
 
 def check(game_dir: Path) -> dict:
@@ -458,11 +472,9 @@ def check(game_dir: Path) -> dict:
     #     the bytes on disk are not the ones this build ships. Version
     #     comparison is blind to that (planted_version falls back to the
     #     bundled stamp), so `update-loader` said "up to date (v8)" over a game
-    #     dir running an SDK from an older desktop build.
-    if planted_now is not None:
-        plant_stale = planted_now < bundled_version()
-    else:
-        plant_stale = plant_matches_bundle(game_dir) is False
+    #     dir running an SDK from an older desktop build; or
+    #   * a current manifest whose DLL entry the bytes on disk do not match.
+    plant_stale = _plant_stale(game_dir)
     if remote_version > have:
         status = "update_available"
     elif remote_version == have:
