@@ -1423,8 +1423,8 @@ function F._dmg_rak_join()
         if total < #_dmg.order - 1 then
             R.log(("[rsmm.damage] raknet join: named every row it can (%d); "
                    .. "the rest have no peer slot carrying a name, so they "
-                   .. "keep their lobby guess — set player_1..4 in the "
-                   .. "damage-meter config for exact labels"):format(total))
+                   .. "keep their lobby guess — pass `names` to "
+                   .. "R.damage.enable for exact labels"):format(total))
         end
     end
     return false
@@ -2155,7 +2155,7 @@ function F._dmg_label_hint()
             R.log(("[rsmm.damage] %d ally row(s) on the board but %d lobby "
                    .. "member(s) known — this client was never sent the other "
                    .. "players' lobby attributes, so no ally NAME exists to "
-                   .. "assign this run (set player_1..player_4 in the config "
+                   .. "assign this run (pass `names` to R.damage.enable "
                    .. "to label them)"):format(allies, #members))
         end
         return
@@ -2168,8 +2168,8 @@ function F._dmg_label_hint()
     _dmg.hinted = true
     R.log(("[rsmm.damage] %d row(s) have no proven name. This run's lobby: %s")
           :format(unnamed, F._dmg_roster_text(members)))
-    R.log("[rsmm.damage] to label the board, set player_1..player_4 in the "
-          .. "damage-meter config, in JOIN ORDER (row N = player_N). Those "
+    R.log("[rsmm.damage] to label the board, pass `names` to R.damage.enable "
+          .. "(or call R.damage.name), in JOIN ORDER (row N = names[N]). Those "
           .. "always win, and they are the only EXACT method: the engine gives "
           .. "the meter nothing that links a hero object to a player.")
 end
