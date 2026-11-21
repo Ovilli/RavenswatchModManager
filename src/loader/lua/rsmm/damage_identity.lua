@@ -710,8 +710,8 @@ function F._dmg_find_needles(names)
             F._own.addrs_key, F._own.addrs, F._own.queue = key, nil, nil
             R.log(("[rsmm.damage] identity scan: %d sweep(s) of this roster "
                    .. "named nobody — standing down for the rest of the "
-                   .. "session (the board keeps its lobby names; set "
-                   .. "player_1..4 in the mod config for names that are never "
+                   .. "session (the board keeps its lobby names; pass "
+                   .. "`names` to R.damage.enable for names that are never "
                    .. "guesses)"):format(F._own.SWEEP_TRIES))
             return nil
         end
