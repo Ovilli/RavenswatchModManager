@@ -1,7 +1,7 @@
 'use client';
-import { Badge, Button, Spinner } from '@rsmm/ui';
+import { Badge, Button, Spinner, buttonVariants } from '@rsmm/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { RotateCcw } from 'lucide-react';
+import { ExternalLink, RotateCcw } from 'lucide-react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { api } from '../../lib/api';
@@ -83,19 +83,27 @@ export function TakedownList() {
                 <p className="mt-2 text-xs text-muted-foreground">No reason recorded.</p>
               )}
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="shrink-0 gap-1.5"
-              disabled={restore.isPending}
-              onClick={() => {
-                if (window.confirm(`Restore “${m.name}”? It goes back on the public registry.`)) {
-                  restore.mutate(m.slug);
-                }
-              }}
-            >
-              <RotateCcw className="h-3.5 w-3.5" aria-hidden /> Restore
-            </Button>
+            <div className="flex shrink-0 items-center gap-2">
+              <Link
+                href={`/registry/${m.slug}` as Route}
+                className={`${buttonVariants({ variant: 'ghost', size: 'sm' })} gap-1.5`}
+              >
+                <ExternalLink className="h-3.5 w-3.5" aria-hidden /> View page
+              </Link>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                disabled={restore.isPending}
+                onClick={() => {
+                  if (window.confirm(`Restore “${m.name}”? It goes back on the public registry.`)) {
+                    restore.mutate(m.slug);
+                  }
+                }}
+              >
+                <RotateCcw className="h-3.5 w-3.5" aria-hidden /> Restore
+              </Button>
+            </div>
           </li>
         ))}
       </ul>
