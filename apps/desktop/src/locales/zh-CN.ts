@@ -444,6 +444,12 @@ export const zhCN: Record<string, string> = {
   'no answer after {seconds} s - launching with the current build':
     '{seconds} 秒内无响应 - 使用当前版本启动',
   'dev · active': '开发版 · 启用中',
+  'Mods from your last session were still in the game, because it or your PC closed before RSMM could remove them. The original files are back.':
+    '上次会话的模组仍留在游戏中，因为游戏或电脑在 RSMM 移除它们之前就关闭了。原始文件已恢复。',
+  'Mods from your last session were still in the game, because it or your PC closed before RSMM could remove them. Most original files are back; run Doctor to check the rest.':
+    '上次会话的模组仍留在游戏中，因为游戏或电脑在 RSMM 移除它们之前就关闭了。大部分原始文件已恢复；请运行“体检”检查其余文件。',
+  'Loader v{version} downloaded — it is installed with your next modded launch.':
+    '加载器 v{version} 已下载 — 将在下次启动模组版时安装。',
   'The loader in your game folder is not a published build and could not be reinstalled: {reason}':
     '游戏文件夹中的加载器不是已发布的版本，且无法重新安装：{reason}',
   'Game loader reinstalled (v{version}) — restart Ravenswatch to pick it up.':
@@ -595,8 +601,8 @@ export const zhCN: Record<string, string> = {
     '无法连接远程索引——仅显示已安装的模组。',
   'Remove {name}': '移除 {name}',
   Repair: '修复',
-  "Repair re-applies every enabled mod against the new game files. Playing modded from the app's Play button also repairs automatically.":
-    '“修复”会针对新的游戏文件重新应用每个已启用的模组。用本程序的开始按钮启动模组版时也会自动修复。',
+  'Repair clears the old mod files so the updated game runs clean. Your mods are applied again the next time you play modded from the app.':
+    '“修复”会清除旧的模组文件，让更新后的游戏以原版运行。下次从本程序启动模组版时会重新应用你的模组。',
   'Repair {n} automatically': '自动修复 {n} 项',
   'Repairing…': '正在修复…',
   Repository: '代码仓库',
@@ -812,7 +818,7 @@ export const zhCN: Record<string, string> = {
   'and {url} must be in the CSP connect-src (apps/desktop/src-tauri/tauri.conf.json).':
     '并且 {url} 必须在 CSP connect-src 中（apps/desktop/src-tauri/tauri.conf.json）。',
   any: '不限',
-  'apply exited with code {code}': 'apply 以退出码 {code} 结束',
+  'restore exited with code {code}': 'restore 以退出码 {code} 结束',
   back: '返回',
   boot: '启动阶段',
   busy: '进行中',

@@ -914,6 +914,10 @@ interface ApplyOptions extends RsmmOptions {
   dryRun?: boolean;
   force?: boolean;
   noMerge?: boolean;
+  /** The first half of a modded launch. Recorded in the install state so the
+   *  start-up self-heal only ever undoes what a LAUNCH left behind, never an
+   *  explicit "Apply mods". */
+  forLaunch?: boolean;
 }
 
 // Bare wrappers take no arguments so React Query's QueryFunctionContext
@@ -1180,6 +1184,9 @@ export interface UpdateLoaderResult {
     | 'up_to_date'
     | 'updated'
     | 'update_available'
+    // Downloaded into the cache but NOT planted: the game folder has no loader
+    // (vanilla on purpose), so the next modded launch installs it.
+    | 'cached'
     // The published bundle needs a newer rsmm to plant it — the app itself
     // must be updated. Distinct from 'error' so the UI can say so.
     | 'needs_app_update'
@@ -1464,11 +1471,12 @@ export function profileEnabledMods(profileId?: string): string[] | undefined {
 }
 
 export const applyMods = async (opts: ApplyOptions = {}) => {
-  const { dryRun, force, noMerge, ...rsmmOpts } = opts;
+  const { dryRun, force, noMerge, forLaunch, ...rsmmOpts } = opts;
   const args = ['apply'];
   if (dryRun) args.push('--dry-run');
   if (force) args.push('--force');
   if (noMerge) args.push('--no-merge');
+  if (forLaunch) args.push('--for-launch');
   const enabled = profileEnabledMods(rsmmOpts.profileId);
   if (enabled) args.push('--enabled-json', JSON.stringify(enabled));
   const result = await rsmm<RunResult>(args, { timeoutMs: LONG_TIMEOUT_MS, ...rsmmOpts });
@@ -1497,6 +1505,7 @@ const runGame = () => rsmm<RunResult>(['run'], { timeoutMs: LONG_TIMEOUT_MS });
 
 export async function runVanilla(): Promise<RunResult | null> {
   await launchGate?.before('vanilla').catch(() => {});
+  await selfHealSettled();
   try {
     return await rsmm<RunResult>(['run', '--vanilla'], { timeoutMs: LONG_TIMEOUT_MS });
   } finally {
@@ -1505,6 +1514,35 @@ export async function runVanilla(): Promise<RunResult | null> {
 }
 
 export const restoreAll = () => rsmm<RunResult>(['restore-all'], { timeoutMs: LONG_TIMEOUT_MS });
+
+export interface SelfHealResult {
+  ok: boolean;
+  action: 'restored' | 'skipped';
+  /** Why: `left-behind` when restored; otherwise the safeguard that held. */
+  reason: string;
+  detail: string;
+  /** Restore's exit code after a restore: 2 = some modded files remained. */
+  code?: number;
+}
+
+let selfHealRun: Promise<SelfHealResult | null> | null = null;
+
+/**
+ * Restore what a modded session left behind (the PC shut down mid-game, or the
+ * restore watcher stopped), once per app launch. The CLI does it only when every
+ * safeguard holds (rsmm.cli.self_heal) and otherwise reports which one did not.
+ */
+export function startupSelfHeal(): Promise<SelfHealResult | null> {
+  selfHealRun ??= rsmm<SelfHealResult>(['self-heal'], { timeoutMs: LONG_TIMEOUT_MS }).catch(
+    () => null,
+  );
+  return selfHealRun;
+}
+
+/** A launch must not start while the self-heal may still be restoring. */
+async function selfHealSettled(): Promise<void> {
+  if (selfHealRun) await selfHealRun;
+}
 
 export interface ActiveOverridesStatus {
   ok: boolean;
@@ -1538,8 +1576,9 @@ export function setLaunchGate(gate: LaunchGate | null): void {
 export async function runModded(): Promise<RunResult | null> {
   // Never blocks the launch: the gate swallows its own failures.
   await launchGate?.before('modded').catch(() => {});
+  await selfHealSettled();
   try {
-    const applyResult = await applyMods();
+    const applyResult = await applyMods({ forLaunch: true });
     if (applyResult && applyResult.ok === false) {
       throw new RsmmExitError(['apply'], applyResult.code, applyResult.stdout, applyResult.stderr);
     }

@@ -217,10 +217,14 @@ def check_game_update(game_dir: Path) -> list[Result]:
     if stored is None:
         return [Result("OK", "no stored game version (first run)")]
     if current != stored:
+        # The fix is restore, not apply: restore drops the old-version backups
+        # and records the new version, and the next modded launch applies
+        # anyway. An apply here left the install modded with no game running
+        # and nothing to restore it, so a plain Steam launch ran modded.
         return [Result("WARN", "game version changed since last apply",
-                       "Run: rsmm apply  (will auto-recover)",
+                       "Run: rsmm restore  (the next modded launch re-applies)",
                        code="game.version-changed",
-                       fix=Fix("rsmm apply", ["apply"]))]
+                       fix=Fix("rsmm restore", ["restore"]))]
     return [Result("OK", "game version unchanged")]
 
 
@@ -955,18 +959,19 @@ def check_state(game_dir: Path) -> list[Result]:
     if missing:
         out.append(Result("WARN",
                           f"{len(missing)} override(s) in state but missing on disk",
-                          _listing(missing) + "\nRun: rsmm apply  (re-installs them)",
+                          _listing(missing) + "\nRun: rsmm restore  "
+                          "(the next modded launch re-installs them)",
                           code="state.missing-override",
-                          fix=Fix("rsmm apply", ["apply"])))
+                          fix=Fix("rsmm restore", ["restore"])))
     if drifted:
         out.append(Result("WARN",
                           f"{len(drifted)} installed override(s) no longer match "
                           "their mod source hash",
                           _listing(drifted) +
                           "\nLikely a Steam file verify or game update. "
-                          "Run: rsmm apply  (re-copies stale files)",
+                          "Run: rsmm restore  (the next modded launch re-copies them)",
                           code="state.drifted",
-                          fix=Fix("rsmm apply", ["apply"])))
+                          fix=Fix("rsmm restore", ["restore"])))
     if lost_backups:
         out.append(Result("WARN",
                           f"{len(lost_backups)} override(s) lost their .rsmm.bak backup",
@@ -1020,9 +1025,9 @@ def check_usedrsclist(game_dir: Path) -> list[Result]:
             out.append(Result("WARN",
                               "UsedRscList.ot is SHORTER than its rsmm backup",
                               "The live manifest lost lines rsmm didn't remove "
-                              "(game update mid-state?). Run: rsmm apply",
+                              "(game update mid-state?). Run: rsmm restore",
                               code="usedrsclist.shorter",
-                              fix=Fix("rsmm apply", ["apply"])))
+                              fix=Fix("rsmm restore", ["restore"])))
         elif extra:
             out.append(Result("OK",
                               f"UsedRscList.ot: {extra // 3} custom resource "

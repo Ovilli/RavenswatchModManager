@@ -554,6 +554,47 @@ def _open_steam_url(url: str) -> int:
     return 1
 
 
+def _outside_appimage(cmd: list[str]) -> list[str]:
+    """`cmd` re-pointed at a copy of this binary outside the AppImage mount.
+
+    The AppImage's squashfs is mounted only while the app runs. A watcher
+    started from `/tmp/.mount_*/usr/bin/rsmm` survives the app closing (it
+    unpacked itself to its own temp dir), but its restore re-invokes
+    `sys.executable` — the mount path — and every attempt failed with "No such
+    file or directory" (measured 2026-11-21 on the v6.0.1 AppImage). So a
+    player who closed the app while playing kept a modded install, and the
+    next Steam launch ran modded. The copy is a self-contained onefile binary;
+    it is rewritten only when its bytes differ.
+    """
+    if not getattr(sys, "frozen", False):
+        return cmd
+    exe = Path(sys.executable)
+    appdir = (os.environ.get("APPDIR") or "").rstrip("/")
+    in_mount = (bool(appdir) and str(exe).startswith(appdir + "/")) \
+        or str(exe).startswith("/tmp/.mount_")
+    if not in_mount:
+        return cmd
+    from rsmm.engine.hashing import sha256_file
+    from rsmm.engine.paths import user_data_dir
+
+    dst = user_data_dir() / "watcher" / exe.name
+    try:
+        current = dst.is_file() and dst.stat().st_size == exe.stat().st_size \
+            and sha256_file(dst) == sha256_file(exe)
+        if not current:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            tmp = dst.with_name(f"{dst.name}.{os.getpid()}.tmp")
+            shutil.copyfile(exe, tmp)
+            tmp.chmod(0o755)
+            os.replace(tmp, dst)  # an older watcher running the old copy keeps its inode
+    except OSError as e:
+        print(f"note: could not copy rsmm out of the AppImage for the restore "
+              f"watcher ({e}); run `rsmm restore` if mods stay applied.",
+              file=sys.stderr)
+        return cmd
+    return [str(dst), *cmd[1:]]
+
+
 def _spawn_restore_watcher() -> None:
     """Start `rsmm watch-restore` detached, so it outlives this process and the
     desktop app and puts the install back to vanilla once the game exits.
@@ -562,7 +603,7 @@ def _spawn_restore_watcher() -> None:
     """
     from rsmm.engine.host_env import host_env
 
-    cmd = self_cmd(["watch-restore"])
+    cmd = _outside_appimage(self_cmd(["watch-restore"]))
     # A frozen onefile child started with the inherited environment reuses
     # THIS process's unpacked _MEI dir, which is deleted the moment we exit —
     # so the watcher died before its first line and the install stayed modded
@@ -617,6 +658,12 @@ def main() -> int:
             _spawn_restore_watcher()
         return rc
 
+    if not (args.vanilla or args.no_launch):
+        # Before apply: a watcher still holding the previous session must see
+        # this launch before it decides to restore (see watch_restore).
+        from rsmm.cli.watch_restore import bump_launch_generation
+        bump_launch_generation()
+
     if args.vanilla:
         if not _rsmm_subcommand(["restore"]):
             print("Failed to restore original files; aborting launch.", file=sys.stderr)
@@ -645,8 +692,13 @@ def main() -> int:
                     return 1
                 print("Loader installed.", flush=True)
 
-        if not _rsmm_subcommand(["apply"]):
+        if not _rsmm_subcommand(["apply", "--for-launch"]):
             print("Failed to apply mods; aborting launch.", file=sys.stderr)
+            # Apply writes UsedRscList.ot / the versiondef before its file
+            # transaction, and its rollback only covers the cooked files: put
+            # the install back, or a plain Steam launch runs half-modded.
+            print("Restoring original files...", file=sys.stderr)
+            _rsmm_subcommand(["restore"])
             return 1
 
     url = f"steam://rungameid/{args.app_id}"

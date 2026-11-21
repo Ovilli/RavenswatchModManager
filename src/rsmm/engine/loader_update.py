@@ -744,6 +744,33 @@ def apply_update(game_dir: Path, state: dict | None = None,
     return out
 
 
+def cache_update(game_dir: Path, state: dict,
+                 on_progress: Callable[[int, int], None] | None = None) -> dict:
+    """Download and verify the channel bundle into the cache WITHOUT planting it.
+
+    For a game dir that has no loader: `restore` removes it so a plain Steam
+    launch is vanilla, and planting it back here (the app runs this at start
+    and on focus) made the next plain Steam launch load the loader again. The
+    cache is what `install-loader` — run by every modded launch — replants from,
+    so the new version still reaches the next modded session.
+    """
+    manifest = state.get("_manifest") or fetch_manifest(state["remote_base"])
+    raw = _fetch(f"{state['remote_base']}/{BUNDLE_NAME}", limit=_MAX_BUNDLE_BYTES,
+                 on_progress=on_progress)
+    if _sha256(raw) != manifest["bundle_sha256"]:
+        raise LoaderUpdateError(
+            "bundle hash does not match the signed manifest — refusing to cache"
+        )
+    with _update_lock(game_dir), tempfile.TemporaryDirectory() as td:
+        payload = Path(td) / "payload"
+        _extract_bundle(raw, manifest, payload)
+        _cache_bundle(game_dir, manifest, payload)
+    out = {k: v for k, v in state.items() if not k.startswith("_")}
+    out["status"] = "cached"
+    out["cached_version"] = int(manifest["loader_version"])
+    return out
+
+
 def repair_plant(game_dir: Path, state: dict,
                  on_progress: Callable[[int, int], None] | None = None) -> dict | None:
     """Re-plant a loader the channel check found stale (`state["plant_stale"]`).

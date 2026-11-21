@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _isolated_data_dir(monkeypatch, tmp_path):
+    """`run` records each modded launch under the user data dir; keep it in tmp."""
+    monkeypatch.setenv("RSMM_DATA_DIR", str(tmp_path / "rsmm-data"))
+
 
 def test_linux_prefers_direct_steam_launch(monkeypatch):
     from rsmm.cli import run as run_mod
@@ -232,3 +240,70 @@ def test_watcher_unpacks_its_own_bundle(monkeypatch):
     monkeypatch.setattr(run_mod.subprocess, "Popen", lambda *_a, **k: seen.update(k))
     run_mod._spawn_restore_watcher()
     assert seen["env"]["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
+
+
+def test_modded_launch_bumps_the_watcher_generation(monkeypatch):
+    """A watcher still holding the previous session must see this launch."""
+    from rsmm.cli import watch_restore as wr
+
+    before = wr.read_launch_generation()
+    _run_main(monkeypatch, [])
+    after = wr.read_launch_generation()
+    assert after and after != before
+    _run_main(monkeypatch, ["--vanilla"])
+    assert wr.read_launch_generation() == after      # vanilla is not a modded launch
+
+
+def test_failed_apply_restores_before_aborting(monkeypatch):
+    """Apply writes UsedRscList.ot before its file transaction: put it back."""
+    from rsmm.cli import run as run_mod
+
+    calls: list[list[str]] = []
+    monkeypatch.setattr(run_mod.sys, "platform", "win32", raising=False)
+    monkeypatch.setattr(run_mod.sys, "argv", ["rsmm run"])
+    monkeypatch.setattr(run_mod, "find_game_dir", lambda: None)
+    monkeypatch.setattr(run_mod, "_rsmm_subcommand",
+                        lambda a: calls.append(a) or a[0] != "apply")
+    monkeypatch.setattr(run_mod, "_open_steam_url", lambda _u: 0)
+    monkeypatch.setattr(run_mod, "_spawn_restore_watcher", lambda: None)
+    assert run_mod.main() == 1
+    assert calls == [["apply", "--for-launch"], ["restore"]]
+
+
+def test_watcher_runs_from_a_copy_outside_the_appimage(monkeypatch, tmp_path):
+    """The AppImage mount is gone once the app quits; the watcher's restore
+    re-runs its own executable, so that must not live inside the mount."""
+    from rsmm.cli import run as run_mod
+
+    appdir = tmp_path / "mount"
+    exe = appdir / "usr" / "bin" / "rsmm"
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"\x7fELF fake onefile")
+    monkeypatch.setattr(run_mod.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(run_mod.sys, "executable", str(exe))
+    monkeypatch.setenv("APPDIR", str(appdir))
+
+    cmd = run_mod._outside_appimage([str(exe), "watch-restore"])
+    copy = tmp_path / "rsmm-data" / "watcher" / "rsmm"
+    assert cmd == [str(copy), "watch-restore"]
+    assert copy.read_bytes() == exe.read_bytes()
+    assert copy.stat().st_mode & 0o111
+    # Unchanged bytes are not rewritten; changed bytes are.
+    mtime = copy.stat().st_mtime_ns
+    run_mod._outside_appimage([str(exe), "watch-restore"])
+    assert copy.stat().st_mtime_ns == mtime
+    exe.write_bytes(b"\x7fELF newer onefile!")
+    run_mod._outside_appimage([str(exe), "watch-restore"])
+    assert copy.read_bytes() == exe.read_bytes()
+
+
+def test_watcher_command_unchanged_outside_an_appimage(monkeypatch, tmp_path):
+    from rsmm.cli import run as run_mod
+
+    monkeypatch.delenv("APPDIR", raising=False)
+    monkeypatch.setattr(run_mod.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(run_mod.sys, "executable", str(tmp_path / "rsmm"))
+    cmd = [str(tmp_path / "rsmm"), "watch-restore"]
+    assert run_mod._outside_appimage(cmd) == cmd
+    monkeypatch.setattr(run_mod.sys, "frozen", False, raising=False)
+    assert run_mod._outside_appimage(cmd) == cmd

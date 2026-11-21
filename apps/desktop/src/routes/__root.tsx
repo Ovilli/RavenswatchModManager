@@ -18,6 +18,7 @@ import { WindowMinimizeIcon } from '../components/icons/WindowMinimizeIcon';
 import { WindowRestoreIcon } from '../components/icons/WindowRestoreIcon';
 import { LaunchProvider, useLaunch } from '../components/launch';
 import { SidebarTooltip } from '../components/sidebar-tooltip';
+import { StartupSelfHeal } from '../components/startup-self-heal';
 import { DialogProvider, ToastProvider } from '../components/toast';
 import { UpdaterBanner, VersionFooter } from '../components/updater';
 import { LIBRARY_PREVIEW } from '../lib/browser-preview';
@@ -455,6 +456,7 @@ function RootLayout() {
     <ToastProvider>
       <DialogProvider>
         <LaunchProvider>
+          <StartupSelfHeal />
           <div className="flex h-screen w-screen overflow-hidden">
             <aside
               ref={sidebarRef}

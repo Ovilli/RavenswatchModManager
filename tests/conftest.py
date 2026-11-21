@@ -118,6 +118,18 @@ _LAZY_PATH_ATTRS = ("MODS_DIR", "DEFAULT_GAME_DIR")
 
 
 @pytest.fixture(autouse=True)
+def _private_user_data_dir(tmp_path_factory, monkeypatch):
+    """Point the user data dir at a per-test temp dir.
+
+    `rsmm run` records every modded launch there (watch_restore's generation
+    file), and a test that fakes `sys.platform = "win32"` on Linux resolved the
+    default to the RELATIVE path `~\\AppData\\Local`, creating that directory
+    in the repo root. Tests that need a specific dir still set their own.
+    """
+    monkeypatch.setenv("RSMM_DATA_DIR", str(tmp_path_factory.mktemp("rsmm-data")))
+
+
+@pytest.fixture(autouse=True)
 def _no_editor_disk_cache(monkeypatch):
     """Editor servers in tests answer from the code under test: a saved answer
     (the startup warm-up's, or a real launch's in the user data dir) would hide

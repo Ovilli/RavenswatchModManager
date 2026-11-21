@@ -763,6 +763,10 @@ function loaderSummary(r: UpdateLoaderResult | null): string | null {
       });
     case 'up_to_date':
       return tr('Up to date with the loader channel.');
+    case 'cached':
+      return tr('Loader v{version} downloaded — it is installed with your next modded launch.', {
+        version: r.remoteVersion ?? '',
+      });
     case 'update_available':
       return tr('v{version} is available on the loader channel.', {
         version: r.remoteVersion ?? '',

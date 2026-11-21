@@ -1780,6 +1780,22 @@ def cmd_game_status() -> int:
     return _emit({"ok": True, "running": is_game_running()})
 
 
+def cmd_self_heal() -> int:
+    """Restore an install a modded session left behind, if every safeguard
+    holds (see rsmm.cli.self_heal). The desktop runs this once at start-up."""
+    game_dir = find_game_dir()
+    if game_dir is None:
+        return _emit({"ok": True, "action": "skipped", "reason": "no-game",
+                      "detail": "game directory not found"})
+    try:
+        from rsmm.cli.self_heal import heal
+
+        return _emit(heal(game_dir))
+    except Exception as e:  # noqa: BLE001 — bridge must always emit JSON
+        return _emit({"ok": False, "action": "skipped", "reason": "error",
+                      "detail": str(e)})
+
+
 def cmd_restart_game() -> int:
     """Close Ravenswatch if it is up, then launch it again.
 
@@ -1791,8 +1807,12 @@ def cmd_restart_game() -> int:
     A run in progress is lost, so nothing calls this on its own — the UI asks
     first, and stop_game shuts down politely before it insists.
     """
+    from rsmm.cli.watch_restore import bump_launch_generation
     from rsmm.engine.game_proc import is_game_running, stop_game
 
+    # Before the game stops: the watcher of the session being closed must not
+    # restore under the relaunch (`run` bumps it again, which is harmless).
+    bump_launch_generation()
     was_running = is_game_running()
     if was_running and not stop_game():
         return _emit({
@@ -1871,12 +1891,20 @@ def cmd_update_loader(check_only: bool) -> int:
         return _emit({"ok": False, "status": "error",
                       "error": "game directory not found"})
     try:
-        from rsmm.engine.loader_update import apply_update, check, repair_plant
+        from rsmm.engine.loader_update import (
+            apply_update,
+            cache_update,
+            check,
+            repair_plant,
+        )
 
         state = check(game_dir)
         repair = None
         if not check_only and state["status"] == "update_available":
-            state = apply_update(game_dir, state, on_progress=_progress_reporter("download"))
+            # A game dir with no loader is vanilla on purpose (restore removed
+            # it): cache the update for the next modded launch, don't plant it.
+            update = cache_update if state.get("not_planted") else apply_update
+            state = update(game_dir, state, on_progress=_progress_reporter("download"))
         elif not check_only:
             # Current by version, but the DLL on disk is not a published build:
             # heal it here, since the app runs this at start and before launch.
@@ -2100,11 +2128,15 @@ def main(argv: list[str] | None = None) -> int:
     p_apply.add_argument("--dry-run", action="store_true")
     p_apply.add_argument("--force", action="store_true")
     p_apply.add_argument("--no-merge", action="store_true")
+    p_apply.add_argument("--for-launch", action="store_true",
+                         help="this apply is the first half of a modded launch")
     p_apply.add_argument("--enabled-json", default=None,
                          help="JSON list of the profile's enabled mod ids; manifests "
                               "are made to match it before applying")
     sub.add_parser("active-overrides", help="check whether any active overrides exist")
     sub.add_parser("restore-all", help="restore every active override")
+    sub.add_parser("self-heal", help="restore what a modded session left behind, "
+                                     "only when every safeguard holds")
     sub.add_parser("build", help="build asset map + loader + merge + apply")
     sub.add_parser("conflicts", help="detect all conflicts among enabled mods")
     sub.add_parser("overlays", help="read every mod-declared overlay + its live rows")
@@ -2217,11 +2249,15 @@ def main(argv: list[str] | None = None) -> int:
             rest.append("--force")
         if args.no_merge:
             rest.append("--no-merge")
+        if args.for_launch:
+            rest.append("--for-launch")
         return cmd_apply(rest, args.enabled_json)
     if args.cmd == "overlays":
         return cmd_overlays()
     if args.cmd == "active-overrides":
         return cmd_active_overrides()
+    if args.cmd == "self-heal":
+        return cmd_self_heal()
     if args.cmd == "restore-all":
         return cmd_restore_all()
     if args.cmd == "build":

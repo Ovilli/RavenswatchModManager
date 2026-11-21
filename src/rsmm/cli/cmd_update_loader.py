@@ -70,7 +70,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         state = check(game_dir)
         if state["status"] == "update_available" and not args.check:
-            state = apply_update(game_dir, state)
+            if state.get("not_planted"):
+                # Vanilla on purpose (restore removed the loader): cache the
+                # update for the next install-loader / modded launch instead.
+                from rsmm.engine.loader_update import cache_update
+
+                state = cache_update(game_dir, state)
+            else:
+                state = apply_update(game_dir, state)
             if state["status"] == "updated":
                 _refresh_pattern_db(game_dir)
         elif not args.check:
@@ -148,6 +155,10 @@ def main(argv: list[str] | None = None) -> int:
         if status == "update_available":  # --check path
             print(f"update available: v{state['installed_version']} -> "
                   f"v{state['remote_version']} — run `rsmm update-loader` to install")
+        elif status == "cached":
+            print(f"loader v{state['cached_version']} downloaded; it is installed with "
+                  f"your next modded launch (or `rsmm install-loader`). The game dir "
+                  f"has no loader, so plain Steam launches stay vanilla.")
         elif status == "updated":
             for p in state.get("planted", []):
                 print(f"  planted {p}")

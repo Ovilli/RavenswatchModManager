@@ -2709,6 +2709,21 @@ def _print_apply_summary(additions, removals, synthesized, blocked: int,
         print(_ST.dim("  (--verbose lists every file)"))
 
 
+def _record_apply_origin(state: State, game_dir: Path, args) -> None:
+    """Record why the install is modded, for the start-up self-heal.
+
+    Only an install left modded by a LAUNCH is put back unattended
+    (rsmm.cli.self_heal) — an explicit "Apply mods" is the player's choice —
+    and only on the Steam build it was applied to: a data-only patch leaves
+    rsmm's fingerprint unchanged, so the build id is what tells them apart.
+    """
+    from rsmm.engine.steam_app import app_state
+
+    state.data["applied_for"] = "launch" if getattr(args, "for_launch", False) else "manual"
+    steam = app_state(game_dir)
+    state.data["steam_buildid"] = steam.buildid if steam else None
+
+
 def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     # Recovery deletes backups and state; a dry run must not.
     if not args.dry_run:
@@ -2804,6 +2819,15 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     if (not additions and not removals and not manifest_syncs
             and not deact_ran and not usedrsc_changes and not versiondef_changes):
         print("Mods already in sync.")
+        if not args.dry_run:
+            # Still a launch (or an explicit apply) of what is installed: the
+            # record must follow the LAST apply, or a launch after "Apply mods"
+            # would never be self-healed — and the reverse undone.
+            _record_apply_origin(state, game_dir, args)
+            try:
+                state.save()
+            except OSError as e:
+                print(f"  [warn] failed to write state: {e}", file=sys.stderr)
         return 0
 
     if additions or removals:
@@ -2882,6 +2906,7 @@ def cmd_apply(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     if not args.dry_run:
         state.set_enabled_mods([m.id for m in mods if m.enabled])
         _sync_loader_flags(game_dir, mods, state)
+        _record_apply_origin(state, game_dir, args)
         try:
             state.save()
             print(f"State written: {state.path}")
@@ -2897,8 +2922,12 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     # Before anything is dropped: with a stale map, "mod-added" includes game
     # files, and restore deletes those.
     if not _refresh_stale_asset_map(game_dir):
-        print("  Not restoring: it would delete game files. Rebuild the map, "
-              "then re-run restore.", file=sys.stderr)
+        print("  Not restoring cooked files: it would delete game files. Rebuild "
+              "the map, then re-run restore.", file=sys.stderr)
+        # The game-side mods/ dir and the loader are not game files, and leaving
+        # them is what makes a plain Steam launch run mods: clear them anyway.
+        clear_runtime_mods(game_dir, args.dry_run)
+        clear_loader_artifacts(game_dir, args.dry_run)
         return 1
     state = State(cooking)
     # A restore is the recovery path, so it must see writes an interrupted
@@ -2910,6 +2939,7 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
     restored_stale = 0
     cleaned_residue = 0
     purged_known = 0
+    residue = False
 
     # Detect game update BEFORE touching any files.
     # If the game version changed, backups from the previous version MUST NOT
@@ -3123,7 +3153,11 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
                 print(f"    - {enc}", file=sys.stderr)
             if len(show) > 20:
                 print(f"    ... and {len(show) - 20} more", file=sys.stderr)
-            return 2
+            # Still exit 2, but only AFTER the rest of the cleanup below. This
+            # used to return here, so exactly when restore was struggling it
+            # also skipped UsedRscList, the game-side mods/ dir and the loader:
+            # the next plain Steam launch loaded the loader AND every mod's Lua.
+            residue = True
     except (OSError, ValueError) as e:
         # ValueError covers a corrupt asset_map.json — restore must still
         # finish its filesystem cleanup even when the map can't be loaded.
@@ -3163,8 +3197,18 @@ def cmd_restore_all(args, repo: Path, cooking: Path, game_dir: Path) -> int:
         print(f"Cleaned {cleaned_residue} residual cooked override(s).")
     if purged_known:
         print(f"Purged {purged_known} known mod-mapped cooked file(s).")
+    if not args.dry_run and (cooking / STATE_FILE_NAME).exists():
+        # Nothing is applied for a launch any more: the self-heal must not
+        # retry an install this restore already handled (even with residue).
+        done = State(cooking)
+        if done.data.pop("applied_for", None) is not None:
+            done.data.pop("steam_buildid", None)
+            try:
+                done.save()
+            except OSError as e:
+                print(f"  [warn] failed to write state: {e}", file=sys.stderr)
     print("Runtime mods directory cleared.")
-    return 0
+    return 2 if residue else 0
 
 
 def cmd_list(args, repo: Path, cooking: Path) -> int:
@@ -3302,6 +3346,8 @@ def main() -> int:
                          "and texture, ignoring the emit and cook caches")
     ap.add_argument("--force", action="store_true",
                     help="apply even if the compatibility graph has errors")
+    ap.add_argument("--for-launch", action="store_true",
+                    help=argparse.SUPPRESS)  # internal: a modded launch's apply
     ap.add_argument("--yes", action="store_true",
                     help="auto-confirm execution of on_disable.py hooks "
                          "(otherwise prompts interactively; set "
