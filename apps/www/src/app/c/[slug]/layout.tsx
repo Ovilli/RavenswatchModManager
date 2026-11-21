@@ -1,13 +1,16 @@
 import { jsonLd } from '@rsmm/schemas';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import type { Entity } from '../../../lib/entity';
-import { fetchViewerEntity } from '../../../lib/viewer-entity';
+import { type Entity, fetchEntity } from '../../../lib/entity';
 
 const SITE = 'Ravenswatch Mod Manager';
 
-// Public listings use ISR and anonymous data. Private/delisted listings retry
-// with the viewer's session without caching; the API enforces access.
+// ISR with an anonymous server fetch: one cached render serves every visitor.
+// Never read cookies() here — in an ISR route that throws DYNAMIC_SERVER_USAGE
+// at runtime and every non-public slug answered 500. Private, hidden and
+// removed listings are anonymous 404s; the root not-found page re-fetches them
+// in the browser with the viewer's session (ViewerListingFallback), so owners
+// and admins still see them.
 export const revalidate = 300;
 export function generateStaticParams(): { slug: string }[] {
   return [];
@@ -29,7 +32,7 @@ interface Collection {
 // deduped by Next within a request); they used to hand-roll the same request
 // twice and disagree about what "not found" meant.
 async function getCollection(slug: string): Promise<Entity<Collection>> {
-  const res = await fetchViewerEntity<Collection>(`/api/collections/${slug}`);
+  const res = await fetchEntity<Collection>(`/api/collections/${slug}`);
   if (res.state !== 'ok') return res;
   return res.data?.name ? res : { state: 'error' };
 }

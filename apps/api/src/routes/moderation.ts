@@ -130,6 +130,32 @@ const slugParamSchema = z.object({
     .regex(/^[a-z0-9_-]+$/),
 });
 
+/**
+ * Every mod that is currently taken down (hidden or removed), newest change
+ * first. A takedown made without a report (from the API, or by an admin
+ * editing the listing) otherwise appears nowhere in the admin page — the only
+ * Take down / Restore buttons used to live on report rows.
+ */
+moderationRouter.get('/mods/takedowns', async (c) => {
+  const rows = await getDb()
+    .select({
+      slug: schema.mods.slug,
+      name: schema.mods.name,
+      author: schema.mods.authorName,
+      ownerId: schema.mods.ownerId,
+      takedownStatus: schema.mods.takedownStatus,
+      takedownReason: schema.mods.takedownReason,
+      updatedAt: schema.mods.updatedAt,
+    })
+    .from(schema.mods)
+    .where(inArray(schema.mods.takedownStatus, ['hidden', 'removed']))
+    .orderBy(desc(schema.mods.updatedAt))
+    .limit(200);
+  return c.json({
+    items: rows.map((r) => ({ ...r, updatedAt: r.updatedAt.toISOString() })),
+  });
+});
+
 moderationRouter.post(
   '/mods/:slug/takedown',
   zValidator('param', slugParamSchema),

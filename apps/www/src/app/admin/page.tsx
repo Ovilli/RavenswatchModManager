@@ -25,6 +25,7 @@ import { useSession } from '../../lib/auth-client';
 import { AdminOverview, useAdminStats } from './overview';
 import { PrivateOnlyCheck } from './private-only-check';
 import { ScanList } from './scan-list';
+import { TakedownList } from './takedown-list';
 
 type Status = 'open' | 'reviewing' | 'resolved' | 'dismissed';
 
@@ -74,6 +75,7 @@ export default function AdminPage() {
 
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ['admin', 'reports'] });
+    void qc.invalidateQueries({ queryKey: ['admin', 'takedowns'] });
     void qc.invalidateQueries({ queryKey: ['admin', 'stats'] });
   };
 
@@ -509,6 +511,14 @@ export default function AdminPage() {
               ))}
             </ul>
           )}
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
+            <Trash2 className="h-5 w-5 text-gilt/80" aria-hidden />
+            Taken-down mods
+          </h2>
+          <TakedownList />
         </section>
       </div>
     </main>

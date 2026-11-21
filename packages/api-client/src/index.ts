@@ -523,6 +523,16 @@ export function createApiClient(options: ApiClientOptions) {
     updatedAt: z.string(),
   });
   const reportsResponseSchema = z.object({ items: z.array(reportItemSchema) });
+  const takedownItemSchema = z.object({
+    slug: z.string(),
+    name: z.string(),
+    author: z.string().nullable(),
+    ownerId: z.string().nullable(),
+    takedownStatus: z.enum(['hidden', 'removed']),
+    takedownReason: z.string().nullable(),
+    updatedAt: z.string(),
+  });
+  const takedownsResponseSchema = z.object({ items: z.array(takedownItemSchema) });
 
   return {
     mods: {
@@ -760,6 +770,8 @@ export function createApiClient(options: ApiClientOptions) {
           { method: 'PATCH', body: JSON.stringify(body) },
           z.object({ ok: z.literal(true), report: z.unknown() }),
         ),
+      takedowns: () =>
+        request('/api/moderation/mods/takedowns', { method: 'GET' }, takedownsResponseSchema),
       takedown: (
         slug: string,
         body: { takedownStatus: 'active' | 'hidden' | 'removed'; reason?: string | null },
