@@ -34,6 +34,12 @@ export const modTakedownSchema = z.object({
 });
 export type ModTakedown = z.infer<typeof modTakedownSchema>;
 
+/** A message in a mod's private moderation thread (team ⇄ moderators). */
+export const modModerationMessageSchema = z.object({
+  body: z.string().trim().min(1).max(4000),
+});
+export type ModModerationMessage = z.infer<typeof modModerationMessageSchema>;
+
 /** Body an admin submits to ban (or unban) a user. */
 export const userBanSchema = z.object({
   banned: z.boolean(),

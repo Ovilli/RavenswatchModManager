@@ -222,6 +222,32 @@ export const modReports = pgTable(
   }),
 );
 
+// Private moderation thread between a mod's team and the moderators: free-text
+// messages from either side plus a row for every takedown status change.
+// Visible to the owner, co-authors and admins only.
+export const modModerationMessages = pgTable(
+  'mod_moderation_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    modId: uuid('mod_id')
+      .notNull()
+      .references(() => mods.id, { onDelete: 'cascade' }),
+    authorId: text('author_id').references(() => users.id, { onDelete: 'set null' }),
+    // 'message' (body set) | 'status' (fromStatus → toStatus, body = reason)
+    kind: varchar('kind', { length: 16 }).notNull(),
+    body: text('body'),
+    fromStatus: varchar('from_status', { length: 16 }),
+    toStatus: varchar('to_status', { length: 16 }),
+    // Whether the author was a moderator when they wrote it. Stored rather than
+    // derived so the label survives a change to ADMIN_USER_IDS.
+    fromModerator: boolean('from_moderator').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    modIdx: index('mod_moderation_messages_mod_idx').on(table.modId, table.createdAt),
+  }),
+);
+
 // A user following a mod — drives new-version notifications (fan-out on
 // publish). PK (userId, modId); modId index so we can list followers cheaply.
 export const modFollows = pgTable(

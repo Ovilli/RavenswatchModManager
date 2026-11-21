@@ -523,6 +523,32 @@ export function createApiClient(options: ApiClientOptions) {
     updatedAt: z.string(),
   });
   const reportsResponseSchema = z.object({ items: z.array(reportItemSchema) });
+  const takedownItemSchema = z.object({
+    slug: z.string(),
+    name: z.string(),
+    author: z.string().nullable(),
+    ownerId: z.string().nullable(),
+    takedownStatus: z.enum(['hidden', 'removed']),
+    takedownReason: z.string().nullable(),
+    updatedAt: z.string(),
+  });
+  const takedownsResponseSchema = z.object({ items: z.array(takedownItemSchema) });
+  const moderationThreadItemSchema = z.object({
+    id: z.string(),
+    kind: z.enum(['message', 'status']),
+    body: z.string().nullable(),
+    fromStatus: z.string().nullable(),
+    toStatus: z.string().nullable(),
+    fromModerator: z.boolean(),
+    createdAt: z.string(),
+    authorId: z.string().nullable(),
+    authorName: z.string().nullable(),
+    authorImage: z.string().nullable(),
+  });
+  const moderationThreadSchema = z.object({
+    viewerIsModerator: z.boolean(),
+    items: z.array(moderationThreadItemSchema),
+  });
 
   return {
     mods: {
@@ -650,6 +676,19 @@ export function createApiClient(options: ApiClientOptions) {
           { method: 'DELETE' },
           okSchema,
         ),
+      /** Private moderation thread: the mod's team and moderators only. */
+      moderationThread: (slug: string) =>
+        request(
+          `/api/mods/${encodeURIComponent(slug)}/moderation`,
+          { method: 'GET' },
+          moderationThreadSchema,
+        ),
+      sendModerationMessage: (slug: string, body: string) =>
+        request(
+          `/api/mods/${encodeURIComponent(slug)}/moderation`,
+          { method: 'POST', body: JSON.stringify({ body }) },
+          z.object({ ok: z.literal(true), id: z.string().nullable() }),
+        ),
       report: (slug: string, body: { reason: string; detail?: string | null }) =>
         request(
           `/api/mods/${encodeURIComponent(slug)}/report`,
@@ -760,6 +799,8 @@ export function createApiClient(options: ApiClientOptions) {
           { method: 'PATCH', body: JSON.stringify(body) },
           z.object({ ok: z.literal(true), report: z.unknown() }),
         ),
+      takedowns: () =>
+        request('/api/moderation/mods/takedowns', { method: 'GET' }, takedownsResponseSchema),
       takedown: (
         slug: string,
         body: { takedownStatus: 'active' | 'hidden' | 'removed'; reason?: string | null },

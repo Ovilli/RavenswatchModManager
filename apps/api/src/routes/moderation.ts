@@ -5,7 +5,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { isAdmin } from '../admin.js';
-import { errString } from '../logger.js';
+import { errString, log } from '../logger.js';
 import { notify } from '../notify.js';
 import { setStoredPrivateOnlyTag } from '../private-only.js';
 import { SERVABLE_STATUSES, adminVerdict, labelIfGameplay } from '../scan-service.js';
@@ -130,6 +130,32 @@ const slugParamSchema = z.object({
     .regex(/^[a-z0-9_-]+$/),
 });
 
+/**
+ * Every mod that is currently taken down (hidden or removed), newest change
+ * first. A takedown made without a report (from the API, or by an admin
+ * editing the listing) otherwise appears nowhere in the admin page — the only
+ * Take down / Restore buttons used to live on report rows.
+ */
+moderationRouter.get('/mods/takedowns', async (c) => {
+  const rows = await getDb()
+    .select({
+      slug: schema.mods.slug,
+      name: schema.mods.name,
+      author: schema.mods.authorName,
+      ownerId: schema.mods.ownerId,
+      takedownStatus: schema.mods.takedownStatus,
+      takedownReason: schema.mods.takedownReason,
+      updatedAt: schema.mods.updatedAt,
+    })
+    .from(schema.mods)
+    .where(inArray(schema.mods.takedownStatus, ['hidden', 'removed']))
+    .orderBy(desc(schema.mods.updatedAt))
+    .limit(200);
+  return c.json({
+    items: rows.map((r) => ({ ...r, updatedAt: r.updatedAt.toISOString() })),
+  });
+});
+
 moderationRouter.post(
   '/mods/:slug/takedown',
   zValidator('param', slugParamSchema),
@@ -138,6 +164,10 @@ moderationRouter.post(
     const { slug } = c.req.valid('param');
     const { takedownStatus, reason } = c.req.valid('json');
     const db = getDb();
+    const before = await db.query.mods.findFirst({
+      where: eq(schema.mods.slug, slug),
+      columns: { takedownStatus: true },
+    });
     const rows = await db
       .update(schema.mods)
       .set({
@@ -149,6 +179,26 @@ moderationRouter.post(
       .returning();
     const m = rows[0];
     if (!m) return c.json({ error: 'not found' }, 404);
+
+    // Record the change in the mod's moderation thread, so the team sees who
+    // changed what and why. A no-op status call without a reason is skipped.
+    const fromStatus = before?.takedownStatus ?? null;
+    if (fromStatus !== takedownStatus || reason) {
+      // Best-effort: the takedown itself must never fail over its log entry.
+      try {
+        await db.insert(schema.modModerationMessages).values({
+          modId: m.id,
+          authorId: c.get('user')?.id ?? null,
+          kind: 'status',
+          body: takedownStatus === 'active' ? null : (reason ?? null),
+          fromStatus,
+          toStatus: takedownStatus,
+          fromModerator: true,
+        });
+      } catch (err) {
+        log.error('failed to record takedown in moderation thread', { err: errString(err), slug });
+      }
+    }
 
     // Tell the owner their mod was taken down (in-app + email).
     if (m.ownerId && takedownStatus !== 'active') {
@@ -162,8 +212,17 @@ moderationRouter.post(
         type: 'mod_takedown',
         title: `Your mod "${m.name}" was taken down`,
         body: reason ? `Reason: ${reason}` : 'Your mod was removed by a moderator.',
-        link: `/my-mods/${m.slug}`,
+        link: `/registry/${m.slug}#moderation`,
         email: owner[0]?.email ?? null,
+      });
+    } else if (m.ownerId && fromStatus && fromStatus !== 'active') {
+      // Restored: in-app only, so the owner knows it is public again.
+      await notify({
+        userId: m.ownerId,
+        type: 'mod_takedown',
+        title: `Your mod "${m.name}" was restored`,
+        body: 'It is back on the public registry.',
+        link: `/registry/${m.slug}#moderation`,
       });
     }
     return c.json({ ok: true, mod: m });
