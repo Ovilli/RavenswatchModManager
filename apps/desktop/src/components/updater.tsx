@@ -901,6 +901,14 @@ export function UpdaterSettings() {
           }),
           'success',
         );
+      } else if (r?.repaired) {
+        setNeedsGameRestart(true);
+        toast.push(
+          t('Game loader reinstalled (v{version}) — restart Ravenswatch to pick it up.', {
+            version: r.plantedVersion ?? r.installedVersion ?? '',
+          }),
+          'success',
+        );
       } else if (r && r.ok === false) {
         // needs_app_update lands here too: a real answer, phrased as an
         // instruction rather than a transport failure.

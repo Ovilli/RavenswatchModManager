@@ -156,4 +156,7 @@ attempt taught.
 
 - `src/loader/` — winhttp.dll proxy + MinHook + Lua 5.4. This is the runtime for
   Lua-scripted mods, installed with `rsmm install-loader` and updated with
-  `rsmm update-loader`. Asset-only mods do not need it.
+  `rsmm update-loader`. Asset-only mods do not need it. In the desktop app,
+  `update-loader` also reinstalls a planted `winhttp.dll` that matches no
+  published build (another program replaced it); set `RSMM_KEEP_LOADER=1` to
+  keep a hand-built DLL in place while testing with the installed app.

@@ -1200,6 +1200,10 @@ export interface UpdateLoaderResult {
   generated?: string | null;
   notes?: string | null;
   planted?: string[] | null;
+  /** The plant was current by version but not a published build, and was reinstalled. */
+  repaired?: boolean;
+  /** Why such a plant could not be reinstalled (game running, …); null otherwise. */
+  repairError?: string | null;
   error?: string;
 }
 

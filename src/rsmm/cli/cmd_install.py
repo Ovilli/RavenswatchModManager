@@ -199,7 +199,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             data = _fetch(target)
         except (OSError, RepoError) as e:
-            print(f"download failed: {e}", file=sys.stderr)
+            print(f"download failed: {net.describe_error(e)}", file=sys.stderr)
             return 1
         return _finish(data, None, no_verify, force, yes)
 
@@ -222,7 +222,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         data = _fetch(entry.url)
     except (OSError, RepoError) as e:
-        print(f"download failed: {e}", file=sys.stderr)
+        print(f"download failed: {net.describe_error(e)}", file=sys.stderr)
         return 1
     return _finish(data, entry, no_verify, force, yes)
 

@@ -186,7 +186,9 @@ def main(argv: list[str] | None = None) -> int:
             raw = json.loads(_fetch(url).decode("utf-8"))
             indices.append((url, RepoIndex.load(raw)))
         except (urllib.error.URLError, OSError, ValueError) as e:
-            print(f"  [warn] {url}: {e}", file=sys.stderr)
+            from rsmm.engine.net import describe_error
+
+            print(f"  [warn] {url}: {describe_error(e)}", file=sys.stderr)
 
     plan: list[tuple[str, str, object, str]] = []  # mod_id, have, entry, url
     for mid, have in sorted(installed.items()):
@@ -216,7 +218,9 @@ def main(argv: list[str] | None = None) -> int:
         try:
             data = _fetch(entry.url)
         except (urllib.error.URLError, OSError) as e:
-            print(f"  download failed: {e}", file=sys.stderr)
+            from rsmm.engine.net import describe_error
+
+            print(f"  download failed: {describe_error(e)}", file=sys.stderr)
             code = 1
             continue
         with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as f:

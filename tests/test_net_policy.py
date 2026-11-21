@@ -149,3 +149,22 @@ def test_system_trust_falls_back_without_truststore(monkeypatch):
     monkeypatch.setitem(sys.modules, "truststore", None)  # import raises
     monkeypatch.setattr(net, "_TRUST", None)
     assert net.use_system_trust() == "python"
+
+
+def test_certificate_failure_says_what_to_check():
+    """The raw SSL text a player pasted read as "server broken"; say what to do."""
+    import ssl
+    import urllib.error
+
+    err = urllib.error.URLError(ssl.SSLCertVerificationError(
+        1, "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: "
+           "certificate has expired (_ssl.c:1010)"))
+    text = net.describe_error(err)
+    assert text.startswith(str(err))          # original kept for bug reports
+    assert "date and time" in text and "antivirus" in text
+    # Also when only the text survived (re-raised as a plain OSError).
+    assert net.CERT_HINT in net.describe_error(OSError(str(err)))
+
+
+def test_other_errors_are_unchanged():
+    assert net.describe_error(OSError("connection refused")) == "connection refused"

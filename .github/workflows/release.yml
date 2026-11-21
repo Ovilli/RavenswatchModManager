@@ -141,6 +141,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          # reuse_published_loader.py diffs against the channel's build commit.
+          fetch-depth: 0
 
       - name: Install pnpm
         uses: pnpm/action-setup@v5.0.0
@@ -181,12 +184,21 @@ jobs:
       # (e.g. "WinHttpCloseHandle=winhttp_real.WinHttpCloseHandle") that MSVC's
       # linker cannot resolve. MinGW's dlltool creates forwarded exports without
       # needing the symbol table from winhttp.lib.
+      # One loader version = one DLL. Every pipeline used to compile its own,
+      # and builds are not byte-identical, so the app called a good v63 "dev"
+      # when the DLL and the CLI came from different pipelines. Reuse the
+      # channel's signed DLL when it is this commit's loader; else compile.
+      - name: Reuse the published loader DLL
+        id: reuse_loader
+        shell: bash
+        run: python scripts/reuse_published_loader.py
+
       - name: Install MinGW (Windows)
-        if: matrix.platform == 'windows-latest'
+        if: matrix.platform == 'windows-latest' && steps.reuse_loader.outputs.reused != 'true'
         run: choco install mingw --no-progress -y
 
       - name: Build loader DLL (Windows)
-        if: matrix.platform == 'windows-latest'
+        if: matrix.platform == 'windows-latest' && steps.reuse_loader.outputs.reused != 'true'
         shell: cmd
         run: |
           call src\loader\build.bat
@@ -196,7 +208,7 @@ jobs:
       # dist/winhttp.dll, install-loader exits with "Build first" on every
       # Linux install, and Modded Launch never works for Proton users.
       - name: Build loader DLL (Linux, MinGW cross)
-        if: startsWith(matrix.platform, 'ubuntu')
+        if: startsWith(matrix.platform, 'ubuntu') && steps.reuse_loader.outputs.reused != 'true'
         run: src/loader/build.sh
 
       # Fail the release leg if the DLL is missing/malformed/exportless —

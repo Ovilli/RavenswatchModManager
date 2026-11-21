@@ -73,6 +73,21 @@ def main(argv: list[str] | None = None) -> int:
             state = apply_update(game_dir, state)
             if state["status"] == "updated":
                 _refresh_pattern_db(game_dir)
+        elif not args.check:
+            from rsmm.engine.loader_update import repair_plant
+
+            repair = repair_plant(game_dir, state)
+            if repair is not None:
+                state["repaired"] = repair["repaired"]
+                state["repair_error"] = repair["error"]
+                if repair["repaired"]:
+                    state["plant_stale"] = False
+                    print(f"reinstalled loader v{repair['version']}: the "
+                          f"winhttp.dll in the game dir was not a published build",
+                          file=sys.stderr)
+                else:
+                    print(f"could not reinstall the loader: {repair['error']}",
+                          file=sys.stderr)
 
         if args.as_json:
             _emit_json(state)

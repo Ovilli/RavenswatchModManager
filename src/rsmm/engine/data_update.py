@@ -68,7 +68,9 @@ def _fetch(url: str) -> bytes:
         with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
             return r.read()
     except (urllib.error.URLError, OSError, TimeoutError) as e:
-        raise DataUpdateError(f"fetch failed: {url}: {e}") from e
+        from rsmm.engine.net import describe_error
+
+        raise DataUpdateError(f"fetch failed: {url}: {describe_error(e)}") from e
 
 
 def _sha256(data: bytes) -> str:
